@@ -254,26 +254,20 @@ export function CustomerCard({
                     : `Add collection entry for ${customer.name}`
                 }
                 aria-label={`Add entry for ${customer.name}`}
-                className={`flex items-center justify-center gap-1 font-black transition-all z-20 ${
+                className={`flex items-center justify-center transition-all z-20 ${
                   isEntryDisabled
                     ? 'bg-muted/70 text-text-secondary/40 border border-border/40 cursor-not-allowed shadow-none'
                     : 'bg-accent text-white shadow-sm hover:bg-accent/90 active:scale-95 cursor-pointer'
                 } ${
                   isCompact 
-                    ? 'h-7 px-2 rounded-lg text-[10px] tracking-wide' 
-                    : 'h-8 px-2.5 rounded-xl text-xs shadow-accent/20 shadow-sm'
+                    ? 'w-7 h-7 rounded-lg' 
+                    : 'w-8 h-8 rounded-xl shadow-accent/20 shadow-sm'
                 }`}
               >
                 {isPaidToday ? (
-                  <>
-                    <CheckCircle2 size={isCompact ? 12 : 14} className="text-emerald-500" strokeWidth={2.5} />
-                    <span className="text-emerald-600 dark:text-emerald-400">Paid</span>
-                  </>
+                  <CheckCircle2 size={isCompact ? 13 : 15} className="text-emerald-500" strokeWidth={2.5} />
                 ) : (
-                  <>
-                    <Plus size={isCompact ? 13 : 15} strokeWidth={3} />
-                    <span>Entry</span>
-                  </>
+                  <Plus size={isCompact ? 15 : 18} strokeWidth={2.5} />
                 )}
               </button>
             </div>

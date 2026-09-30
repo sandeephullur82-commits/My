@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Customer, Transaction } from '../services/firestoreService';
-import { ArrowLeft, Phone, Calendar, IndianRupee, Plus, Edit2, AlertTriangle, Trash2, X, Lock, Pin, Search, MoreVertical, MessageCircle, Eye, Clock, Receipt } from 'lucide-react';
+import { ArrowLeft, Phone, Calendar, IndianRupee, Plus, Edit2, AlertTriangle, Trash2, X, Lock, Pin, Search, MoreVertical, MessageCircle, Eye, Clock, Receipt, PlusCircle } from 'lucide-react';
 import { firestoreService, auth } from '../services/firestoreService';
 import { toast } from 'sonner';
 import { exportTransactionsPDF } from '../lib/pdfExport';
@@ -9,8 +9,8 @@ import { PDFViewerModal } from './PDFViewerModal';
 import { ContactPermissionModal } from './ContactPermissionModal';
 import { ReceiptSuccessModal, ReceiptData } from './ReceiptSuccessModal';
 import { safeFormat, safeDifferenceInDays } from '../lib/utils';
-
 import { triggerWhatsApp } from '../lib/whatsapp';
+import { QuickPaymentModal } from './Entry/QuickPaymentModal';
 
 interface CustomerDetailsProps {
   key?: string;
@@ -31,6 +31,7 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
   const [showPreview, setShowPreview] = React.useState(false);
   const [showFABMenu, setShowFABMenu] = React.useState(false);
   const [selectedReceipt, setSelectedReceipt] = React.useState<ReceiptData | null>(null);
+  const [showQuickPayment, setShowQuickPayment] = React.useState(false);
 
   const customerTransactions = transactions
     .filter(tx => tx.customerId === customer.id)
@@ -212,6 +213,16 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
             <p className="text-sm text-success font-medium mt-2">
               Total Paid: ₹{paidAmount.toLocaleString()}
             </p>
+            {pendingAmount > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowQuickPayment(true)}
+                className="mt-3.5 px-5 py-2.5 rounded-2xl bg-accent hover:brightness-110 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-accent/25 active:scale-95 transition-all cursor-pointer"
+              >
+                <PlusCircle size={15} strokeWidth={2.5} />
+                <span>Add Payment</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -468,7 +479,7 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
               onClick={(e) => {
                 e.stopPropagation();
                 setShowFABMenu(false);
-                onAddEntry?.();
+                setShowQuickPayment(true);
               }}
             >
               <span className="bg-card dark:bg-muted/80 px-3 py-1.5 rounded-xl border border-border/50 text-[10px] font-black uppercase tracking-widest text-text-primary shadow-sm hover:border-accent/40 transition-colors">
@@ -568,6 +579,15 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
           onClose={() => setSelectedReceipt(null)}
         />
       )}
+
+      <QuickPaymentModal
+        customer={customer}
+        isOpen={showQuickPayment}
+        onClose={() => setShowQuickPayment(false)}
+        onSuccess={(receipt) => {
+          setSelectedReceipt(receipt);
+        }}
+      />
     </motion.div>
   );
 }

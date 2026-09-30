@@ -8,15 +8,13 @@ import { format, isToday, isYesterday, parseISO } from 'date-fns';
 import { 
   ChevronDown, Banknote, Smartphone, Clock, Search, X, Filter, 
   ChevronRight, Calendar, ArrowUpRight, ArrowDownLeft,
-  Loader2, Edit3, Share2, Eye, FileText, ShieldCheck, Receipt
+  Loader2, Edit3, Share2, Eye, FileText, ShieldCheck, Receipt, Download
 } from 'lucide-react';
 import { PageContainer } from '../components/PageContainer';
 import { useUI } from '../context/UIContext';
 import { toast } from 'sonner';
-import { BottomSheet } from '../components/BottomSheet';
-import { exportTransactionsPDF } from '../lib/pdfExport';
 import { PDFViewerModal } from '../components/PDFViewerModal';
-import { ExportAuditModal } from '../components/ExportAuditModal';
+import { MasterExportModal } from '../components/MasterExportModal';
 import { ReceiptSuccessModal, ReceiptData } from '../components/ReceiptSuccessModal';
 import { safeFormat } from '../lib/utils';
 
@@ -30,10 +28,8 @@ export function TransactionsList() {
   const todayKey = format(new Date(), 'yyyy-MM-dd');
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({ [todayKey]: true });
   const [filter, setFilter] = useState<FilterType>('ALL');
-  const [isExporting, setIsExporting] = useState(false);
   const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [showExportSheet, setShowExportSheet] = useState(false);
-  const [showAuditModal, setShowAuditModal] = useState(false);
+  const [showMasterExportModal, setShowMasterExportModal] = useState(false);
   
   // PDF Preview State
   const [previewReport, setPreviewReport] = useState<{ blob: Blob, fileName: string, title: string } | null>(null);
@@ -73,68 +69,6 @@ export function TransactionsList() {
   
   // Pagination State
   const [visibleDays, setVisibleDays] = useState(7); // Show 7 days initially
-
-  const handleExport = async (range: 'today' | 'week' | 'month' | 'current' | 'ledger') => {
-    let exportData = [...transactions].filter(t => !t.isDeleted);
-    let title = 'Transaction Report';
-    let rangeStr = 'All Time';
-
-    const now = new Date();
-    const todayStart = new Date(now.setHours(0, 0, 0, 0)).getTime();
-    
-    if (range === 'today') {
-      exportData = exportData.filter(t => t.timestamp >= todayStart);
-      title = 'Daily Collection Report';
-      rangeStr = format(new Date(), 'dd MMM yyyy');
-    } else if (range === 'week') {
-      const weekStart = todayStart - (7 * 86400000);
-      exportData = exportData.filter(t => t.timestamp >= weekStart);
-      title = 'Weekly Transaction Summary';
-      rangeStr = `${format(weekStart, 'dd MMM')} - ${format(new Date(), 'dd MMM yyyy')}`;
-    } else if (range === 'month') {
-      const monthStart = todayStart - (30 * 86400000);
-      exportData = exportData.filter(t => t.timestamp >= monthStart);
-      title = 'Monthly Financial Statement';
-      rangeStr = `${format(monthStart, 'dd MMM')} - ${format(new Date(), 'dd MMM yyyy')}`;
-    } else if (range === 'ledger') {
-      // For ledger, we typically want current filter view but in ledger format
-      exportData = filteredTransactions;
-      title = 'Horizontal Digital Ledger';
-      rangeStr = filter === 'ALL' ? 'Filtered View' : `Mode: ${filter}`;
-    } else {
-      // Current filtered view
-      exportData = filteredTransactions;
-      title = filter === 'ALL' ? 'Complete History Report' : `${filter} Transactions Report`;
-      rangeStr = searchTerm ? `Search: "${searchTerm}"` : 'Filtered View';
-    }
-
-    if (exportData.length === 0) {
-      toast.error('No transactions found for this period');
-      return;
-    }
-    
-    setShowExportSheet(false);
-    setIsExporting(true);
-    const toastId = toast.loading('Generating ledger data matrix...');
-    
-    try {
-      const result = await exportTransactionsPDF(exportData, customers, filter, title, rangeStr);
-      
-      if (!result.blob || result.blob.size === 0) {
-        throw new Error('Generated PDF is empty');
-      }
-
-      setPreviewReport(result);
-      setShowPreview(true);
-      
-      toast.success('Report ready for preview', { id: toastId });
-    } catch (err) {
-      console.error('Export failed', err);
-      toast.error('Failed to generate ledger data', { id: toastId });
-    } finally {
-      setIsExporting(false);
-    }
-  };
 
   // No filter syncing needed anymore as it's local
   const handleSetFilter = (f: FilterType) => {
@@ -334,23 +268,14 @@ export function TransactionsList() {
             </div>
 
             <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={() => setShowAuditModal(true)}
-              className="h-12 px-3.5 flex items-center gap-1.5 bg-accent text-white rounded-2xl shadow-sm shadow-accent/20 active:brightness-105 transition-all text-xs font-black uppercase tracking-wider shrink-0"
-              title="Audit PDF Report with Customizable Date Ranges"
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowMasterExportModal(true)}
+              className="h-12 px-4 flex items-center gap-2 bg-accent text-white rounded-2xl shadow-sm shadow-accent/20 hover:bg-accent/90 active:scale-95 transition-all text-xs font-black uppercase tracking-wider shrink-0 cursor-pointer"
+              title="Master Application Data Export (Excel & PDF)"
             >
-              <FileText size={16} />
-              <span className="hidden sm:inline">Audit PDF</span>
-            </motion.button>
-
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={() => setShowExportSheet(true)}
-              disabled={isExporting}
-              className="h-12 w-12 flex items-center justify-center bg-card border border-border/60 rounded-2xl text-text-secondary hover:text-accent hover:border-accent/40 shadow-sm active:bg-accent/5 transition-all disabled:opacity-50 shrink-0"
-              title="Ledger & Quick Export"
-            >
-              {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Eye size={18} />}
+              <Download size={16} strokeWidth={2.5} />
+              <span className="hidden sm:inline">Master Export</span>
+              <span className="sm:hidden">Export</span>
             </motion.button>
           </div>
 
@@ -566,86 +491,13 @@ export function TransactionsList() {
         </div>
       </div>
 
-      {/* Export Options Bottom Sheet */}
-      <BottomSheet
-        isOpen={showExportSheet}
-        onClose={() => setShowExportSheet(false)}
-        title="Export Data"
-        subtitle="Preview and share professional ledger reports"
-      >
-        <div className="flex flex-col gap-3 pb-8">
-          <p className="text-[10px] font-black uppercase tracking-widest text-text-secondary opacity-40 ml-1 mb-1">
-            Select Date Range
-          </p>
-          
-          <button
-            onClick={() => {
-              setShowExportSheet(false);
-              setShowAuditModal(true);
-            }}
-            className="w-full flex items-center justify-between p-4 rounded-2xl bg-accent/10 border border-accent/30 hover:border-accent/60 active:scale-[0.98] transition-all group"
-          >
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-accent text-white shadow-sm">
-                <FileText size={18} />
-              </div>
-              <div className="text-left">
-                <span className="text-[13px] font-black uppercase tracking-widest text-accent block">
-                  Custom Range Audit PDF
-                </span>
-                <span className="text-[10px] text-text-secondary opacity-60">
-                  Custom date range, payment filter & auditor sign-off
-                </span>
-              </div>
-            </div>
-            <ChevronRight size={18} className="text-accent transition-all" />
-          </button>
-
-          {[
-            { id: 'today', label: 'Today\'s Collection', icon: <ArrowUpRight size={18} /> },
-            { id: 'week', label: 'Last 7 Days', icon: <Calendar size={18} /> },
-            { id: 'month', label: 'Last 30 Days', icon: <Clock size={18} /> },
-            { id: 'current', label: 'Current Filter View', icon: <Filter size={18} /> },
-            { id: 'ledger', label: 'Digital Ledger (Landscape)', icon: <Edit3 size={18} /> }
-          ].map((opt) => (
-            <button
-              key={opt.id}
-              onClick={() => handleExport(opt.id as any)}
-              className="w-full flex items-center justify-between p-4 rounded-2xl bg-bg border border-border/60 hover:border-accent/40 active:scale-[0.98] transition-all group"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-muted text-text-secondary opacity-40 group-hover:text-accent group-hover:bg-accent/10 transition-colors">
-                  {opt.icon}
-                </div>
-                <span className="text-[13px] font-black uppercase tracking-widest text-text-secondary group-hover:text-text-primary transition-colors">
-                  {opt.label}
-                </span>
-              </div>
-              <ChevronRight size={18} className="opacity-20 group-hover:opacity-100 text-accent transition-all" />
-            </button>
-          ))}
-
-          <div className="mt-4 p-4 rounded-2xl bg-accent/5 border border-accent/10">
-            <p className="text-[11px] font-medium text-text-secondary leading-relaxed">
-              Reports include branding, totals, and color-coded payment modes for professional use.
-            </p>
-          </div>
-
-          <button 
-            onClick={() => setShowExportSheet(false)}
-            className="w-full py-4 mt-2 rounded-2xl bg-muted text-text-secondary font-black text-[11px] uppercase tracking-widest active:scale-[0.98] transition-all"
-          >
-            Close
-          </button>
-        </div>
-      </BottomSheet>
-
-      <ExportAuditModal
-        isOpen={showAuditModal}
-        onClose={() => setShowAuditModal(false)}
-        transactions={transactions}
+      {/* Master Data Export Modal (Excel & PDF for Entire App) */}
+      <MasterExportModal
+        isOpen={showMasterExportModal}
+        onClose={() => setShowMasterExportModal(false)}
         customers={customers}
-        onGenerated={(report) => {
+        transactions={transactions}
+        onPreviewPDF={(report) => {
           setPreviewReport(report);
           setShowPreview(true);
         }}

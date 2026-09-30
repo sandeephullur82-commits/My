@@ -79,6 +79,7 @@ export interface Transaction {
   unsettledAt?: any;
   createdBy?: string;
   isDeleted?: boolean;
+  notes?: string;
   history?: AuditRecord[];
 }
 

@@ -33,7 +33,7 @@ export function StatsGrid({ stats, onNavigate, onTotalClick }: StatsGridProps) {
       clickable: true,
       hint: 'action',
       filter: 'NOT_PAID',
-      entryTab: 'PAID',
+      entryTab: 'UNPAID',
       dateFilter: 'ALL',
       fullWidth: true
     },
