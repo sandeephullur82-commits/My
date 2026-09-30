@@ -1,14 +1,14 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Customer, Transaction } from '../services/firestoreService';
-import { format, differenceInDays } from 'date-fns';
-import { ArrowLeft, Phone, Calendar, IndianRupee, Plus, Edit2, AlertTriangle, Trash2, X, Lock, Pin, Search, MoreVertical, MessageCircle, Eye, Clock } from 'lucide-react';
+import { ArrowLeft, Phone, Calendar, IndianRupee, Plus, Edit2, AlertTriangle, Trash2, X, Lock, Pin, Search, MoreVertical, MessageCircle, Eye, Clock, Receipt } from 'lucide-react';
 import { firestoreService, auth } from '../services/firestoreService';
 import { toast } from 'sonner';
 import { exportTransactionsPDF } from '../lib/pdfExport';
 import { PDFViewerModal } from './PDFViewerModal';
 import { ContactPermissionModal } from './ContactPermissionModal';
-import { safeFormat } from '../lib/utils';
+import { ReceiptSuccessModal, ReceiptData } from './ReceiptSuccessModal';
+import { safeFormat, safeDifferenceInDays } from '../lib/utils';
 
 import { triggerWhatsApp } from '../lib/whatsapp';
 
@@ -30,6 +30,7 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
   const [previewReport, setPreviewReport] = React.useState<{ blob: Blob, fileName: string, title: string } | null>(null);
   const [showPreview, setShowPreview] = React.useState(false);
   const [showFABMenu, setShowFABMenu] = React.useState(false);
+  const [selectedReceipt, setSelectedReceipt] = React.useState<ReceiptData | null>(null);
 
   const customerTransactions = transactions
     .filter(tx => tx.customerId === customer.id)
@@ -41,14 +42,14 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
   const paidAmount = customer.paid || 0;
 
   const isOverdue = customer.endDate < Date.now() && pendingAmount > 0;
-  const overdueDays = isOverdue ? differenceInDays(Date.now(), customer.endDate) : 0;
+  const overdueDays = isOverdue ? safeDifferenceInDays(Date.now(), customer.endDate) : 0;
   
   const progress = loanAmount > 0 ? Math.min(100, Math.max(0, (paidAmount / loanAmount) * 100)) : 0;
 
   // Smart Insights
-  const daysElapsed = Math.max(1, differenceInDays(Date.now(), customer.startDate));
+  const daysElapsed = Math.max(1, safeDifferenceInDays(Date.now(), customer.startDate));
   const avgDaily = paidAmount / daysElapsed;
-  const remainingDays = Math.max(0, differenceInDays(customer.endDate, Date.now()));
+  const remainingDays = Math.max(0, safeDifferenceInDays(customer.endDate, Date.now()));
   const expectedCompletionDays = avgDaily > 0 ? Math.ceil(pendingAmount / avgDaily) : 0;
 
   const confirmAction = () => {
@@ -274,7 +275,7 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
                 <Calendar size={14} /> <span className="text-xs">Tenure</span>
               </div>
               <p className="font-medium text-sm">
-                {customer.durationDays || Math.max(1, differenceInDays(customer.endDate, customer.startDate) + 1)} Days
+                {customer.durationDays || Math.max(1, safeDifferenceInDays(customer.endDate, customer.startDate) + 1)} Days
               </p>
             </div>
           </div>
@@ -321,8 +322,8 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
                   .sort(([a], [b]) => b.localeCompare(a))
                   .map(([dateKey, txs]) => {
                     const dateObj = new Date(dateKey);
-                    const isToday = dateKey === format(new Date(), 'yyyy-MM-dd');
-                    const isYesterday = dateKey === format(new Date(Date.now() - 86400000), 'yyyy-MM-dd');
+                    const isToday = dateKey === safeFormat(Date.now(), 'yyyy-MM-dd');
+                    const isYesterday = dateKey === safeFormat(Date.now() - 86400000, 'yyyy-MM-dd');
                     
                     let displayDate = safeFormat(dateObj, 'dd MMM yyyy', dateKey);
                     if (isToday) displayDate = 'Today';
@@ -343,13 +344,32 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
                                 </div>
                                 <p className="text-[10px] font-bold text-text-secondary opacity-50 mt-1 uppercase">Ref: {tx.id.slice(0, 8)}</p>
                               </div>
-                              <div className="text-right">
-                                <p className="font-black text-sm text-text-primary tracking-tight">
-                                  ₹{tx.amount.toLocaleString()}
-                                </p>
-                                <p className="text-[9px] font-bold text-text-secondary opacity-40 uppercase tracking-tighter">
-                                   {safeFormat(tx.timestamp, 'hh:mm a')}
-                                </p>
+                              <div className="flex items-center gap-3">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedReceipt({
+                                      transaction: tx,
+                                      customer,
+                                      previousBalance: pendingAmount + tx.amount,
+                                      newBalance: pendingAmount
+                                    });
+                                  }}
+                                  className="p-1.5 px-2 rounded-xl bg-accent/10 hover:bg-accent hover:text-white text-accent transition-all flex items-center gap-1 text-[9px] font-black uppercase tracking-wider active:scale-95 cursor-pointer shadow-xs border border-accent/20"
+                                  title="View & Print Receipt"
+                                >
+                                  <Receipt size={12} />
+                                  <span>Receipt</span>
+                                </button>
+                                <div className="text-right">
+                                  <p className="font-black text-sm text-text-primary tracking-tight">
+                                    ₹{tx.amount.toLocaleString()}
+                                  </p>
+                                  <p className="text-[9px] font-bold text-text-secondary opacity-40 uppercase tracking-tighter">
+                                     {safeFormat(tx.timestamp, 'hh:mm a')}
+                                  </p>
+                                </div>
                               </div>
                             </div>
                           ))}
@@ -541,6 +561,13 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
         onClose={() => setShowPreview(false)}
         report={previewReport}
       />
+
+      {selectedReceipt && (
+        <ReceiptSuccessModal
+          receipt={selectedReceipt}
+          onClose={() => setSelectedReceipt(null)}
+        />
+      )}
     </motion.div>
   );
 }

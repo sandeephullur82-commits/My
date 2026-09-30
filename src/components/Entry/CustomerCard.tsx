@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Customer, Transaction, firestoreService, firestoreUtils } from '../../services/firestoreService';
-import { Smartphone, Clock, Loader2, Banknote, CheckCircle2, AlertTriangle, RotateCcw, MessageSquare, Phone, X, ExternalLink } from 'lucide-react';
+import { Smartphone, Clock, Loader2, Banknote, CheckCircle2, AlertTriangle, RotateCcw, MessageSquare, Phone, X, ExternalLink, Receipt } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -19,6 +19,7 @@ interface CustomerCardProps {
   searchTerm?: string;
   onSkip?: () => void;
   onSuccess?: (tx: Transaction, previousBalance: number, newBalance: number) => void;
+  onViewReceipt?: (tx: Transaction) => void;
 }
 
 const Highlight = ({ text, highlight }: { text: string, highlight?: string }) => {
@@ -42,6 +43,7 @@ const Highlight = ({ text, highlight }: { text: string, highlight?: string }) =>
 
 export const CustomerCard = React.memo(function CustomerCard({ 
   customer, 
+  allTransactions = [],
   lastEntry,
   recentTransactions, // Only a few recent ones for suggestions, or pre-computed suggestions
   balance,
@@ -50,7 +52,8 @@ export const CustomerCard = React.memo(function CustomerCard({
   todayStr,
   searchTerm,
   onSkip,
-  onSuccess
+  onSuccess,
+  onViewReceipt
 }: CustomerCardProps & { 
   lastEntry?: Transaction, 
   recentTransactions: Transaction[],
@@ -60,6 +63,19 @@ export const CustomerCard = React.memo(function CustomerCard({
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingType, setProcessingType] = useState<string | null>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
+
+  // Identify past/unsettled NP transactions for this customer
+  const pastNPEntries = useMemo(() => {
+    return (allTransactions || []).filter(t => 
+      t.customerId === customer.id && 
+      !t.isDeleted && 
+      (t.type === 'NP' || t.type === 'unsettled' || t.status === 'unsettled')
+    );
+  }, [allTransactions, customer.id]);
+
+  const totalNPAmount = useMemo(() => {
+    return pastNPEntries.reduce((sum, t) => sum + (t.amount || 0), 0);
+  }, [pastNPEntries]);
   
   const {
     x,
@@ -152,7 +168,7 @@ export const CustomerCard = React.memo(function CustomerCard({
     return list.slice(0, 3).sort((a, b) => a - b);
   }, [balance, recentTransactions, userHasTyped, isInputFocused]);
 
-  const handleAction = async (type: 'cash' | 'phonepe' | 'unsettled', customAmount?: number) => {
+  const handleAction = async (type: 'cash' | 'phonepe' | 'unsettled' | 'NP', customAmount?: number) => {
     const targetAmount = customAmount !== undefined ? customAmount : amount;
     if (isProcessing) return;
     
@@ -164,8 +180,10 @@ export const CustomerCard = React.memo(function CustomerCard({
     setIsProcessing(true);
     setProcessingType(type);
 
-    const isPaidAction = type === 'cash' || type === 'phonepe';
-    const statusValue = isPaidAction ? 'paid' : 'unsettled';
+    // Record type as NP for Not Paid: captures debt/unpaid record without reducing customer balance
+    const isNP = type === 'NP' || type === 'unsettled';
+    const actualType: Transaction['type'] = isNP ? 'NP' : type;
+    const statusValue: Transaction['status'] = isNP ? 'unsettled' : 'paid';
     
     localStorage.removeItem(`draft_${customer.id}_${todayStr}`);
 
@@ -173,15 +191,17 @@ export const CustomerCard = React.memo(function CustomerCard({
       id: uuidv4(),
       customerId: customer.id,
       amount: targetAmount,
-      type,
+      type: actualType,
       status: statusValue,
       date: todayStr,
       timestamp: Date.now(),
-      paidAt: Date.now()
+      paidAt: isNP ? null : Date.now(),
+      unsettledAt: isNP ? Date.now() : null
     };
 
     const previousBal = balance;
-    const newBal = Math.max(0, balance - targetAmount);
+    // When payment type is NP, overall balance is NOT reduced
+    const newBal = isNP ? balance : Math.max(0, balance - targetAmount);
 
     try {
       // Instantly save to Firestore
@@ -272,15 +292,31 @@ export const CustomerCard = React.memo(function CustomerCard({
             </div>
             
             <div className="flex flex-col items-end gap-1.5">
-              {onSkip && (
-                <button 
-                  onClick={(e) => { e.stopPropagation(); onSkip(); }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted shadow-sm hover:bg-border transition-colors border border-border/10"
-                >
-                  <X size={10} className="text-text-secondary" />
-                  <span className="text-[8px] font-black text-text-secondary uppercase tracking-widest">Skip</span>
-                </button>
-              )}
+              <div className="flex items-center gap-1.5">
+                {(lastEntry || recentTransactions[0]) && onViewReceipt && (
+                  <button 
+                    type="button"
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      onViewReceipt(lastEntry || recentTransactions[0]); 
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-accent/10 hover:bg-accent hover:text-white text-accent transition-all border border-accent/20 active:scale-95 shadow-xs"
+                    title="View Receipt"
+                  >
+                    <Receipt size={10} />
+                    <span className="text-[8px] font-black uppercase tracking-wider">Receipt</span>
+                  </button>
+                )}
+                {onSkip && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); onSkip(); }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted shadow-sm hover:bg-border transition-colors border border-border/10"
+                  >
+                    <X size={10} className="text-text-secondary" />
+                    <span className="text-[8px] font-black text-text-secondary uppercase tracking-widest">Skip</span>
+                  </button>
+                )}
+              </div>
               {overdueInfo.isOverdue && (
                 <p className="text-[9px] font-black text-danger uppercase tracking-tighter opacity-80 mt-1">Missing ₹{overdueInfo.amount}</p>
               )}
@@ -289,6 +325,30 @@ export const CustomerCard = React.memo(function CustomerCard({
               </p>
             </div>
           </div>
+
+          {/* Past NP / Missed Due Quick-Pay Notice */}
+          {pastNPEntries.length > 0 && (
+            <div className="flex items-center justify-between px-3 py-2 mb-3 bg-amber-500/10 border border-amber-500/25 rounded-2xl text-[11px] text-amber-600 dark:text-amber-400">
+              <div className="flex items-center gap-1.5 font-bold">
+                <Clock size={13} className="shrink-0 text-amber-500" />
+                <span>
+                  {pastNPEntries.length} Missed Due{pastNPEntries.length > 1 ? 's' : ''} (₹{totalNPAmount.toLocaleString('en-IN')} NP)
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setAmount((prev) => (prev || 0) + totalNPAmount);
+                  setUserHasTyped(true);
+                  toast.info(`Added ₹${totalNPAmount} missed NP dues to today's collection`);
+                }}
+                className="px-2.5 py-1 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-[9px] uppercase tracking-wider active:scale-95 transition-all shadow-xs"
+                title="Add missed NP dues to today's collection amount"
+              >
+                + Add ₹{totalNPAmount}
+              </button>
+            </div>
+          )}
 
           {/* Amount Input Area */}
           <div className={`flex flex-col gap-2 mb-4 p-2 rounded-2xl transition-all duration-300 ${isInputFocused ? 'bg-bg border-accent/20 border-2' : 'bg-bg/50 border-border/10 border'}`}>
@@ -364,15 +424,15 @@ export const CustomerCard = React.memo(function CustomerCard({
                 <span className="text-[10px] font-bold opacity-60">Collect</span>
               </button>
               <button 
-                onClick={() => handleAction('unsettled')}
+                onClick={() => handleAction('NP')}
                 disabled={isProcessing}
-                className="flex-1 flex flex-col items-center py-3 rounded-2xl bg-warning/10 text-warning border border-warning/20 hover:bg-warning hover:text-white transition-all active:scale-95 disabled:opacity-50"
+                className="flex-1 flex flex-col items-center py-3 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500 hover:text-white transition-all active:scale-95 disabled:opacity-50"
               >
-                <div className="flex items-center gap-2 mb-1">
-                  {processingType === 'unsettled' ? <Loader2 className="animate-spin" size={14} /> : <Clock size={16} />}
-                  <span className="text-[10px] font-black uppercase tracking-widest">NOT PAID</span>
+                <div className="flex items-center gap-1.5 mb-1">
+                  {processingType === 'NP' || processingType === 'unsettled' ? <Loader2 className="animate-spin" size={14} /> : <Clock size={16} />}
+                  <span className="text-[10px] font-black uppercase tracking-widest">NOT PAID (NP)</span>
                 </div>
-                <span className="text-[10px] font-bold opacity-60">Later</span>
+                <span className="text-[10px] font-bold opacity-60">Record Debt</span>
               </button>
             </div>
         </div>

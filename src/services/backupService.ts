@@ -32,7 +32,7 @@ export interface StandardTransaction {
   customerId: string;
   customerName: string;
   amount: number;
-  type: 'cash' | 'phonepe' | 'unsettled';
+  type: 'cash' | 'phonepe' | 'unsettled' | 'NP';
   status: 'paid' | 'pending' | 'unsettled';
   createdAt?: string;
 }

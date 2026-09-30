@@ -67,7 +67,7 @@ export interface Transaction {
   id: string;
   customerId: string;
   amount: number;
-  type: 'cash' | 'phonepe' | 'unsettled';
+  type: 'cash' | 'phonepe' | 'unsettled' | 'NP';
   status: 'paid' | 'pending' | 'unsettled';
   entryStatus?: 'active' | 'modified';
   parentId?: string;
@@ -384,18 +384,18 @@ export const firestoreService = {
         if (updates.status) {
           newStatus = updates.status;
         } else if (updates.type) {
-          if (updates.type === 'unsettled') newStatus = 'unsettled';
+          if (updates.type === 'unsettled' || updates.type === 'NP') newStatus = 'unsettled';
           else if (updates.type === 'cash' || updates.type === 'phonepe') newStatus = 'paid';
           else newStatus = 'pending';
-        } else if (newType === 'unsettled') {
+        } else if (newType === 'unsettled' || newType === 'NP') {
           newStatus = 'unsettled';
         } else if (newType === 'cash' || newType === 'phonepe') {
           newStatus = 'paid';
         }
         
-        // Calculate effective contribution to paid bal (unsettled/pending/not_paid contributes 0)
-        const oldEffectiveAmt = (currentTx.status === 'paid') ? currentTx.amount : 0;
-        const newEffectiveAmt = newStatus === 'paid' ? newAmount : 0;
+        // Calculate effective contribution to paid bal (NP and unsettled are records of debt, contributing 0 to paid balance)
+        const oldEffectiveAmt = (currentTx.status === 'paid' && currentTx.type !== 'NP' && currentTx.type !== 'unsettled') ? currentTx.amount : 0;
+        const newEffectiveAmt = (newStatus === 'paid' && newType !== 'NP' && newType !== 'unsettled') ? newAmount : 0;
         
         const paidDiff = newEffectiveAmt - oldEffectiveAmt;
         const pendingDiff = -paidDiff;
@@ -486,15 +486,17 @@ export const firestoreService = {
         let paidDiff = 0;
         let pendingDiff = 0;
         
-        // Old transaction was a payment, subtract it
-        if (oldTx && oldTx.status === 'paid') {
+        // Old transaction was a payment, subtract it (NP and unsettled are debt records, not payments)
+        if (oldTx && oldTx.status === 'paid' && oldTx.type !== 'NP' && oldTx.type !== 'unsettled') {
           paidDiff -= (oldTx.amount || 0);
           pendingDiff += (oldTx.amount || 0);
         }
         
-        // New transaction is a payment, add it
-        const isPaid = txData.status === 'paid';
-        if (isPaid) {
+        // New transaction is a payment (Cash or UPI). NP is captured as debt/unpaid and does NOT reduce customer balance!
+        const isNP = txData.type === 'NP' || txData.type === 'unsettled' || txData.status === 'unsettled';
+        const isActualPayment = (txData.status === 'paid' || !txData.status) && !isNP;
+        
+        if (isActualPayment) {
           paidDiff += (txData.amount || 0);
           pendingDiff -= (txData.amount || 0);
         }
@@ -508,7 +510,7 @@ export const firestoreService = {
           updatedCustomerData.updatedAt = nowServer;
         }
 
-        if (isPaid) {
+        if (isActualPayment) {
           updatedCustomerData.lastPayment = nowServer;
         }
 
@@ -517,10 +519,10 @@ export const firestoreService = {
         }
         
         // Handle timestamps
-        if (isPaid && !txData.paidAt) {
+        if (isActualPayment && !txData.paidAt) {
           txData.paidAt = Date.now();
         }
-        if (txData.status === 'unsettled' && !txData.unsettledAt) {
+        if (isNP && !txData.unsettledAt) {
           txData.unsettledAt = Date.now();
         }
 
@@ -533,8 +535,8 @@ export const firestoreService = {
             customerId: customer.id, 
             createdAt: nowServer, 
             updatedAt: nowServer,
-            paidAt: isPaid ? nowServer : null,
-            unsettledAt: txData.status === 'unsettled' ? nowServer : null
+            paidAt: isActualPayment ? nowServer : null,
+            unsettledAt: isNP ? nowServer : null
           });
         }
       });
@@ -547,11 +549,13 @@ export const firestoreService = {
         
         let paidDiff = 0;
         let pendingDiff = 0;
-        if (oldTx && oldTx.status === 'paid' && oldTx.type !== 'unsettled' && (oldTx.type as string) !== 'not_paid') {
+        if (oldTx && oldTx.status === 'paid' && oldTx.type !== 'NP' && oldTx.type !== 'unsettled') {
           paidDiff -= (oldTx.amount || 0);
           pendingDiff += (oldTx.amount || 0);
         }
-        if (txData.status === 'paid' && txData.type !== 'unsettled' && (txData.type as string) !== 'not_paid') {
+        const isNP = txData.type === 'NP' || txData.type === 'unsettled' || txData.status === 'unsettled';
+        const isActualPayment = (txData.status === 'paid' || !txData.status) && !isNP;
+        if (isActualPayment) {
           paidDiff += (txData.amount || 0);
           pendingDiff -= (txData.amount || 0);
         }
@@ -593,7 +597,8 @@ export const firestoreService = {
         const customerRef = doc(db, 'users', uid, 'customers', customer.id);
         const customerSnap = await transaction.get(customerRef);
         
-        if (customerSnap.exists() && tx.status === 'paid') {
+        // Only payments reduced the balance; NP debt records did not reduce balance so deleting NP does not touch customer balance!
+        if (customerSnap.exists() && tx.status === 'paid' && tx.type !== 'NP' && tx.type !== 'unsettled') {
           const currentCustomer = customerSnap.data() as Customer;
           transaction.update(customerRef, {
             paid: currentCustomer.paid - tx.amount,
@@ -608,7 +613,7 @@ export const firestoreService = {
       if (error.code === 'unavailable' || error.message?.includes('offline')) {
         const batch = writeBatch(db);
         batch.delete(doc(db, 'users', uid, 'entries', tx.id));
-        if (tx.status === 'paid') {
+        if (tx.status === 'paid' && tx.type !== 'NP' && tx.type !== 'unsettled') {
           batch.update(doc(db, 'users', uid, 'customers', customer.id), {
             paid: customer.paid - tx.amount,
             pending: customer.pending + tx.amount,

@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
 import { Transaction, Customer } from '../services/firestoreService';
+import { safeFormat } from './utils';
 
 export interface AuditReportOptions {
   startDate?: string; // 'YYYY-MM-DD'
@@ -96,11 +97,11 @@ export async function generateAuditReportPDF(
   });
 
   const periodLabel = (startDate && endDate)
-    ? `${format(new Date(startDate + 'T00:00:00'), 'dd MMM yyyy')} to ${format(new Date(endDate + 'T00:00:00'), 'dd MMM yyyy')}`
+    ? `${safeFormat(startDate, 'dd MMM yyyy')} to ${safeFormat(endDate, 'dd MMM yyyy')}`
     : startDate
-    ? `From ${format(new Date(startDate + 'T00:00:00'), 'dd MMM yyyy')}`
+    ? `From ${safeFormat(startDate, 'dd MMM yyyy')}`
     : endDate
-    ? `Up to ${format(new Date(endDate + 'T00:00:00'), 'dd MMM yyyy')}`
+    ? `Up to ${safeFormat(endDate, 'dd MMM yyyy')}`
     : 'All Time History';
 
   const singleCustomer = customerId !== 'ALL' ? customerMap.get(customerId) : null;
@@ -261,10 +262,10 @@ export async function generateAuditReportPDF(
 
   const tableRows = filtered.map((tx, index) => {
     const cust = customerMap.get(tx.customerId);
-    const dateFormatted = format(new Date(tx.timestamp || tx.date), 'dd/MM/yyyy hh:mm a');
+    const dateFormatted = safeFormat(tx.timestamp || tx.date, 'dd/MM/yyyy hh:mm a', '—');
     const custName = cust?.name || 'Unknown';
     const accOrMob = cust?.displayId ? `#${cust.displayId}` : cust?.phone || '-';
-    const modeLabel = tx.type === 'phonepe' ? 'UPI / PhonePe' : tx.type === 'cash' ? 'Cash' : tx.type;
+    const modeLabel = tx.type === 'phonepe' ? 'UPI / PhonePe' : (tx.type === 'NP' || tx.type === 'unsettled') ? 'NP' : tx.type === 'cash' ? 'Cash' : tx.type;
     const statusLabel = tx.status === 'unsettled' ? 'Unsettled' : 'Paid';
     const amountStr = tx.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 });
 

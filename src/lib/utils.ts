@@ -14,7 +14,8 @@ export function toSafeDate(val: any): Date | null {
   if (val === null || val === undefined) return null;
   if (typeof val === 'number') {
     if (isNaN(val) || val <= 0) return null;
-    return new Date(val);
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d;
   }
   if (val instanceof Date) {
     return isNaN(val.getTime()) ? null : val;
@@ -47,9 +48,13 @@ export function toSafeDate(val: any): Date | null {
     }
   }
   if (typeof val === 'string') {
-    const parsed = Date.parse(val);
+    const trimmed = val.trim();
+    if (!trimmed) return null;
+    const d = new Date(trimmed);
+    if (!isNaN(d.getTime())) return d;
+    const parsed = Date.parse(trimmed);
     if (!isNaN(parsed)) return new Date(parsed);
-    const num = Number(val);
+    const num = Number(trimmed);
     if (!isNaN(num) && num > 0) return new Date(num);
   }
   return null;
@@ -61,7 +66,7 @@ export function toSafeDate(val: any): Date | null {
 export function safeFormat(val: any, formatStr: string, fallback = '—'): string {
   try {
     const d = toSafeDate(val);
-    if (!d) return fallback;
+    if (!d || isNaN(d.getTime())) return fallback;
     return format(d, formatStr);
   } catch (e) {
     return fallback;
@@ -74,7 +79,7 @@ export function safeFormat(val: any, formatStr: string, fallback = '—'): strin
 export function safeDistanceToNow(val: any, options?: { addSuffix?: boolean }, fallback = 'recently'): string {
   try {
     const d = toSafeDate(val);
-    if (!d) return fallback;
+    if (!d || isNaN(d.getTime())) return fallback;
     return formatDistanceToNow(d, options);
   } catch (e) {
     return fallback;
@@ -88,7 +93,7 @@ export function safeDifferenceInDays(dateLeft: any, dateRight: any, fallback = 0
   try {
     const dLeft = toSafeDate(dateLeft);
     const dRight = toSafeDate(dateRight);
-    if (!dLeft || !dRight) return fallback;
+    if (!dLeft || !dRight || isNaN(dLeft.getTime()) || isNaN(dRight.getTime())) return fallback;
     return differenceInDays(dLeft, dRight);
   } catch (e) {
     return fallback;

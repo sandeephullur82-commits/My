@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
 import { Transaction, Customer } from '../services/firestoreService';
+import { safeFormat } from './utils';
 
 export async function exportTransactionsPDF(
   transactions: Transaction[], 
@@ -46,7 +47,7 @@ export async function exportTransactionsPDF(
   // Prepare Table Data (Matrix format: Name | Date1 | Date2 ...)
   // Aggregate transactions by Customer Name (normalized) AND Date
   // User requested cleanup: Trim spaces, lowercase for grouping
-  const aggregatedData: Record<string, { name: string, dates: Record<string, { amount: number, type: 'cash' | 'phonepe' | 'unsettled' }> }> = {};
+  const aggregatedData: Record<string, { name: string, dates: Record<string, { amount: number, type: 'cash' | 'phonepe' | 'unsettled' | 'NP' }> }> = {};
   
   transactions.forEach(tx => {
     const customer = customers.find(c => c.id === tx.customerId);
@@ -68,8 +69,8 @@ export async function exportTransactionsPDF(
     const dayData = aggregatedData[cleanNameKey].dates[tx.date];
     dayData.amount += tx.amount;
     
-    // Priority logic for type labels: Unsettled > PhonePe > Cash
-    if (tx.status === 'unsettled') {
+    // Priority logic for type labels: Unsettled/NP > PhonePe > Cash
+    if (tx.status === 'unsettled' || tx.type === 'unsettled' || tx.type === 'NP') {
       dayData.type = 'unsettled';
     } else if (tx.type === 'phonepe' && dayData.type !== 'unsettled') {
       dayData.type = 'phonepe';
@@ -89,7 +90,7 @@ export async function exportTransactionsPDF(
     if (chunkIndex > 0) doc.addPage();
     
     // Sl No | Customer Name | Date Cols...
-    const head = [['Sl No', 'Customer Name', ...chunk.map(d => format(new Date(d), 'dd/MM'))]];
+    const head = [['Sl No', 'Customer Name', ...chunk.map(d => safeFormat(d, 'dd/MM', String(d)))]];
     const rows = sortedCustomerNames.map((nameKey, index) => {
       const data = aggregatedData[nameKey];
       return [
@@ -100,7 +101,7 @@ export async function exportTransactionsPDF(
           if (!entry) return '-';
           
           if (entry.type === 'phonepe') return `${entry.amount}(PP)`;
-          if (entry.type === 'unsettled') return `${entry.amount}(NP)`;
+          if (entry.type === 'unsettled' || entry.type === 'NP') return `${entry.amount}(NP)`;
           return `${entry.amount}`;
         })
       ];

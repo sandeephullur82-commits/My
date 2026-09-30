@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Customer, firestoreService } from '../services/firestoreService';
 import { toast } from 'sonner';
 import { format, addDays, differenceInDays, parseISO, isValid } from 'date-fns';
+import { safeFormat, safeDifferenceInDays } from '../lib/utils';
 import { Calendar, Loader2, Trash2, Clock, Check } from 'lucide-react';
 
 interface CustomerFormProps {
@@ -17,7 +18,7 @@ export function CustomerForm({ customer, onSave, onCancel, onDelete }: CustomerF
 
   const [formData, setFormData] = useState(() => {
     if (isEdit) {
-      const dur = customer.endDate && customer.startDate ? differenceInDays(customer.endDate, customer.startDate) + 1 : 100;
+      const dur = customer.endDate && customer.startDate ? safeDifferenceInDays(customer.endDate, customer.startDate) + 1 : 100;
       const initialFreqDays = customer.frequencyDays || (dur === 7 ? 7 : dur === 30 ? 30 : dur === 1 ? 1 : 1);
       const initialFreq = customer.frequency || (initialFreqDays === 7 ? 'weekly' : initialFreqDays === 30 ? 'monthly' : 'daily');
       return {
@@ -25,7 +26,7 @@ export function CustomerForm({ customer, onSave, onCancel, onDelete }: CustomerF
         phone: customer.phone || '',
         loan: customer.loanAmount || customer.loan || 0,
         notes: customer.notes || '',
-        startDate: customer.startDate ? format(customer.startDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
+        startDate: safeFormat(customer.startDate, 'yyyy-MM-dd', format(new Date(), 'yyyy-MM-dd')),
         duration: dur,
         frequency: initialFreq,
         frequencyDays: initialFreqDays,

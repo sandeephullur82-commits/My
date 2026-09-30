@@ -5,6 +5,7 @@ import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { useRealtimeData } from '../hooks/useRealtimeData';
 import { Customer, Transaction, firestoreService, firestoreUtils } from '../services/firestoreService';
 import { format } from 'date-fns';
+import { v4 as uuidv4 } from 'uuid';
 import { SyncStatus } from '../components/Dashboard/SyncStatus';
 import { CustomerCard } from '../components/Entry/CustomerCard';
 import { 
@@ -129,7 +130,7 @@ export function Entry() {
   const todayPaidCustomerIds = useMemo(() => {
     const set = new Set<string>();
     transactions.forEach(tx => {
-      if (tx.date === todayStr && !tx.isDeleted && tx.status === 'paid') {
+      if (tx.date === todayStr && !tx.isDeleted && (tx.status === 'paid' || tx.type === 'NP')) {
         set.add(tx.customerId);
       }
     });
@@ -179,7 +180,7 @@ export function Entry() {
   const todayEntries = useMemo(() => {
     return transactions
       .filter(tx => {
-        const isTodayPaid = tx.status === 'paid' && tx.date === todayStr && !tx.isDeleted;
+        const isTodayPaid = (tx.status === 'paid' || tx.type === 'NP') && tx.date === todayStr && !tx.isDeleted;
         if (!isTodayPaid) return false;
 
         if (debouncedQuery) {
@@ -209,18 +210,22 @@ export function Entry() {
       });
   }, [transactions, todayStr, paymentFilter, debouncedQuery, customers]);
 
-  // Metrics for today
-  const totalCollectedToday = useMemo(() => {
-    return todayEntries.reduce((sum, tx) => sum + (tx.amount || 0), 0);
-  }, [todayEntries]);
-
   const cashTotal = useMemo(() => {
-    return todayEntries.filter(t => t.type === 'cash').reduce((sum, tx) => sum + (tx.amount || 0), 0);
+    return todayEntries.filter(t => t.type === 'cash' && t.status === 'paid').reduce((sum, tx) => sum + (tx.amount || 0), 0);
   }, [todayEntries]);
 
   const upiTotal = useMemo(() => {
-    return todayEntries.filter(t => t.type === 'phonepe').reduce((sum, tx) => sum + (tx.amount || 0), 0);
+    return todayEntries.filter(t => t.type === 'phonepe' && t.status === 'paid').reduce((sum, tx) => sum + (tx.amount || 0), 0);
   }, [todayEntries]);
+
+  const npTotal = useMemo(() => {
+    return todayEntries.filter(t => t.type === 'NP' || t.type === 'unsettled' || t.status === 'unsettled').reduce((sum, tx) => sum + (tx.amount || 0), 0);
+  }, [todayEntries]);
+
+  // Actual cash & UPI money collected today (NP is recorded debt, not collected cash)
+  const totalCollectedToday = useMemo(() => {
+    return cashTotal + upiTotal;
+  }, [cashTotal, upiTotal]);
 
   const totalPendingBalance = useMemo(() => {
     return pendingCustomers.reduce((sum, c) => {
@@ -280,6 +285,61 @@ export function Entry() {
       toast.error('Failed to delete entry');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  // SETTLE NP ENTRY ACTION (Method 3: Records new Cash/UPI payment, preserving NP in audit history)
+  const [isSettlingNPId, setIsSettlingNPId] = useState<string | null>(null);
+
+  const handleSettleNP = async (npTx: Transaction, customer: Customer, paymentMethod: 'cash' | 'phonepe') => {
+    if (isSettlingNPId) return;
+    setIsSettlingNPId(npTx.id);
+
+    try {
+      const loan = customer.loanAmount || customer.loan || 0;
+      const paid = customer.paid || 0;
+      const currentBalance = customer.pending !== undefined ? customer.pending : (loan - paid);
+
+      const newPaymentTx: Transaction = {
+        id: uuidv4(),
+        customerId: customer.id,
+        amount: npTx.amount,
+        type: paymentMethod,
+        status: 'paid',
+        date: todayStr,
+        timestamp: Date.now(),
+        paidAt: Date.now(),
+        notes: `Payment collected for NP due on ${npTx.date}`
+      };
+
+      // 1. Save new Cash/UPI payment transaction to credit customer balance
+      await firestoreService.saveTransaction(newPaymentTx, customer);
+
+      // 2. Mark the original NP record as settled in audit log while preserving it in history
+      try {
+        await firestoreService.updateTransaction(npTx.id, {
+          notes: `Settled via ${paymentMethod === 'cash' ? 'Cash' : 'UPI'} (${newPaymentTx.id.slice(0, 8)})`
+        }, 'settle_np_entry');
+      } catch (e) {
+        console.warn('Could not update NP note:', e);
+      }
+
+      const newBal = Math.max(0, currentBalance - npTx.amount);
+
+      // 3. Open receipt with Share Image button
+      setActiveReceipt({
+        transaction: newPaymentTx,
+        customer,
+        previousBalance: currentBalance,
+        newBalance: newBal
+      });
+
+      toast.success(`Recorded ₹${npTx.amount.toLocaleString('en-IN')} ${paymentMethod === 'cash' ? 'Cash' : 'UPI'} payment for ${customer.name}`);
+    } catch (error) {
+      console.error('Failed to collect NP as payment:', error);
+      toast.error('Failed to record payment');
+    } finally {
+      setIsSettlingNPId(null);
     }
   };
 
@@ -406,6 +466,31 @@ export function Entry() {
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-accent/10 text-accent border border-accent/20">
                     {pendingCustomers.length} Cards
                   </span>
+                  {todayEntries.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const latestTx = todayEntries[0];
+                        const cust = customers.find(c => c.id === latestTx.customerId);
+                        if (cust) {
+                          const loan = cust.loanAmount || cust.loan || 0;
+                          const paid = cust.paid || 0;
+                          const bal = cust.pending !== undefined ? cust.pending : (loan - paid);
+                          setActiveReceipt({
+                            transaction: latestTx,
+                            customer: cust,
+                            previousBalance: bal + latestTx.amount,
+                            newBalance: bal
+                          });
+                        }
+                      }}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-600/10 hover:bg-emerald-600 hover:text-white text-emerald-600 dark:text-emerald-400 border border-emerald-600/20 text-[9px] font-black uppercase tracking-wider transition-all active:scale-95 shadow-xs"
+                      title="View most recent receipt"
+                    >
+                      <Receipt size={11} />
+                      <span>Last Receipt (₹{todayEntries[0].amount.toLocaleString('en-IN')})</span>
+                    </button>
+                  )}
                 </div>
                 {pendingCustomers.length > 0 && (
                   <p className="text-[9px] font-bold text-accent/70 uppercase tracking-widest flex items-center gap-1.5 mt-0.5">
@@ -468,18 +553,23 @@ export function Entry() {
                         searchTerm={debouncedQuery}
                         onSkip={() => handleSkip(customer.id)}
                         onSuccess={(tx, prevBal, newBal) => {
-                          toast.success(`₹${tx.amount.toLocaleString('en-IN')} collected for ${customer.name}`, {
-                            action: {
-                              label: 'Receipt',
-                              onClick: () => {
-                                setActiveReceipt({
-                                  transaction: tx,
-                                  customer,
-                                  previousBalance: prevBal,
-                                  newBalance: newBal
-                                });
-                              }
-                            }
+                          setActiveReceipt({
+                            transaction: tx,
+                            customer,
+                            previousBalance: prevBal,
+                            newBalance: newBal
+                          });
+                          toast.success(`₹${tx.amount.toLocaleString('en-IN')} collected for ${customer.name}`);
+                        }}
+                        onViewReceipt={(tx) => {
+                          const loan = customer.loanAmount || customer.loan || 0;
+                          const paid = customer.paid || 0;
+                          const bal = customer.pending !== undefined ? customer.pending : (loan - paid);
+                          setActiveReceipt({
+                            transaction: tx,
+                            customer,
+                            previousBalance: bal + tx.amount,
+                            newBalance: bal
                           });
                         }}
                       />
@@ -522,18 +612,22 @@ export function Entry() {
 
             {/* Collected Breakdown Summary */}
             {todayEntries.length > 0 && (
-              <div className="grid grid-cols-3 gap-2 p-3 rounded-2xl bg-card border border-border/70 text-center">
+              <div className="grid grid-cols-4 gap-2 p-3 rounded-2xl bg-card border border-border/70 text-center">
                 <div className="flex flex-col">
-                  <span className="text-[9px] font-bold text-text-secondary uppercase opacity-60">Total</span>
+                  <span className="text-[9px] font-bold text-text-secondary uppercase opacity-60">Collected</span>
                   <span className="text-xs sm:text-sm font-black text-text-primary">₹{totalCollectedToday.toLocaleString('en-IN')}</span>
                 </div>
-                <div className="flex flex-col border-x border-border/50">
+                <div className="flex flex-col border-l border-border/50">
                   <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">Cash</span>
                   <span className="text-xs sm:text-sm font-black text-emerald-600 dark:text-emerald-400">₹{cashTotal.toLocaleString('en-IN')}</span>
                 </div>
-                <div className="flex flex-col">
+                <div className="flex flex-col border-l border-border/50">
                   <span className="text-[9px] font-bold text-accent uppercase">UPI</span>
                   <span className="text-xs sm:text-sm font-black text-accent">₹{upiTotal.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex flex-col border-l border-border/50">
+                  <span className="text-[9px] font-bold text-amber-500 uppercase">NP (Debt)</span>
+                  <span className="text-xs sm:text-sm font-black text-amber-500">₹{npTotal.toLocaleString('en-IN')}</span>
                 </div>
               </div>
             )}
@@ -568,6 +662,7 @@ export function Entry() {
                 {todayEntries.map((tx) => {
                   const customer = customers.find(c => c.id === tx.customerId);
                   const isUpi = tx.type === 'phonepe';
+                  const isNP = tx.type === 'NP' || tx.type === 'unsettled';
                   const customerLoan = customer ? (customer.loanAmount || customer.loan || 0) : 0;
                   const customerPaid = customer ? (customer.paid || 0) : 0;
                   const customerBalance = customer ? (customer.pending !== undefined ? customer.pending : (customerLoan - customerPaid)) : 0;
@@ -583,11 +678,13 @@ export function Entry() {
                       {/* Left: Icon & Customer Info */}
                       <div className="flex items-center gap-3 min-w-0">
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                          isUpi 
+                          isNP
+                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                            : isUpi 
                             ? 'bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-600/20' 
                             : 'bg-emerald-600/10 text-emerald-600 dark:text-emerald-400 border border-emerald-600/20'
                         }`}>
-                          {isUpi ? <Smartphone size={18} /> : <Banknote size={18} />}
+                          {isNP ? <Clock size={18} /> : isUpi ? <Smartphone size={18} /> : <Banknote size={18} />}
                         </div>
 
                         <div className="min-w-0">
@@ -603,8 +700,10 @@ export function Entry() {
                           </div>
                           
                           <div className="flex items-center gap-2 mt-0.5 text-[10px] font-medium text-text-secondary">
-                            <span className="font-bold uppercase tracking-wider text-text-primary/70">
-                              {isUpi ? 'UPI' : 'CASH'}
+                            <span className={`font-bold uppercase tracking-wider ${
+                              isNP ? 'text-amber-600 dark:text-amber-400' : 'text-text-primary/70'
+                            }`}>
+                              {isNP ? 'NP • UNPAID' : isUpi ? 'UPI' : 'CASH'}
                             </span>
                             <span>•</span>
                             <span>{safeFormat(tx.paidAt || tx.timestamp, 'hh:mm a', 'Today')}</span>
@@ -618,13 +717,42 @@ export function Entry() {
                         </div>
                       </div>
 
-                      {/* Right: Amount & Delete Button */}
+                      {/* Right: Amount & Actions */}
                       <div className="flex items-center gap-2.5 shrink-0">
                         <div className="text-right">
-                          <span className="text-base font-black text-emerald-600 dark:text-emerald-400 tracking-tight block">
-                            +₹{tx.amount.toLocaleString('en-IN')}
+                          <span className={`text-base font-black tracking-tight block ${
+                            isNP ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
+                          }`}>
+                            {isNP ? '' : '+'}₹{tx.amount.toLocaleString('en-IN')}
                           </span>
                         </div>
+
+                        {/* Quick Collect Payment (Method 3: Cash / UPI) for NP */}
+                        {isNP && customer && (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              disabled={isSettlingNPId === tx.id}
+                              onClick={() => handleSettleNP(tx, customer, 'cash')}
+                              className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 text-[10px] font-black uppercase tracking-wider active:scale-95 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                              title="Record Cash Payment for this NP installment"
+                            >
+                              {isSettlingNPId === tx.id ? <Loader2 size={12} className="animate-spin" /> : <Banknote size={12} strokeWidth={2.5} />}
+                              <span>Cash</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={isSettlingNPId === tx.id}
+                              onClick={() => handleSettleNP(tx, customer, 'phonepe')}
+                              className="px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1 text-[10px] font-black uppercase tracking-wider active:scale-95 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                              title="Record UPI/PhonePe Payment for this NP installment"
+                            >
+                              {isSettlingNPId === tx.id ? <Loader2 size={12} className="animate-spin" /> : <Smartphone size={12} strokeWidth={2.5} />}
+                              <span>UPI</span>
+                            </button>
+                          </div>
+                        )}
 
                         {/* VIEW RECEIPT BUTTON */}
                         {customer && (

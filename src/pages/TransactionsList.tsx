@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useRealtimeData } from '../hooks/useRealtimeData';
 import { Transaction, Customer, firestoreService } from '../services/firestoreService';
@@ -7,7 +8,7 @@ import { format, isToday, isYesterday, parseISO } from 'date-fns';
 import { 
   ChevronDown, Banknote, Smartphone, Clock, Search, X, Filter, 
   ChevronRight, Calendar, ArrowUpRight, ArrowDownLeft,
-  Loader2, Save, Trash2, Edit3, Check, Share2, Eye, FileText, ShieldCheck
+  Loader2, Edit3, Share2, Eye, FileText, ShieldCheck, Receipt
 } from 'lucide-react';
 import { PageContainer } from '../components/PageContainer';
 import { useUI } from '../context/UIContext';
@@ -16,6 +17,7 @@ import { BottomSheet } from '../components/BottomSheet';
 import { exportTransactionsPDF } from '../lib/pdfExport';
 import { PDFViewerModal } from '../components/PDFViewerModal';
 import { ExportAuditModal } from '../components/ExportAuditModal';
+import { ReceiptSuccessModal, ReceiptData } from '../components/ReceiptSuccessModal';
 import { safeFormat } from '../lib/utils';
 
 type FilterType = 'ALL' | 'CASH' | 'PHONEPE' | 'UNSETTLED';
@@ -28,19 +30,46 @@ export function TransactionsList() {
   const todayKey = format(new Date(), 'yyyy-MM-dd');
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({ [todayKey]: true });
   const [filter, setFilter] = useState<FilterType>('ALL');
-  const [editingTxId, setEditingTxId] = useState<string | null>(null);
-  const [editAmount, setEditAmount] = useState<string>('');
-  const [editType, setEditType] = useState<Transaction['type']>('cash');
-  const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [showTypeSheet, setShowTypeSheet] = useState(false);
   const [showExportSheet, setShowExportSheet] = useState(false);
   const [showAuditModal, setShowAuditModal] = useState(false);
   
   // PDF Preview State
   const [previewReport, setPreviewReport] = useState<{ blob: Blob, fileName: string, title: string } | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  
+  // Receipt Modal State
+  const [selectedReceipt, setSelectedReceipt] = useState<ReceiptData | null>(null);
+
+  const handleOpenReceipt = (tx: Transaction) => {
+    const customer = customers.find(c => c.id === tx.customerId);
+    const targetCustomer: Customer = customer || ({
+      id: tx.customerId,
+      name: 'Unknown Customer',
+      phone: '',
+      loanAmount: tx.amount,
+      paid: tx.amount,
+      pending: 0,
+      installments: 100,
+      startDate: tx.date
+    } as unknown as Customer);
+
+    const isNP = tx.type === 'NP' || tx.type === 'unsettled' || tx.status === 'unsettled';
+    const currentBalance = targetCustomer.pending !== undefined 
+      ? targetCustomer.pending 
+      : ((targetCustomer.loanAmount || targetCustomer.loan || 0) - (targetCustomer.paid || 0));
+
+    const previousBalance = isNP ? currentBalance : currentBalance + tx.amount;
+    const newBalance = currentBalance;
+
+    setSelectedReceipt({
+      transaction: tx,
+      customer: targetCustomer,
+      previousBalance,
+      newBalance
+    });
+  };
   
   // Pagination State
   const [visibleDays, setVisibleDays] = useState(7); // Show 7 days initially
@@ -161,7 +190,8 @@ export function TransactionsList() {
       // 1. Status/Type Filter
       if (filter !== 'ALL') {
         if (filter === 'UNSETTLED') {
-          if (tx.status !== 'unsettled') return false;
+          const isNP = tx.type === 'NP' || tx.type === 'unsettled' || tx.status === 'unsettled';
+          if (!isNP) return false;
         } else {
           if (!tx.type || tx.type.toUpperCase() !== filter) return false;
         }
@@ -199,7 +229,7 @@ export function TransactionsList() {
       counts.ALL++;
       if (tx.type === 'cash' && tx.status === 'paid') counts.CASH++;
       if (tx.type === 'phonepe' && tx.status === 'paid') counts.PHONEPE++;
-      if (tx.status === 'unsettled') counts.UNSETTLED++;
+      if (tx.status === 'unsettled' || tx.type === 'NP' || tx.type === 'unsettled') counts.UNSETTLED++;
     });
     return counts;
   }, [transactions]);
@@ -266,103 +296,6 @@ export function TransactionsList() {
       // fallback
     }
     return dateStr || '—';
-  };
-
-  const handleEditStart = (tx: Transaction) => {
-    setEditingTxId(tx.id);
-    setEditAmount(tx.amount.toString());
-    setEditType(tx.type);
-  };
-
-  const handleSaveEdit = async (tx: Transaction) => {
-    if (isSaving) return;
-    const amount = parseInt(editAmount);
-    if (isNaN(amount) || amount < 1) {
-      toast.error('Invalid amount');
-      return;
-    }
-
-    // Don't save if nothing changed
-    if (amount === tx.amount && editType === tx.type) {
-      setEditingTxId(null);
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      const customer = customers.find(c => c.id === tx.customerId);
-      if (!customer) throw new Error('Customer not found');
-
-      const oldData = { ...tx };
-      const updates: Partial<Transaction> = {
-        amount,
-        type: editType,
-        status: editType === 'unsettled' ? 'unsettled' : 'paid'
-      };
-
-      await firestoreService.updateTransaction(
-        tx.id, 
-        updates, 
-        tx, 
-        customer, 
-        'Transactions List Inline Edit'
-      );
-      
-      toast.success('Transaction updated', {
-        action: {
-          label: 'Undo',
-          onClick: async () => {
-            try {
-              await firestoreService.updateTransaction(tx.id, oldData, { ...tx, ...updates }, customer, 'Edit Undo');
-              toast.success('Edit undone');
-            } catch (err) {
-              toast.error('Failed to undo edit');
-            }
-          }
-        }
-      });
-      setEditingTxId(null);
-    } catch (error) {
-      console.error('Update error:', error);
-      toast.error('Failed to update transaction');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleDelete = async (tx: Transaction) => {
-    let proceed = true;
-    try {
-      proceed = confirm('Delete this entry? This can be undone.');
-    } catch (e) {
-      // Safe fallback in sandboxed iframe environment
-      proceed = true;
-    }
-    if (!proceed) return;
-    
-    try {
-      const customer = customers.find(c => c.id === tx.customerId);
-      if (!customer) throw new Error('Customer not found');
-      
-      await firestoreService.deleteTransaction(tx, customer);
-      toast.success('Transaction deleted', {
-        action: {
-          label: 'Undo',
-          onClick: async () => {
-            try {
-              // Restore the deleted transaction using saveTransaction
-              await firestoreService.saveTransaction(tx, customer);
-              toast.success('Delete undone');
-            } catch (err) {
-              toast.error('Failed to restore transaction');
-            }
-          }
-        }
-      });
-      setEditingTxId(null);
-    } catch (error) {
-      toast.error('Failed to delete transaction');
-    }
   };
 
   return (
@@ -435,7 +368,7 @@ export function TransactionsList() {
                 }`}
               >
                 <div className="relative z-10 flex flex-col items-center gap-0.5">
-                  <span>{f === 'PHONEPE' ? 'UPI' : f}</span>
+                  <span>{f === 'PHONEPE' ? 'UPI' : f === 'UNSETTLED' ? 'NP' : f}</span>
                   <span className={`text-[8px] font-bold ${filter === f ? 'text-white/60' : 'text-text-secondary/30'}`}>
                     {filterCounts[f]}
                   </span>
@@ -552,7 +485,7 @@ export function TransactionsList() {
                               const customer = customers.find(c => c.id === tx.customerId);
                               const isCash = tx.type === 'cash';
                               const isUPI = tx.type === 'phonepe';
-                              const isEditing = editingTxId === tx.id;
+                              const isNP = tx.type === 'NP' || tx.type === 'unsettled';
                               
                               return (
                                 <motion.div
@@ -560,109 +493,50 @@ export function TransactionsList() {
                                   layout
                                   initial={{ opacity: 0, y: 10 }}
                                   animate={{ opacity: 1, y: 0 }}
-                                  whileTap={!isEditing ? { scale: 0.98, backgroundColor: 'var(--color-bg)' } : undefined}
-                                  className={`group relative flex flex-col p-4 bg-card border rounded-2xl transition-all ${
-                                    isEditing ? 'border-accent shadow-lg z-30' : 'border-border/10 hover:border-accent/40 cursor-pointer'
-                                  }`}
-                                  onClick={(e) => {
-                                    if (!isEditing) {
-                                      e.stopPropagation();
-                                      handleEditStart(tx);
-                                    }
-                                  }}
+                                  whileTap={{ scale: 0.98 }}
+                                  onClick={() => handleOpenReceipt(tx)}
+                                  className="group relative flex items-center justify-between p-4 bg-card border border-border/10 rounded-2xl transition-all shadow-2xs cursor-pointer hover:border-accent/40 active:bg-muted/40 hover:shadow-xs"
                                 >
-                                  {isEditing ? (
-                                    <div className="grid grid-cols-1 gap-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-[10px] font-black text-text-secondary uppercase tracking-widest opacity-40">Edit Transaction</span>
-                                        <div className="flex items-center gap-1.5">
-                                          <button 
-                                            onClick={(e) => { e.stopPropagation(); handleDelete(tx); }}
-                                            className="p-1.5 rounded-lg bg-danger/5 text-danger border border-danger/10 hover:bg-danger/20 transition-colors"
-                                          >
-                                            <Trash2 size={14} />
-                                          </button>
-                                          <button 
-                                            onClick={(e) => { e.stopPropagation(); setEditingTxId(null); }}
-                                            className="p-1.5 rounded-lg bg-muted text-text-secondary hover:bg-border transition-colors"
-                                          >
-                                            <X size={14} />
-                                          </button>
-                                          <button 
-                                            onClick={(e) => { e.stopPropagation(); handleSaveEdit(tx); }}
-                                            disabled={isSaving}
-                                            className="p-1.5 rounded-lg bg-accent text-white shadow-sm hover:shadow-md transition-all active:scale-95"
-                                          >
-                                            {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                                          </button>
-                                        </div>
-                                      </div>
-
-                                      <div className="flex gap-2">
-                                        <div className="relative flex-1">
-                                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-black opacity-20">₹</span>
-                                          <input 
-                                            autoFocus
-                                            type="number"
-                                            value={editAmount}
-                                            onChange={(e) => setEditAmount(e.target.value)}
-                                            className="w-full pl-6 pr-2 py-2.5 bg-bg border border-border/20 rounded-xl font-black text-[14px] outline-none focus:border-accent transition-colors"
-                                            onClick={(e) => e.stopPropagation()}
-                                          />
-                                        </div>
-                                        <button 
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setShowTypeSheet(true);
-                                          }}
-                                          className="px-4 py-2.5 bg-bg border border-border/40 rounded-xl font-black text-[10px] uppercase flex items-center gap-2 active:bg-accent/5 transition-all text-accent"
-                                        >
-                                          <span>{editType === 'phonepe' ? 'UPI' : editType === 'unsettled' ? 'Unset' : editType}</span>
-                                          <ChevronDown size={14} className="opacity-40" />
-                                        </button>
-                                      </div>
+                                  <div className="flex items-center gap-4">
+                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                                      isCash ? 'bg-success/10 text-success' : 
+                                      isUPI ? 'bg-accent/10 text-accent' : 
+                                      'bg-amber-500/10 text-amber-500'
+                                    }`}>
+                                      {isCash ? <Banknote size={20} /> : 
+                                       isUPI ? <Smartphone size={20} /> : 
+                                       <Clock size={20} />}
                                     </div>
-                                  ) : (
-                                    <div className="flex items-center justify-between">
-                                      <div className="flex items-center gap-4">
-                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                                    
+                                    <div>
+                                      <p className="font-bold text-[15px] text-text-primary tracking-tight leading-tight">
+                                        {customer?.name || 'Unknown'}
+                                      </p>
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <span className="text-[9px] font-bold text-text-secondary opacity-40 uppercase tracking-wider">
+                                          {safeFormat(tx.timestamp, 'hh:mm a')}
+                                        </span>
+                                        <div className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-[0.1em] ${
                                           isCash ? 'bg-success/10 text-success' : 
                                           isUPI ? 'bg-accent/10 text-accent' : 
-                                          'bg-warning/10 text-warning'
+                                          'bg-amber-500/10 text-amber-500'
                                         }`}>
-                                          {isCash ? <Banknote size={20} /> : 
-                                           isUPI ? <Smartphone size={20} /> : 
-                                           <Clock size={20} />}
-                                        </div>
-                                        
-                                        <div>
-                                          <p className="font-bold text-[15px] text-text-primary tracking-tight leading-tight">
-                                            {customer?.name || 'Unknown'}
-                                          </p>
-                                          <div className="flex items-center gap-2 mt-1">
-                                            <span className="text-[9px] font-bold text-text-secondary opacity-40 uppercase tracking-wider">
-                                              {safeFormat(tx.timestamp, 'hh:mm a')}
-                                            </span>
-                                            <div className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-[0.1em] ${
-                                              isCash ? 'bg-success/10 text-success' : 
-                                              isUPI ? 'bg-accent/10 text-accent' : 
-                                              'bg-warning/10 text-warning'
-                                            }`}>
-                                              {tx.type === 'unsettled' ? 'UNSETTLED' : (tx.type ? tx.type.toUpperCase() : 'PAID')}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      <div className="flex flex-col items-end">
-                                        <p className="text-[15px] font-black text-text-primary tracking-tighter">₹{tx.amount}</p>
-                                        <div className="flex items-center gap-1 opacity-20 group-hover:opacity-100 transition-opacity">
-                                          <span className="text-[8px] font-bold uppercase tracking-widest">Edit</span>
-                                          <ChevronRight size={12} />
+                                          {isNP ? 'NP' : (tx.type ? tx.type.toUpperCase() : 'PAID')}
                                         </div>
                                       </div>
                                     </div>
-                                  )}
+                                  </div>
+
+                                  <div className="flex items-center gap-2.5 shrink-0">
+                                    <div className="flex flex-col items-end">
+                                      <p className="text-[15px] font-black text-text-primary tracking-tighter">
+                                        ₹{tx.amount.toLocaleString('en-IN')}
+                                      </p>
+                                      <span className="text-[8px] font-bold text-accent uppercase tracking-wider flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                                        <Receipt size={9} /> Receipt
+                                      </span>
+                                    </div>
+                                  </div>
                                 </motion.div>
                               );
                             })}
@@ -691,60 +565,6 @@ export function TransactionsList() {
           )}
         </div>
       </div>
-
-      {/* Payment Type Selector Bottom Sheet */}
-      <BottomSheet
-        isOpen={showTypeSheet}
-        onClose={() => setShowTypeSheet(false)}
-        title="Payment Mode"
-        subtitle="Select transaction type"
-      >
-        <div className="flex flex-col gap-3 pb-8">
-          {[
-            { value: 'cash', label: 'Cash', icon: <Banknote size={18} /> },
-            { value: 'phonepe', label: 'UPI (PhonePe)', icon: <Smartphone size={18} /> },
-            { value: 'unsettled', label: 'Unsettled', icon: <Clock size={18} /> }
-          ].map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => {
-                if ('vibrate' in navigator) navigator.vibrate(5);
-                setEditType(opt.value as any);
-                setShowTypeSheet(false);
-              }}
-              className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all border ${
-                editType === opt.value 
-                  ? 'bg-accent/10 border-accent/20' 
-                  : 'bg-bg border-border/60'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-xl ${editType === opt.value ? 'bg-accent/20 text-accent' : 'bg-muted text-text-secondary opacity-40'}`}>
-                  {opt.icon}
-                </div>
-                <span className={`text-[13px] font-black uppercase tracking-widest ${editType === opt.value ? 'text-accent' : 'text-text-secondary opacity-60'}`}>
-                  {opt.label}
-                </span>
-              </div>
-              
-              <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
-                editType === opt.value ? 'border-accent bg-accent' : 'border-border/30'
-              }`}>
-                {editType === opt.value && (
-                  <div className="w-2.5 h-2.5 bg-white rounded-full shadow-sm" />
-                )}
-              </div>
-            </button>
-          ))}
-
-          <button 
-            onClick={() => setShowTypeSheet(false)}
-            className="w-full py-4 mt-2 rounded-2xl bg-muted text-text-secondary font-black text-[11px] uppercase tracking-widest active:scale-[0.98] transition-all"
-          >
-            Cancel
-          </button>
-        </div>
-      </BottomSheet>
 
       {/* Export Options Bottom Sheet */}
       <BottomSheet
@@ -836,6 +656,15 @@ export function TransactionsList() {
         onClose={() => setShowPreview(false)}
         report={previewReport}
       />
+
+      {/* Transaction Receipt Modal */}
+      {selectedReceipt && typeof document !== 'undefined' && createPortal(
+        <ReceiptSuccessModal
+          receipt={selectedReceipt}
+          onClose={() => setSelectedReceipt(null)}
+        />,
+        document.body
+      )}
     </PageContainer>
   );
 }

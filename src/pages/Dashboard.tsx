@@ -49,7 +49,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
     transactions.forEach(tx => {
       if (tx.isDeleted) return;
 
-      if (tx.status === 'unsettled') {
+      if (tx.status === 'unsettled' || tx.type === 'NP') {
         notPaidTotal += tx.amount;
         notPaidCount++;
       }
