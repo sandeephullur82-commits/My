@@ -1,7 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { 
   getFirestore, 
-  initializeFirestore, 
   doc,
   getDocFromServer,
   enableIndexedDbPersistence
@@ -9,27 +8,32 @@ import {
 import { getAuth, browserLocalPersistence, setPersistence } from 'firebase/auth';
 import { getMessaging, Messaging, isSupported } from 'firebase/messaging';
 
+const env: any = (typeof import.meta !== 'undefined' && (import.meta as any).env) ? (import.meta as any).env : {};
+
 let firebaseConfig: any = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  databaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || '(default)'
+  apiKey: env.VITE_FIREBASE_API_KEY || 'demo-api-key',
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || 'pigmy-pro.firebaseapp.com',
+  projectId: env.VITE_FIREBASE_PROJECT_ID || 'pigmy-pro',
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || 'pigmy-pro.appspot.com',
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || '1234567890',
+  appId: env.VITE_FIREBASE_APP_ID || '1:1234567890:web:abcdef',
 };
 
 // Validate config presence
-const hasConfig = firebaseConfig.apiKey && 
-                 firebaseConfig.apiKey !== 'your-api-key' && 
-                 firebaseConfig.projectId && 
-                 firebaseConfig.projectId !== 'your-project-id';
+const hasConfig = Boolean(
+  env.VITE_FIREBASE_API_KEY && 
+  env.VITE_FIREBASE_API_KEY !== 'your-api-key' && 
+  env.VITE_FIREBASE_API_KEY !== 'demo-api-key' && 
+  env.VITE_FIREBASE_PROJECT_ID && 
+  env.VITE_FIREBASE_PROJECT_ID !== 'your-project-id' &&
+  env.VITE_FIREBASE_PROJECT_ID !== 'pigmy-pro'
+);
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
 // Initialize Firestore
-export const db = initializeFirestore(app, {}, firebaseConfig.databaseId);
+export const db = getFirestore(app);
 
 // Enable offline persistence using enabling API as requested
 enableIndexedDbPersistence(db).then(() => {

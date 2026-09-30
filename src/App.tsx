@@ -18,7 +18,6 @@ import { Customers } from './pages/Customers';
 import { Entry } from './pages/Entry';
 import { TransactionsList } from './pages/TransactionsList';
 import { Notifications } from './pages/Notifications';
-import { Reports } from './pages/Reports';
 import { Settings } from './pages/Settings';
 import { WhatsAppCallback } from './pages/WhatsAppCallback';
 import { Login } from './pages/Login';
@@ -41,10 +40,20 @@ function AppContent() {
   const currentTab = ['whatsapp', 'whatsapp-callback', 'callback', 'api'].includes(rawTab) ? 'entry' : rawTab;
 
   React.useEffect(() => {
+    // Safety fallback: splash screen should never block UI indefinitely
+    const splashFallback = setTimeout(() => {
+      setIsSplashDone(true);
+    }, 1500);
+
     if (!loading) {
-      const timer = setTimeout(() => setIsSplashDone(true), 1200);
-      return () => clearTimeout(timer);
+      const timer = setTimeout(() => setIsSplashDone(true), 600);
+      return () => {
+        clearTimeout(timer);
+        clearTimeout(splashFallback);
+      };
     }
+
+    return () => clearTimeout(splashFallback);
   }, [loading]);
 
   const handleTabChange = (tab: string) => {
@@ -157,7 +166,6 @@ function AppContent() {
                   <Route path="/entry" element={<Entry />} />
                   <Route path="/transactions" element={<TransactionsList />} />
                   <Route path="/notifications" element={<Notifications />} />
-                  <Route path="/reports" element={<Reports />} />
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/whatsapp/callback" element={<WhatsAppCallback onNavigate={handleNavigate} />} />
                   <Route path="/whatsapp-callback" element={<WhatsAppCallback onNavigate={handleNavigate} />} />

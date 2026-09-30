@@ -59,8 +59,9 @@
     --danger: #EF4444;
   }
 
-  html, body {
-    height: 100dvh;
+  html, body, #root {
+    height: 100%;
+    min-height: 100dvh;
     overflow: hidden;
   }
 

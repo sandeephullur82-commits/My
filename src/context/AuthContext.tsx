@@ -15,16 +15,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
+    // Safety fallback: Ensure app never hangs indefinitely on splash screen
+    const safetyTimer = setTimeout(() => {
+      setLoading(false);
+    }, 1200);
+
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (currentUser) => {
+        clearTimeout(safetyTimer);
         setUser(currentUser);
         setLoading(false);
-      } else {
+      },
+      (error) => {
+        console.warn('[AuthContext] onAuthStateChanged error:', error);
+        clearTimeout(safetyTimer);
         setUser(null);
         setLoading(false);
       }
-    });
-    return unsubscribe;
+    );
+
+    return () => {
+      clearTimeout(safetyTimer);
+      unsubscribe();
+    };
   }, []);
 
   const logout = async () => {

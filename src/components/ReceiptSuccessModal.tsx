@@ -72,13 +72,18 @@ export function ReceiptSuccessModal({ receipt, onClose }: ReceiptSuccessModalPro
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm pointer-events-auto">
+      <div 
+        className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm pointer-events-auto"
+        onClick={onClose}
+      >
         <motion.div
           initial={{ opacity: 0, scale: 0.92, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 10 }}
           transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-          className="w-full max-w-sm bg-card border border-border/70 rounded-[32px] shadow-2xl overflow-hidden flex flex-col"
+          style={{ width: 'min(92vw, 380px)', minWidth: '280px' }}
+          className="bg-card border border-border/70 rounded-[32px] shadow-2xl overflow-hidden flex flex-col shrink-0 relative z-10 select-none"
+          onClick={(e) => e.stopPropagation()}
         >
           {/* Header Banner */}
           <div className="relative bg-gradient-to-br from-emerald-600 to-teal-700 p-6 text-white text-center flex flex-col items-center">

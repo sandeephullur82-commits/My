@@ -468,11 +468,18 @@ export function Entry() {
                         searchTerm={debouncedQuery}
                         onSkip={() => handleSkip(customer.id)}
                         onSuccess={(tx, prevBal, newBal) => {
-                          setActiveReceipt({
-                            transaction: tx,
-                            customer,
-                            previousBalance: prevBal,
-                            newBalance: newBal
+                          toast.success(`₹${tx.amount.toLocaleString('en-IN')} collected for ${customer.name}`, {
+                            action: {
+                              label: 'Receipt',
+                              onClick: () => {
+                                setActiveReceipt({
+                                  transaction: tx,
+                                  customer,
+                                  previousBalance: prevBal,
+                                  newBalance: newBal
+                                });
+                              }
+                            }
                           });
                         }}
                       />

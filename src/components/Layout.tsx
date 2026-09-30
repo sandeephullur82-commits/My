@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Home, Users, PlusCircle, Settings, LogOut, Activity, Bell, X, Plus, Zap, UserPlus, Search, BarChart3 } from 'lucide-react';
+import { Home, Users, PlusCircle, Settings, LogOut, Activity, Bell, X, Plus, Zap, UserPlus, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
 import { useSync } from '../context/SyncContext';
@@ -19,7 +19,6 @@ const navItems = [
   { id: 'customers', icon: Users, label: 'Customers' },
   { id: 'entry', icon: PlusCircle, label: 'Entry' },
   { id: 'transactions', icon: Activity, label: 'History' },
-  { id: 'reports', icon: BarChart3, label: 'Reports' },
 ];
 
 export function Layout({ children, currentTab, setCurrentTab }: { children: React.ReactNode, currentTab: string, setCurrentTab: (t: string) => void }) {
@@ -209,8 +208,8 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
           )}
         </AnimatePresence>
 
-        {/* Global Floating Action Button (FAB) (Only on main 4 tab pages) */}
-        {['dashboard', 'customers', 'entry', 'transactions'].includes(currentTab) && !isSettingsOpen && !isModalOpen && (
+        {/* Global Floating Action Button (FAB) (Only on Dashboard and Customers where actions exist) */}
+        {['dashboard', 'customers'].includes(currentTab) && !isSettingsOpen && !isModalOpen && (
           <>
             {/* Backdrop for FAB Menu */}
             {['dashboard', 'customers'].includes(currentTab) && showFABMenu && (

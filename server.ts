@@ -12,19 +12,105 @@ dotenv.config();
 const currentFilename = typeof import.meta !== 'undefined' && import.meta.url ? fileURLToPath(import.meta.url) : (typeof __filename !== 'undefined' ? __filename : '');
 const currentDirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(currentFilename);
 
+// Helper to parse Firebase Service Account JSON supporting single quotes, base64, and escaped strings
+function parseFirebaseServiceAccount(raw?: string): any {
+  if (!raw) return null;
+  let str = raw.trim();
+
+  // 1. Check if base64 encoded
+  if (!str.startsWith('{') && !str.startsWith('"') && !str.startsWith("'")) {
+    try {
+      const decoded = Buffer.from(str, 'base64').toString('utf-8');
+      if (decoded.trim().startsWith('{')) {
+        str = decoded.trim();
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 2. Strip outer enclosing quotes if stringified twice
+  if ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
+    try {
+      const unquoted = JSON.parse(str);
+      if (typeof unquoted === 'object' && unquoted !== null) {
+        if (unquoted.private_key) {
+          unquoted.private_key = unquoted.private_key.replace(/\\n/g, '\n');
+        }
+        return unquoted;
+      }
+      str = unquoted;
+    } catch {
+      str = str.slice(1, -1);
+    }
+  }
+
+  // 3. Attempt standard JSON.parse
+  try {
+    const parsed = JSON.parse(str);
+    if (parsed && typeof parsed === 'object') {
+      if (parsed.private_key) {
+        parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+      }
+      return parsed;
+    }
+  } catch {
+    // 4. Handle JS object literal / single-quoted JSON (e.g., {'type': 'service_account', ...})
+    try {
+      const parsed = new Function(`"use strict"; return (${str});`)();
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.private_key) {
+          parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+        }
+        return parsed;
+      }
+    } catch {
+      // 5. Try regex normalization of quotes
+      try {
+        const doubleQuoted = str
+          .replace(/([{,]\s*)'([^']+)'(\s*:)/g, '$1"$2"$3')
+          .replace(/:\s*'([^']*)'/g, ': "$1"');
+        const parsed = JSON.parse(doubleQuoted);
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.private_key) {
+            parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+          }
+          return parsed;
+        }
+      } catch {
+        // give up
+      }
+    }
+  }
+  return null;
+}
+
 // Initialize Firebase Admin
 let firebaseAdmin: admin.app.App | null = null;
 
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   try {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    firebaseAdmin = admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-    });
-    console.log("Firebase Admin Initialized with Service Account");
-  } catch (e) {
-    console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT. Initializing with default...", e);
-    firebaseAdmin = admin.initializeApp(); 
+    const serviceAccount = parseFirebaseServiceAccount(process.env.FIREBASE_SERVICE_ACCOUNT);
+    if (serviceAccount && serviceAccount.project_id) {
+      firebaseAdmin = admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+      });
+      console.log("Firebase Admin Initialized with Service Account");
+    } else {
+      console.warn("FIREBASE_SERVICE_ACCOUNT could not be resolved into a valid credentials object. Falling back to default credentials.");
+      try {
+        firebaseAdmin = admin.initializeApp();
+      } catch (err) {
+        console.warn("Firebase Admin default initialization failed:", err);
+      }
+    }
+  } catch (e: any) {
+    console.warn("Failed to initialize Firebase Admin with service account:", e?.message || e);
+    try {
+      firebaseAdmin = admin.initializeApp(); 
+    } catch (err) {
+      console.warn("Firebase Admin default initialization failed:", err);
+    }
   }
 } else {
   // Basic initialization if no service account
@@ -32,7 +118,7 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     firebaseAdmin = admin.initializeApp();
     console.log("Firebase Admin Initialized with Default Credentials");
   } catch (e) {
-    console.error("Firebase Admin default initialization failed. Most features will be disabled.", e);
+    console.warn("Firebase Admin credentials not provided. Most backend admin features will be dormant until configured.");
   }
 }
 
@@ -40,8 +126,21 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  const db = admin.firestore();
-  const messaging = admin.messaging();
+  let db: admin.firestore.Firestore | null = null;
+  let messaging: admin.messaging.Messaging | null = null;
+
+  if (admin.apps.length > 0) {
+    try {
+      db = admin.firestore();
+    } catch (e) {
+      console.warn("Firestore not available in Firebase Admin:", e);
+    }
+    try {
+      messaging = admin.messaging();
+    } catch (e) {
+      console.warn("Firebase Messaging not available in Firebase Admin:", e);
+    }
+  }
 
   // API Routes
   app.use(express.json());
@@ -50,26 +149,9 @@ async function startServer() {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  // WhatsApp Webhook & Redirect Callback Handler (GET)
+  // WhatsApp Redirect Callback Handler (GET)
   const handleWhatsAppGet = (req: express.Request, res: express.Response) => {
-    const mode = req.query["hub.mode"] || req.query["mode"];
-    const token = req.query["hub.verify_token"] || req.query["verify_token"];
-    const challenge = req.query["hub.challenge"] || req.query["challenge"];
-
-    // 1. Meta / WhatsApp Cloud API Webhook Verification Challenge
-    if (mode === "subscribe" && challenge) {
-      console.log("[WhatsApp Webhook] Meta challenge verification request received");
-      const expectedToken = process.env.WHATSAPP_VERIFY_TOKEN || "pigmy_webhook_secret";
-      if (!process.env.WHATSAPP_VERIFY_TOKEN || token === expectedToken) {
-        console.log("[WhatsApp Webhook] Challenge verified successfully");
-        return res.status(200).type("text/plain").send(String(challenge));
-      } else {
-        console.warn("[WhatsApp Webhook] Token mismatch:", token);
-        return res.status(403).send("Verification token mismatch");
-      }
-    }
-
-    // 2. Browser redirect callback: safely route back to the client callback page
+    // Browser redirect callback: safely route back to the client callback page
     const queryString = new URLSearchParams(req.query as Record<string, string>).toString();
     const targetUrl = `/whatsapp/callback${queryString ? `?${queryString}` : ""}`;
     return res.redirect(targetUrl);
@@ -149,6 +231,7 @@ async function startServer() {
   app.post("/api/tokens", async (req, res) => {
     const { token, userId } = req.body;
     if (!token || !userId) return res.status(400).json({ error: "Missing token or userId" });
+    if (!db) return res.status(503).json({ error: "Database not connected" });
 
     try {
       await db.collection("users").doc(userId).collection("fcmTokens").doc(token).set({
@@ -167,6 +250,7 @@ async function startServer() {
   app.post("/api/notifications/test", async (req, res) => {
     const { userId, token } = req.body;
     if (!userId) return res.status(400).json({ error: "Missing userId" });
+    if (!messaging) return res.status(503).json({ error: "Messaging not configured" });
 
     try {
       const title = "🔔 Payment Reminder Test";
@@ -197,6 +281,7 @@ async function startServer() {
 
   // Helper to send notifications to a user
   const sendNotificationToUser = async (userId: string, title: string, body: string, data = {}) => {
+    if (!db || !messaging) return;
     try {
       const tokensSnap = await db.collection("users").doc(userId).collection("fcmTokens").get();
       const tokens = tokensSnap.docs.map(d => d.id);
@@ -239,6 +324,7 @@ async function startServer() {
 
   // Triggers Logic: Evaluates upcoming due dates and overdue payments based on customer 'endDate' and 'pending'
   const checkPaymentsAndRemind = async () => {
+    if (!db) return;
     console.log("Running Payment Reminders & Due Date Check...");
     try {
       const usersSnap = await db.collection("users").get();
@@ -336,6 +422,7 @@ async function startServer() {
 
   // Manual Trigger Endpoint
   app.post("/api/notifications/scan-and-trigger", async (req, res) => {
+    if (!db) return res.status(503).json({ error: "Database not connected" });
     try {
       await checkPaymentsAndRemind();
       res.json({ success: true, message: "Payment check completed" });
@@ -345,6 +432,7 @@ async function startServer() {
   });
 
   const checkUnsettledAndRemind = async () => {
+    if (!db) return;
     console.log("Running Unsettled check...");
     try {
       const usersSnap = await db.collection("users").get();

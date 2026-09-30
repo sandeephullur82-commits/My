@@ -23,13 +23,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   
   // Try to load initial data from cache for instant loading experience
   const [customers, setCustomers] = useState<Customer[]>(() => {
-    const cached = localStorage.getItem('cache_customers');
-    return cached ? JSON.parse(cached) : [];
+    try {
+      const cached = localStorage.getItem('cache_customers');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
   });
   
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    const cached = localStorage.getItem('cache_transactions');
-    return cached ? JSON.parse(cached) : [];
+    try {
+      const cached = localStorage.getItem('cache_transactions');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
   });
   
   const [loading, setLoading] = useState(customers.length === 0);
