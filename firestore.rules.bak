@@ -1,0 +1,118 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helper Functions ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Customer Validation ---
+    function isValidCustomer(data) {
+      return data.keys().hasAll(['id', 'name', 'phone', 'loan', 'paid', 'pending', 'startDate', 'endDate']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.phone is string && data.phone.size() >= 10 && data.phone.size() <= 15 &&
+             data.loan is number && data.loan >= 0 &&
+             data.paid is number && data.paid >= 0 &&
+             data.pending is number &&
+             data.startDate is number &&
+             data.endDate is number;
+    }
+
+    match /customers/{customerId} {
+      allow get: if isSignedIn();
+      // Secure List Queries: Evaluation against auth is baseline
+      allow list: if isSignedIn();
+      
+      allow create: if isSignedIn() && 
+                      isValidId(customerId) && 
+                      isValidCustomer(incoming()) &&
+                      incoming().id == customerId &&
+                      incoming().createdAt == request.time;
+      
+      allow update: if isSignedIn() && 
+                      isValidCustomer(incoming()) &&
+                      incoming().id == customerId &&
+                      incoming().updatedAt == request.time;
+      
+      allow delete: if isSignedIn();
+    }
+
+    // --- Transaction Validation ---
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['id', 'customerId', 'amount', 'type', 'status', 'date', 'timestamp']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.customerId is string && data.customerId.size() > 0 &&
+             data.amount is number && data.amount > 0 &&
+             data.type in ['cash', 'phonepe', 'unsettled'] &&
+             data.status in ['paid', 'pending'] &&
+             data.date is string && data.date.size() == 10 &&
+             data.timestamp is number;
+    }
+
+    match /entries/{entryId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      
+      allow create: if isSignedIn() && 
+                      isValidId(entryId) && 
+                      isValidTransaction(incoming()) &&
+                      incoming().id == entryId &&
+                      exists(/databases/$(database)/documents/customers/$(incoming().customerId)) &&
+                      incoming().createdAt == request.time;
+      
+      allow update: if isSignedIn() && 
+                      isValidTransaction(incoming()) &&
+                      incoming().id == entryId &&
+                      incoming().updatedAt == request.time;
+      
+      allow delete: if isSignedIn();
+    }
+
+    match /users/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+      
+      match /fcmTokens/{token} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+
+      match /notifications/{notificationId} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow write: if isSignedIn() && request.auth.uid == userId && 
+                     (request.method == 'delete' || isValidNotification(incoming()));
+      }
+    }
+
+    // --- Notification Validation ---
+    function isValidNotification(data) {
+      return data.keys().hasAll(['id', 'userId', 'type', 'title', 'timestamp']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.type in ['success', 'error', 'info', 'transaction', 'warning', 'critical'] &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.timestamp is number;
+    }
+  }
+}

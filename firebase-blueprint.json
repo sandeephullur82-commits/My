@@ -1,0 +1,108 @@
+{
+  "entities": {
+    "Customer": {
+      "title": "Customer",
+      "description": "Represents a collection client/customer",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "loan": { "type": "number" },
+        "paid": { "type": "number" },
+        "pending": { "type": "number" },
+        "createdBy": { "type": "string" },
+        "startDate": { "type": "number" },
+        "endDate": { "type": "number" },
+        "createdAt": { "type": "object" },
+        "updatedAt": { "type": "object" },
+        "lastPayment": { "type": "object" },
+        "isDeleted": { "type": "boolean" }
+      },
+      "required": ["id", "name", "phone", "loan"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Represents a collection entry/transaction",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customerId": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["cash", "phonepe", "unsettled"] },
+        "status": { "type": "string", "enum": ["paid", "pending", "unsettled"] },
+        "createdBy": { "type": "string" },
+        "date": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "createdAt": { "type": "object" },
+        "updatedAt": { "type": "object" },
+        "paidAt": { "type": "object" },
+        "isDeleted": { "type": "boolean" }
+      },
+      "required": ["id", "customerId", "amount", "type", "status", "date"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile and global settings",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "settings": { "type": "object" }
+      }
+    },
+    "FCMToken": {
+      "title": "FCMToken",
+      "description": "Registered device token for push notifications",
+      "type": "object",
+      "properties": {
+        "token": { "type": "string" },
+        "updatedAt": { "type": "object" },
+        "deviceInfo": { "type": "string" }
+      }
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System or transactional notification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["success", "error", "info", "transaction", "warning", "critical"] },
+        "priority": { "type": "string", "enum": ["high", "medium", "low"] },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "amount": { "type": "number" },
+        "customerName": { "type": "string" },
+        "paymentType": { "type": "string" },
+        "isRead": { "type": "boolean" },
+        "timestamp": { "type": "number" },
+        "createdAt": { "type": "object" },
+        "actions": { "type": "array" }
+      },
+      "required": ["id", "userId", "type", "title", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Customer profiles and balance summaries"
+    },
+    "/users/{userId}/entries/{entryId}": {
+      "schema": "Transaction",
+      "description": "Individual collection transactions"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User specific settings and auth info"
+    },
+    "/users/{userId}/fcmTokens/{token}": {
+      "schema": "FCMToken",
+      "description": "Device registration tokens for push"
+    },
+    "/users/{userId}/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User notification history"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "Pigmy Pro – Smart Collection System",
+  "description": "Professional-grade mobile-first fintech tool for smarter daily collections with audit-safe adjustments, high-speed entry, and real-time ledger sync.",
+  "requestFramePermissions": [
+    "vibration",
+    "notifications"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

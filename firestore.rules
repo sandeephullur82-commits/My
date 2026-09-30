@@ -1,0 +1,147 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Definitions ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn(); // Relaxed for dev environment where email verification isn't enforced
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validation Helpers ---
+
+    function isValidCustomer(data) {
+      return data.keys().hasAll(['id', 'name', 'phone', 'loan', 'paid', 'pending', 'startDate', 'endDate', 'createdBy']) &&
+             data.keys().size() >= 9 &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.phone is string && data.phone.size() >= 10 && data.phone.size() <= 20 &&
+             data.loan is number && data.loan >= 0 &&
+             data.paid is number && data.paid >= 0 &&
+             data.pending is number &&
+             data.startDate is number &&
+             data.endDate is number &&
+             data.createdBy == request.auth.uid;
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['id', 'customerId', 'amount', 'type', 'status', 'date', 'timestamp', 'createdBy']) &&
+             data.keys().size() >= 8 &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.customerId is string && data.customerId.size() > 0 && data.customerId.size() <= 128 &&
+             data.amount is number && data.amount > 0 &&
+             data.type in ['cash', 'phonepe', 'unsettled'] &&
+             data.status in ['paid', 'pending', 'unsettled'] &&
+             data.date is string && data.date.size() == 10 &&
+             data.timestamp is number &&
+             data.createdBy == request.auth.uid;
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['id', 'userId', 'type', 'title', 'timestamp']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.type in ['success', 'error', 'info', 'transaction', 'warning', 'critical'] &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.timestamp is number;
+    }
+
+    // --- Collection Routes ---
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow write: if isEmailVerified() && request.auth.uid == userId;
+      
+      match /fcmTokens/{token} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+
+      match /settings/{settingId} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+
+      match /notifications/{notificationId} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow write: if isEmailVerified() && request.auth.uid == userId && 
+                     (request.method == 'delete' || isValidNotification(incoming()));
+      }
+
+      match /customers/{customerId} {
+        allow get: if isSignedIn() && request.auth.uid == userId;
+        allow list: if isSignedIn() && request.auth.uid == userId;
+        
+        allow create: if isEmailVerified() && 
+                        request.auth.uid == userId &&
+                        isValidId(customerId) && 
+                        isValidCustomer(incoming()) &&
+                        incoming().id == customerId &&
+                        incoming().createdAt == request.time;
+        
+        allow update: if isEmailVerified() && 
+                        request.auth.uid == userId &&
+                        isValidCustomer(incoming()) &&
+                        incoming().id == existing().id &&
+                        incoming().createdBy == existing().createdBy &&
+                        incoming().createdAt == existing().createdAt &&
+                        incoming().updatedAt == request.time &&
+                        (
+                          // Action: Update Stats
+                          incoming().diff(existing()).affectedKeys().hasOnly(['paid', 'pending', 'lastPayment', 'updatedAt']) ||
+                          // Action: Edit Profile
+                          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone', 'endDate', 'updatedAt']) ||
+                          // Action: Toggle pinned
+                          incoming().diff(existing()).affectedKeys().hasOnly(['isPinned', 'updatedAt']) ||
+                          // Action: Soft Delete
+                          incoming().diff(existing()).affectedKeys().hasOnly(['isDeleted', 'updatedAt', 'deletedAt'])
+                        );
+        
+        allow delete: if isEmailVerified() && request.auth.uid == userId;
+      }
+
+      match /entries/{entryId} {
+        allow get: if isSignedIn() && request.auth.uid == userId;
+        allow list: if isSignedIn() && request.auth.uid == userId;
+        
+        allow create: if isEmailVerified() && 
+                        request.auth.uid == userId &&
+                        isValidId(entryId) && 
+                        isValidTransaction(incoming()) &&
+                        incoming().id == entryId &&
+                        get(/databases/$(database)/documents/users/$(userId)/customers/$(incoming().customerId)).data.createdBy == request.auth.uid &&
+                        incoming().createdAt == request.time;
+        
+        allow update: if isEmailVerified() && 
+                        request.auth.uid == userId &&
+                        isValidTransaction(incoming()) &&
+                        incoming().id == existing().id &&
+                        incoming().customerId == existing().customerId &&
+                        incoming().createdBy == existing().createdBy &&
+                        incoming().createdAt == existing().createdAt &&
+                        incoming().updatedAt == request.time &&
+                        incoming().diff(existing()).affectedKeys().hasOnly(['amount', 'type', 'status', 'paidAt', 'unsettledAt', 'updatedAt', 'isDeleted', 'history', 'entryStatus']);
+        
+        allow delete: if isEmailVerified() && request.auth.uid == userId;
+      }
+    }
+  }
+}

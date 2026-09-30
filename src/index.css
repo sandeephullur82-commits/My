@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: var(--bg);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-accent: var(--accent);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+
+  /* Strict Spacing Scale Aliases */
+  --spacing-micro: 4px;
+  --spacing-sm: 8px;
+  --spacing-gap: 10px;
+  --spacing-base: 14px;
+  --spacing-section: 16px;
+
+  /* Typography Aliases */
+  --font-size-title: 16px;
+  --font-size-body: 13px;
+  --font-size-caption: 11px;
+  --font-size-amount: 20px;
+
+  @keyframes pulse-light {
+    0%, 100% { opacity: 1; transform: scale(1.03); }
+    50% { opacity: 0.8; transform: scale(1.01); }
+  }
+  --animate-pulse-light: pulse-light 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@layer base {
+  :root {
+    --bg: #F8FAFC;
+    --card: #FFFFFF;
+    --border: #E2E8F0;
+    --muted: #F1F5F9;
+    --text-primary: #0F172A;
+    --text-secondary: #64748B;
+    --accent: #2563EB;
+    --success: #10B981;
+    --warning: #F59E0B;
+    --danger: #EF4444;
+  }
+
+  .dark {
+    --bg: #0B0F1A; /* Flat dark, no gradients */
+    --card: #1F2937;
+    --border: rgba(255, 255, 255, 0.05); /* Lighter border for flat cards */
+    --muted: rgba(255, 255, 255, 0.02);
+    --text-primary: #F8FAFC;
+    --text-secondary: #94A3B8;
+    --accent: #3B82F6;
+    --success: #10B981;
+    --warning: #F59E0B;
+    --danger: #EF4444;
+  }
+
+  html, body {
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, inherit;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior-y: contain;
+  }
+
+  h1, h2, h3 {
+    @apply font-semibold tracking-tight;
+  }
+
+  button {
+    cursor: pointer;
+    touch-action: manipulation;
+    @apply outline-none;
+  }
+
+  /* Custom Safe Area Helpers */
+  .pb-safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .pt-safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+    @apply border-border;
+  }
+}
