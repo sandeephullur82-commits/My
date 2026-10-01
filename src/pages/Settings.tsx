@@ -8,7 +8,7 @@ import {
   Database, AlertCircle, Calendar, Hash, Scale, 
   RefreshCw, Files, FileSpreadsheet, FileJson, FileText,
   Bell, BellRing, Clock, Volume2, VolumeX, CheckCircle2,
-  Send, Zap, Check
+  Send, Zap, Check, Fingerprint, ScanFace
 } from 'lucide-react';
 import { useSecurity } from '../context/SecurityContext';
 import { useTheme } from '../components/ThemeProvider';
@@ -24,7 +24,15 @@ export function Settings() {
   const { theme, toggleTheme } = useTheme();
   const { isCompact, toggleCompact } = useUI();
   const { user, logout } = useAuth();
-  const { hasPin, setPin, setIsLocked } = useSecurity();
+  const { 
+    hasPin, 
+    setPin, 
+    setIsLocked, 
+    lockNow, 
+    biometricsEnabled, 
+    setBiometricsEnabled, 
+    biometricStatus 
+  } = useSecurity();
   const { 
     permissionStatus, 
     requestPermission, 
@@ -109,12 +117,8 @@ export function Settings() {
   };
 
   const handleManualLock = () => {
-    if (hasPin) {
-      setIsLocked(true);
-      toastSuccess('Session Locked', 'Access restricted until next PIN entry.');
-    } else {
-      toastError('Lock Failed', 'Please set a security PIN first.');
-    }
+    lockNow();
+    toastSuccess('Session Locked', 'Access restricted behind biometric and device lock.');
   };
 
 
@@ -510,8 +514,61 @@ export function Settings() {
 
         {/* Security Section */}
         <div>
-          <h3 className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] px-4 mb-3">Security</h3>
+          <h3 className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] px-4 mb-3">Security & Biometrics</h3>
           <div className="bg-card rounded-[24px] border border-border/50 shadow-sm overflow-hidden p-2 space-y-1">
+            {/* Biometric & Mobile Lock */}
+            <div className="p-4 rounded-2xl bg-bg border border-border/40 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0">
+                  {biometricStatus?.modality === 'FACE' ? (
+                    <ScanFace size={22} />
+                  ) : (
+                    <Fingerprint size={22} />
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-sm text-text-primary tracking-tight">Biometric & Mobile Lock</p>
+                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
+                      biometricsEnabled
+                        ? 'bg-emerald-500/10 text-emerald-400'
+                        : 'bg-slate-500/10 text-text-secondary'
+                    }`}>
+                      {biometricsEnabled ? 'Active' : 'Off'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] font-medium text-text-secondary opacity-70 mt-0.5">
+                    {biometricStatus?.modalityLabel || 'Fingerprint, Face & Phone PIN/Pattern'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !biometricsEnabled;
+                  setBiometricsEnabled(next);
+                  if (next) {
+                    toastSuccess('Biometric Lock Enabled', 'Secured with Fingerprint, Face, and Android Device Lock.');
+                  } else {
+                    toastAction({
+                      title: 'Biometric Lock Disabled',
+                      message: 'Hardware biometric verification is now turned off.',
+                      label: 'OK'
+                    });
+                  }
+                }}
+                className="text-text-primary active:scale-95 transition-all shrink-0 ml-2"
+                title={biometricsEnabled ? 'Disable Biometric Lock' : 'Enable Biometric Lock'}
+              >
+                {biometricsEnabled ? (
+                  <ToggleRight size={32} className="text-emerald-500" />
+                ) : (
+                  <ToggleLeft size={32} className="text-text-secondary opacity-30" />
+                )}
+              </button>
+            </div>
+
+            {/* In-App 4-Digit PIN */}
             <button
               onClick={handleToggleLock}
               className="w-full flex items-center justify-between p-4 rounded-2xl hover:bg-bg transition-colors"
@@ -521,9 +578,9 @@ export function Settings() {
                   <ShieldCheck size={20} />
                 </div>
                 <div className="text-left">
-                  <p className="font-bold text-sm text-text-primary tracking-tight">App Lock</p>
+                  <p className="font-bold text-sm text-text-primary tracking-tight">4-Digit Security PIN</p>
                   <p className="text-[10px] font-medium text-text-secondary opacity-60 uppercase tracking-widest leading-none mt-1">
-                    {hasPin ? 'PIN Enabled' : 'Security Disabled'}
+                    {hasPin ? 'Configured as secondary backup' : 'Optional secondary fallback'}
                   </p>
                 </div>
               </div>
@@ -532,7 +589,8 @@ export function Settings() {
               </div>
             </button>
 
-            {hasPin && (
+            {/* Lock Now Button */}
+            {(biometricsEnabled || hasPin) && (
               <button
                 onClick={handleManualLock}
                 className="w-full flex items-center justify-between p-4 rounded-2xl hover:bg-bg transition-colors"
@@ -542,8 +600,10 @@ export function Settings() {
                     <Lock size={20} />
                   </div>
                   <div className="text-left">
-                    <p className="font-bold text-sm text-text-primary tracking-tight">Lock Now</p>
-                    <p className="text-[10px] font-medium text-text-secondary opacity-60 uppercase tracking-widest leading-none mt-1">Protect session immediately</p>
+                    <p className="font-bold text-sm text-text-primary tracking-tight">Lock App Now</p>
+                    <p className="text-[10px] font-medium text-text-secondary opacity-60 uppercase tracking-widest leading-none mt-1">
+                      Immediately trigger biometric lock shield
+                    </p>
                   </div>
                 </div>
                 <ChevronRight size={16} className="text-text-secondary opacity-30" />
