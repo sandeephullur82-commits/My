@@ -8,13 +8,10 @@ import { toast } from 'sonner';
 
 import { StatsSkeleton, Skeleton } from '../components/Skeleton';
 import { PageContainer } from '../components/PageContainer';
-import { notificationService } from '../services/notificationService';
-import { NotificationSettingsModal } from '../components/Notifications/NotificationSettingsModal';
 
 export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: any, customerId?: string, entryTabVal?: any, dateFilterVal?: any, urlFilter?: string) => void }) {
   const { transactions, customers, loading } = useRealtimeData();
   const [isReady, setIsReady] = useState(false);
-  const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
 
   // Maintain isReady only for the initial mount to prevent flickering on every tab switch
   useEffect(() => {
@@ -22,10 +19,6 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
        setIsReady(true);
      }
   }, [loading]);
-
-  useEffect(() => {
-    notificationService.initialize();
-  }, []);
 
   // Memoize date strings to avoid redundant calculations
   const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
@@ -61,8 +54,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
         notPaidCount++;
       }
 
-      const isPaidToday = (tx.date === today || (tx.paidAt && format(new Date(tx.paidAt), 'yyyy-MM-dd') === today));
-      if (isPaidToday && tx.status === 'paid' && tx.type !== 'NP' && tx.type !== 'unsettled') {
+      if (tx.date === today && tx.status === 'paid') {
         if (tx.type === 'cash') {
           cashToday += tx.amount;
           cashCount++;
@@ -90,7 +82,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
   };
 
   const todayEntriesCount = useMemo(() => {
-    return transactions.filter(tx => !tx.isDeleted && (tx.date === today || (tx.paidAt && format(new Date(tx.paidAt), 'yyyy-MM-dd') === today))).length;
+    return transactions.filter(tx => tx.date === today && !tx.isDeleted).length;
   }, [transactions, today]);
 
   const statsStrip = {
@@ -117,7 +109,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
     <PageContainer>
       <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
         {/* Top Section */}
-        <SyncStatus onOpenNotifications={() => setIsNotificationModalOpen(true)} />
+        <SyncStatus />
 
         {/* Quick Info Strip */}
         <div className="flex items-center justify-between px-5 py-3 bg-card border border-border/10 rounded-[20px] shadow-sm">
@@ -163,12 +155,6 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
           />
         </div>
       </div>
-
-      {/* ANDROID NOTIFICATION CENTER SETTINGS MODAL */}
-      <NotificationSettingsModal
-        isOpen={isNotificationModalOpen}
-        onClose={() => setIsNotificationModalOpen(false)}
-      />
     </PageContainer>
   );
 }

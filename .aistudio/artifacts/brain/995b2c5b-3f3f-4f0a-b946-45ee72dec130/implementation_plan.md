@@ -1,35 +1,15 @@
-# Implementation Plan: In-App Toast System & FCM-to-Capacitor Deep Linking
+# Implementation Plan: Any Day Pending NP Detection & Settlement [COMPLETED]
 
-Build a high-performance, top-floating visual toast system for instant user feedback on collection syncs and receipts, combined with FCM foreground listener and deep-link payload routing in `notificationService.ts`.
+The NP (Not Paid / Unsettled) workflow in the Entry customer cards has been upgraded from "yesterday only" to detect any recorded NP across any past day, always prioritizing the **oldest pending NP day first**.
 
----
+## Delivered Changes
+1. **Multi-Day Pending NP Detection (`src/components/Entry/CustomerCard.tsx`)**:
+   - Detects all explicitly recorded unsettled NP transactions across any past date (`t.type === 'NP' || t.type === 'unsettled' || t.status === 'unsettled'`).
+   - Automatically sorts pending NP entries chronologically ascending so the oldest missed day is always resolved first.
+   - Computes queue metrics (e.g. `1 of 3 pending NPs`, with date badge e.g. `27 Sep 2026`).
 
-## Proposed Changes
-
-### 1. In-App Visual Toast Feedback System (`src/components/FintechToast.tsx` & `src/context/FeedbackContext.tsx`)
-- **Top-Floating Interactive Banner**: Rendered in a fixed top-center viewport portal with high z-index, frosted glass backdrop, and fintech color accents (Emerald for payments, Amber for unpaid/overdue, Indigo for syncs/reports).
-- **Auto-Dismiss & Interactions**:
-  - 4-second default timeout with subtle countdown progress bar.
-  - Pause auto-dismiss on pointer hover / touch.
-  - Swipe-to-dismiss drag gestures powered by `motion/react`.
-  - Action buttons (e.g. "View Ledger", "Print Receipt", "Undo", "Navigate").
-  - Haptic feedback (`navigator.vibrate`) and audio chimes on event trigger.
-
-### 2. Update `src/services/notificationService.ts`
-- **FCM Foreground Listener & In-App Bridge**:
-  - Listen for Web & native FCM payloads when the app is active.
-  - Dispatch both native Capacitor Local Notification UI and in-app visual toast banners simultaneously.
-- **Deep-Link Payload Field Mapper**:
-  - Map `customerId`, `customerName`, `amount`, `paymentType`, `alertType`, `receiptId`, and `url` to targeted app views (`/entry`, `/transactions`, `/dashboard`, `/reports`).
-  - Broadcast incoming push events to registered UI listeners for instant reactivity.
-
-### 3. App-Level Sync & Receipt Feedback
-- Connect collection transactions, offline queue syncs, and manual receipts so each generates crisp, non-intrusive in-app visual feedback with quick action links.
-
----
-
-## Verification Plan
-
-1. **Compilation & Linting**: Run `lint_applet` and `compile_applet`.
-2. **Capacitor Sync**: Run `npx cap sync android` to ensure all native push and notification plugins are up to date.
-3. **Interactive Testing**: Verify test notification triggers, foreground FCM message handling, action clicks, auto-dismiss, and swipe-to-dismiss.
+2. **Oldest-First Settlement (`handleClearPendingNP`)**:
+   - Directly updates the specific target NP transaction in Firestore (`status: 'paid'`, `type: 'cash' | 'phonepe'`, with timestamp and notes).
+   - Updates customer balance and produces instant receipt popup.
+   - If more pending NPs remain for the customer, immediately transitions to the next oldest NP.
+   - When all pending NPs are settled, displays a celebratory banner and unlocks today's regular installment inputs.

@@ -128,7 +128,7 @@ export function Notifications() {
             </button>
 
             <button
-              onClick={() => navigate('/notifications/settings')}
+              onClick={() => navigate('/settings')}
               className="w-10 h-10 rounded-xl bg-card border border-border/20 flex items-center justify-center text-text-secondary hover:text-text-primary transition-all active:scale-95"
               title="Notification Settings"
             >

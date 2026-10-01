@@ -18,7 +18,6 @@ import { Customers } from './pages/Customers';
 import { Entry } from './pages/Entry';
 import { TransactionsList } from './pages/TransactionsList';
 import { Notifications } from './pages/Notifications';
-import { NotificationSettingsPage } from './pages/NotificationSettingsPage';
 import { Settings } from './pages/Settings';
 import { WhatsAppCallback } from './pages/WhatsAppCallback';
 import { Login } from './pages/Login';
@@ -27,7 +26,6 @@ import { NotificationProvider } from './context/NotificationContext';
 import { FeedbackProvider } from './context/FeedbackContext';
 import { LockScreen } from './components/LockScreen';
 import { PageContainer } from './components/PageContainer';
-import { notificationService } from './services/notificationService';
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -36,12 +34,6 @@ function AppContent() {
   const navigate = useNavigate();
   const location = useLocation();
   const [isSplashDone, setIsSplashDone] = useState(false);
-
-  React.useEffect(() => {
-    notificationService.setNavigationHandler((url: string) => {
-      navigate(url);
-    });
-  }, [navigate]);
 
   // Derive currentTab from location (mapping callback paths gracefully to entry)
   const rawTab = location.pathname.split('/')[1] || 'dashboard';
@@ -174,9 +166,7 @@ function AppContent() {
                   <Route path="/entry" element={<Entry />} />
                   <Route path="/transactions" element={<TransactionsList />} />
                   <Route path="/notifications" element={<Notifications />} />
-                  <Route path="/notifications/settings" element={<NotificationSettingsPage />} />
                   <Route path="/settings" element={<Settings />} />
-                  <Route path="/settings/notifications" element={<NotificationSettingsPage />} />
                   <Route path="/whatsapp/callback" element={<WhatsAppCallback onNavigate={handleNavigate} />} />
                   <Route path="/whatsapp-callback" element={<WhatsAppCallback onNavigate={handleNavigate} />} />
                   <Route path="/whatsapp" element={<WhatsAppCallback onNavigate={handleNavigate} />} />

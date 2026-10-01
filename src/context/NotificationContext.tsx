@@ -17,7 +17,6 @@ import {
   setCachedPreferences,
   isAlertAlreadyDispatchedToday,
   markAlertDispatched,
-  notificationService,
 } from '../services/notificationService';
 
 interface NotificationContextType {
@@ -162,14 +161,15 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   }, [permissionStatus, user, initFCM]);
 
-  // Initialize notificationService & listen to foreground events
+  // Foreground FCM listener
   useEffect(() => {
-    notificationService.initialize();
+    const msg = messaging();
+    if (!msg) return;
 
-    const unsubForeground = notificationService.onForegroundNotification((payload) => {
-      const title = payload.title || 'Pigmy Collection Alert';
-      const body = payload.body || 'New collection update received.';
-      const deepLinkUrl = payload.deepLinkUrl || notificationService.resolveDeepLink(payload.data || {});
+    const unsubscribe = onMessage(msg, (payload) => {
+      const title = payload.notification?.title || 'Pigmy Payment Alert';
+      const body = payload.notification?.body || 'New collection update received.';
+      const clickUrl = payload.data?.click_action || '/entry?filter=pending';
 
       if (preferences.enableSound) playNotificationChime('test');
       if (preferences.enableVibration && navigator.vibrate) navigator.vibrate([100, 50, 100]);
@@ -177,17 +177,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       toastAction({
         title,
         message: body,
-        label: 'View',
+        label: 'Open',
         priority: 'high',
-        type: payload.type === 'payment' ? 'success' : payload.type === 'np' ? 'warning' : 'info',
-        deepLinkUrl,
+        type: 'warning',
         onCommit: () => {
-          navigate(deepLinkUrl);
+          navigate(clickUrl);
         },
       });
     });
 
-    return () => unsubForeground();
+    return () => unsubscribe();
   }, [preferences, toastAction, navigate]);
 
   // Dynamic evaluation of current active alerts
@@ -256,7 +255,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
               customerPhone: alert.customerPhone,
               customerId: alert.customerId,
               alertCategory: alert.alertType,
-              dueDate: alert.endDate ? new Date(alert.endDate).getTime() : undefined,
+              dueDate: alert.endDate,
               diffDays: alert.diffDays,
               timestamp: Date.now(),
             });

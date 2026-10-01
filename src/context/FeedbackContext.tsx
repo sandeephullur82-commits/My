@@ -9,7 +9,6 @@ import { onAuthStateChanged } from 'firebase/auth';
 interface FeedbackContextType {
   toastSuccess: (title: string, message?: string, saveToHistory?: boolean) => void;
   toastError: (title: string, message?: string, onRetry?: () => void, saveToHistory?: boolean) => void;
-  toastSync: (title: string, message?: string, onAction?: () => void) => void;
   toastTransaction: (params: {
     amount: number;
     customerName: string;
@@ -27,7 +26,6 @@ interface FeedbackContextType {
     priority?: 'high' | 'medium' | 'low';
     type?: FintechToastProps['type'];
     saveToHistory?: boolean;
-    deepLinkUrl?: string;
   }) => string | number;
   toastAdvanced: (params: Omit<FintechToastProps, 'onClose' | 'id'>) => string | number;
   dismissToast: (id: string | number) => void;
@@ -63,9 +61,8 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
 
   const saveToStore = useCallback(async (toast: Omit<FintechToastProps, 'onClose' | 'id'>) => {
     if (!auth.currentUser) return;
-    const recordType: NotificationRecord['type'] = toast.type === 'sync' ? 'info' : (toast.type || 'info');
     await firestoreService.addNotification(auth.currentUser.uid, {
-      type: recordType,
+      type: toast.type || 'info',
       priority: toast.priority || 'medium',
       title: toast.title || 'Notification',
       message: toast.message,
@@ -92,12 +89,18 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
       onClose: () => dismissToast(id)
     };
 
-    setHistory(prev => [newToast as any, ...prev].slice(0, 50));
+    setHistory(prev => [newToast, ...prev].slice(0, 50)); // Keep last 50
 
     setToasts(prev => {
-      const next = [newToast, ...prev.filter(t => t.id !== id)];
-      // Keep only top 3 most recent notifications on screen
-      return next.slice(0, 3);
+      // Prioritize and limit active view
+      const next = [...prev, newToast];
+      // Sort by priority (high first)
+      const priorityMap = { high: 0, medium: 1, low: 2 };
+      next.sort((a, b) => (priorityMap[a.priority || 'medium'] || 1) - (priorityMap[b.priority || 'medium'] || 1));
+      
+      // Keep only top 2 most important or newest
+      if (next.length > 2) return next.slice(0, 2);
+      return next;
     });
 
     return id;
@@ -111,24 +114,9 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
       message,
       duration: 4000
     };
-    addToast({ ...toastData, id: Math.random().toString(36).substring(2, 9) });
+    addToast({ ...toastData, id: Math.random().toString(36).substr(2, 9) });
     if (saveToHistory) saveToStore(toastData);
   }, [addToast, saveToStore]);
-
-  const toastSync = useCallback((title: string, message?: string, onAction?: () => void) => {
-    const toastData: Omit<FintechToastProps, 'onClose' | 'id'> = {
-      type: 'sync',
-      priority: 'medium',
-      title,
-      message,
-      duration: 4000,
-      action: onAction ? {
-        label: 'View',
-        onClick: onAction
-      } : undefined
-    };
-    addToast({ ...toastData, id: Math.random().toString(36).substring(2, 9) });
-  }, [addToast]);
 
   const toastError = useCallback((title: string, message?: string, onRetry?: () => void, saveToHistory = false) => {
     const toastData: Omit<FintechToastProps, 'onClose' | 'id'> = {
@@ -136,13 +124,13 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
       priority: 'high',
       title,
       message,
-      duration: 6000,
+      duration: 8000,
       action: onRetry ? {
         label: 'Retry',
         onClick: () => onRetry()
       } : undefined
     };
-    addToast({ ...toastData, id: Math.random().toString(36).substring(2, 9) });
+    addToast({ ...toastData, id: Math.random().toString(36).substr(2, 9) });
     if (saveToHistory) saveToStore(toastData);
   }, [addToast, saveToStore]);
 
@@ -153,14 +141,14 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
     onUndo?: () => void;
     onCommit?: () => void;
   }) => {
-    const id = Math.random().toString(36).substring(2, 9);
+    const id = Math.random().toString(36).substr(2, 9);
     const duration = 4000;
 
     if (params.onCommit) {
       params.onCommit();
     }
     
-    // Save transaction notification to history
+    // Save transaction notification to history immediately
     saveToStore({
       type: 'transaction',
       priority: 'medium',
@@ -177,21 +165,12 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
       amount: params.amount,
       customerName: params.customerName,
       paymentType: params.paymentType,
-      title: 'Payment Collected',
-      message: `₹${params.amount.toLocaleString('en-IN')} received via ${params.paymentType === 'phonepe' ? 'UPI' : 'Cash'}`,
       duration,
-      action: params.onUndo ? {
-        label: 'Undo',
-        isUndo: true,
-        onClick: () => {
-          if (params.onUndo) params.onUndo();
-          dismissToast(id);
-        }
-      } : undefined
     });
 
+    if ('vibrate' in navigator) navigator.vibrate(20);
     return id;
-  }, [addToast, dismissToast, saveToStore]);
+  }, [addToast, saveToStore]);
 
   const toastAction = useCallback((params: {
     title: string;
@@ -203,10 +182,9 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
     priority?: 'high' | 'medium' | 'low';
     type?: FintechToastProps['type'];
     saveToHistory?: boolean;
-    deepLinkUrl?: string;
   }) => {
-    const id = Math.random().toString(36).substring(2, 9);
-    const duration = 4000;
+    const id = Math.random().toString(36).substr(2, 9);
+    const duration = params.priority === 'high' ? 15000 : 6000;
     let isCancelled = false;
 
     const commitTimeout = setTimeout(async () => {
@@ -233,7 +211,6 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
       title: params.title,
       message: params.message,
       duration,
-      deepLinkUrl: params.deepLinkUrl,
       action: {
         label: params.label,
         isUndo: params.isUndo,
@@ -241,15 +218,17 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
           isCancelled = true;
           if (params.onUndo) params.onUndo();
           dismissToast(id);
+          if ('vibrate' in navigator) navigator.vibrate([10, 30, 10]); 
         }
       }
     });
 
+    if ('vibrate' in navigator) navigator.vibrate(20);
     return id;
   }, [addToast, dismissToast, saveToStore]);
 
   const toastAdvanced = useCallback((params: Omit<FintechToastProps, 'onClose' | 'id'>) => {
-    const id = Math.random().toString(36).substring(2, 9);
+    const id = Math.random().toString(36).substr(2, 9);
     return addToast({ ...params, id });
   }, [addToast]);
 
@@ -269,7 +248,6 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
     <FeedbackContext.Provider value={{ 
       toastSuccess, 
       toastError, 
-      toastSync,
       toastTransaction, 
       toastAction, 
       toastAdvanced,
@@ -282,21 +260,6 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
       setCenterOpen
     }}>
       {children}
-
-      {/* Top-Floating Visual Toast Portal */}
-      {typeof document !== 'undefined' && createPortal(
-        <div 
-          aria-live="polite" 
-          className="fixed top-3 left-1/2 -translate-x-1/2 z-[9999] w-full max-w-md px-3 pointer-events-none flex flex-col gap-2"
-        >
-          <AnimatePresence mode="popLayout">
-            {toasts.map((toast) => (
-              <FintechToast key={toast.id} {...toast} />
-            ))}
-          </AnimatePresence>
-        </div>,
-        document.body
-      )}
     </FeedbackContext.Provider>
   );
 }

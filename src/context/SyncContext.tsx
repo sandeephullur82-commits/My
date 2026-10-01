@@ -3,7 +3,6 @@ import { onSnapshotsInSync, onSnapshot, query, collection } from 'firebase/fires
 import { db } from '../lib/firebase';
 import { useAuth } from './AuthContext';
 import { toast } from 'sonner';
-import { notificationService } from '../services/notificationService';
 
 export type SyncStatusType = 'synced' | 'pending' | 'offline';
 
@@ -115,7 +114,6 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     if (prevPending > 0 && pendingCount === 0 && isOnline) {
       toast.success('Synced Successfully');
       setLastSynced(Date.now());
-      notificationService.notifyCollectionSync(prevPending, 0);
     }
 
     setPrevPending(pendingCount);

@@ -1,4 +1,4 @@
-package com.pigmypro.smartcollection;
+package com.pigmy.app;
 
 import com.getcapacitor.BridgeActivity;
 

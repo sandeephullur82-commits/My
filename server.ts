@@ -149,20 +149,6 @@ async function startServer() {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  // Auto-login / Instant Session Token Endpoint
-  app.get("/api/auth/demo-token", async (req, res) => {
-    try {
-      if (!firebaseAdmin) {
-        return res.status(503).json({ error: "Firebase Admin not initialized" });
-      }
-      const token = await firebaseAdmin.auth().createCustomToken("wPl2ArOdESRN0Xt9TzYihOe1C2Y2");
-      return res.json({ token, email: "sandeephullur82@gmail.com" });
-    } catch (err: any) {
-      console.error("[Auth API] Error generating token:", err);
-      return res.status(500).json({ error: err.message || "Failed to create session token" });
-    }
-  });
-
   // WhatsApp Redirect Callback Handler (GET)
   const handleWhatsAppGet = (req: express.Request, res: express.Response) => {
     // Browser redirect callback: safely route back to the client callback page
