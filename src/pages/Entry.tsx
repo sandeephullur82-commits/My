@@ -23,7 +23,9 @@ import {
   TrendingUp,
   Receipt,
   MessageSquare,
-  PlusCircle
+  PlusCircle,
+  History,
+  Bell
 } from 'lucide-react';
 import { CustomerCardSkeleton } from '../components/Skeleton';
 import { toast } from 'sonner';
@@ -33,6 +35,9 @@ import { safeFormat, toSafeMillis } from '../lib/utils';
 import { ReceiptSuccessModal, ReceiptData } from '../components/ReceiptSuccessModal';
 import { triggerWhatsApp } from '../lib/whatsapp';
 import { QuickPaymentModal } from '../components/Entry/QuickPaymentModal';
+import { AuditNPModal } from '../components/Entry/AuditNPModal';
+import { notificationService } from '../services/notificationService';
+import { NotificationSettingsModal } from '../components/Notifications/NotificationSettingsModal';
 
 export function Entry() {
   const { transactions, customers, loading } = useRealtimeData();
@@ -69,9 +74,19 @@ export function Entry() {
   
   // Quick payment modal state for multiple payments on same day
   const [quickPaymentCustomer, setQuickPaymentCustomer] = useState<Customer | null>(null);
+
+  // NP Historical Audit modal state
+  const [auditCustomer, setAuditCustomer] = useState<Customer | null>(null);
+
+  // Notification Center modal state
+  const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [debouncedQuery, setDebouncedQuery] = useState(globalSearch);
+
+  useEffect(() => {
+    notificationService.initialize();
+  }, []);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<any>(null);
@@ -512,33 +527,46 @@ export function Entry() {
             </button>
           </div>
 
-          {/* SEARCH BAR */}
-          <div className="relative group">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary opacity-40 group-focus-within:opacity-100 group-focus-within:text-accent transition-all">
-              <Search size={16} />
+          {/* SEARCH BAR & NOTIFICATION CENTER TRIGGER */}
+          <div className="flex items-center gap-2">
+            <div className="relative group flex-1">
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary opacity-40 group-focus-within:opacity-100 group-focus-within:text-accent transition-all">
+                <Search size={16} />
+              </div>
+              <input 
+                id="entry-search-input"
+                type="text"
+                value={localSearch}
+                onChange={(e) => setLocalSearch(e.target.value)}
+                placeholder="Search Name, ID (003), or Phone..."
+                className="w-full pl-10 pr-10 py-3 bg-card border border-border/60 rounded-xl text-xs sm:text-sm font-medium focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/10 transition-all shadow-sm"
+              />
+              <AnimatePresence>
+                {localSearch && (
+                  <motion.button
+                    key="clear-search"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    onClick={() => setLocalSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-muted flex items-center justify-center rounded-full text-text-secondary hover:bg-border transition-colors"
+                  >
+                    <X size={12} />
+                  </motion.button>
+                )}
+              </AnimatePresence>
             </div>
-            <input 
-              id="entry-search-input"
-              type="text"
-              value={localSearch}
-              onChange={(e) => setLocalSearch(e.target.value)}
-              placeholder="Search Name, ID (003), or Phone..."
-              className="w-full pl-10 pr-10 py-3 bg-card border border-border/60 rounded-xl text-xs sm:text-sm font-medium focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/10 transition-all shadow-sm"
-            />
-            <AnimatePresence>
-              {localSearch && (
-                <motion.button
-                  key="clear-search"
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  onClick={() => setLocalSearch('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-muted flex items-center justify-center rounded-full text-text-secondary hover:bg-border transition-colors"
-                >
-                  <X size={12} />
-                </motion.button>
-              )}
-            </AnimatePresence>
+
+            {/* Android Notification Center Bell */}
+            <button
+              type="button"
+              onClick={() => setIsNotificationModalOpen(true)}
+              className="p-3 rounded-xl bg-card hover:bg-muted border border-border/70 text-text-secondary hover:text-accent flex items-center justify-center shrink-0 transition-all active:scale-95 shadow-sm relative cursor-pointer"
+              title="Android Notification Center & Alert Settings"
+            >
+              <Bell size={18} />
+              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-accent animate-pulse" />
+            </button>
           </div>
         </div>
 
@@ -1075,7 +1103,18 @@ export function Entry() {
 
                         {/* Conversion & Notification Actions */}
                         {customer && (
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap justify-end">
+                            {/* Audit Historical Pending Dates Button */}
+                            <button
+                              type="button"
+                              onClick={() => setAuditCustomer(customer)}
+                              className="px-2.5 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-600 text-purple-600 dark:text-purple-400 hover:text-white border border-purple-500/25 flex items-center gap-1 text-[10px] font-black uppercase tracking-wider active:scale-95 transition-all shadow-xs cursor-pointer"
+                              title="Audit all historical pending dates for this customer"
+                            >
+                              <History size={12} strokeWidth={2.5} />
+                              <span>Audit</span>
+                            </button>
+
                             {/* Convert to Cash */}
                             <button
                               type="button"
@@ -1268,6 +1307,22 @@ export function Entry() {
         onSuccess={(receipt) => {
           setActiveReceipt(receipt);
         }}
+      />
+
+      {/* HISTORICAL NP AUDIT MODAL */}
+      <AuditNPModal
+        isOpen={!!auditCustomer}
+        onClose={() => setAuditCustomer(null)}
+        customer={auditCustomer}
+        transactions={transactions}
+        onSettleNP={handleSettleNP}
+        isSettlingNPId={isSettlingNPId}
+      />
+
+      {/* ANDROID NOTIFICATION CENTER SETTINGS MODAL */}
+      <NotificationSettingsModal
+        isOpen={isNotificationModalOpen}
+        onClose={() => setIsNotificationModalOpen(false)}
       />
 
     </PageContainer>

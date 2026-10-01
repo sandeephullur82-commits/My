@@ -61,8 +61,9 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
 
   const saveToStore = useCallback(async (toast: Omit<FintechToastProps, 'onClose' | 'id'>) => {
     if (!auth.currentUser) return;
+    const recordType: NotificationRecord['type'] = toast.type === 'sync' ? 'info' : (toast.type || 'info');
     await firestoreService.addNotification(auth.currentUser.uid, {
-      type: toast.type || 'info',
+      type: recordType,
       priority: toast.priority || 'medium',
       title: toast.title || 'Notification',
       message: toast.message,
@@ -260,6 +261,21 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
       setCenterOpen
     }}>
       {children}
+
+      {/* Top-Floating Visual Toast Portal */}
+      {typeof document !== 'undefined' && createPortal(
+        <div 
+          aria-live="polite" 
+          className="fixed top-3 left-1/2 -translate-x-1/2 z-[9999] w-full max-w-md px-3 pointer-events-none flex flex-col gap-2"
+        >
+          <AnimatePresence mode="popLayout">
+            {toasts.map((toast) => (
+              <FintechToast key={toast.id} {...toast} />
+            ))}
+          </AnimatePresence>
+        </div>,
+        document.body
+      )}
     </FeedbackContext.Provider>
   );
 }
