@@ -28,7 +28,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="pigmy" />
-                <data android:scheme="com.pigmy.app" />
+                <data android:scheme="com.pigmypro.smartcollection" />
             </intent-filter>
 
         </activity>

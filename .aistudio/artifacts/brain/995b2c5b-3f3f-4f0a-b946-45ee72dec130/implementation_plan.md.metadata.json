@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for FCM and Capacitor Push Notifications initialization, token registration in Firestore & backend, and type-based deep linking for incoming push events.",
-  "updatedAt":  "2026-10-01T14:52:26.832217269Z",
+  "summary":  "Plan to implement the top-floating interactive in-app toast feedback system and update notificationService with FCM-to-Capacitor payload deep linking.",
+  "updatedAt":  "2026-10-01T15:23:13.725644356Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

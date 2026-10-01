@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.pigmy.app',
-  appName: 'Pigmy App',
+  appId: 'com.pigmypro.smartcollection',
+  appName: 'Pigmy Pro',
   webDir: 'dist',
   plugins: {
     LocalNotifications: {

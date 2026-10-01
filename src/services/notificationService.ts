@@ -22,7 +22,7 @@ export interface NotificationLog {
   title: string;
   body: string;
   timestamp: number;
-  type: 'payment' | 'np' | 'morning_route' | 'evening_summary' | 'test' | 'push';
+  type: 'payment' | 'np' | 'morning_route' | 'evening_summary' | 'test' | 'push' | 'sync';
   data?: Record<string, any>;
 }
 
@@ -77,6 +77,14 @@ export interface PaymentAlert {
   endDate: string;
   diffDays: number;
 }
+
+export type ForegroundNotificationCallback = (payload: {
+  title: string;
+  body: string;
+  data?: Record<string, any>;
+  deepLinkUrl?: string;
+  type?: 'payment' | 'np' | 'morning_route' | 'evening_summary' | 'test' | 'push' | 'sync';
+}) => void;
 
 const SETTINGS_KEY = 'pigmy_notification_settings_v1';
 const HISTORY_KEY = 'pigmy_notification_history_v1';
@@ -322,6 +330,7 @@ class NotificationService {
   private history: NotificationLog[] = [];
   private fcmToken: string | null = null;
   private customNavigate: ((url: string) => void) | null = null;
+  private foregroundListeners: Set<ForegroundNotificationCallback> = new Set();
 
   constructor() {
     this.loadSettings();
@@ -361,6 +370,29 @@ class NotificationService {
 
   public setNavigationHandler(navigateFn: (url: string) => void) {
     this.customNavigate = navigateFn;
+  }
+
+  public onForegroundNotification(callback: ForegroundNotificationCallback): () => void {
+    this.foregroundListeners.add(callback);
+    return () => {
+      this.foregroundListeners.delete(callback);
+    };
+  }
+
+  private broadcastForegroundNotification(payload: {
+    title: string;
+    body: string;
+    data?: Record<string, any>;
+    deepLinkUrl?: string;
+    type?: NotificationLog['type'];
+  }) {
+    this.foregroundListeners.forEach((cb) => {
+      try {
+        cb(payload);
+      } catch (err) {
+        console.warn('Error in foreground notification listener:', err);
+      }
+    });
   }
 
   public getSettings(): NotificationSettings {
@@ -411,27 +443,55 @@ class NotificationService {
   }
 
   /**
+   * Resolves deep link URL from payload attributes
+   */
+  public resolveDeepLink(data: Record<string, any> = {}): string {
+    const type = data.type || data.alertCategory || data.notification_type || data.alertType || '';
+    
+    // Explicit custom url or click_action
+    if (data.click_action && typeof data.click_action === 'string' && data.click_action.startsWith('/')) {
+      return data.click_action;
+    }
+    if (data.url && typeof data.url === 'string' && data.url.startsWith('/')) {
+      return data.url;
+    }
+
+    // Receipt / Transaction ID deep link
+    if (data.receiptId || data.transactionId) {
+      const id = data.receiptId || data.transactionId;
+      return `/transactions?id=${encodeURIComponent(id)}`;
+    }
+
+    // Customer specific deep link
+    if (data.customerName) {
+      return `/entry?search=${encodeURIComponent(data.customerName)}`;
+    }
+    if (data.customerId) {
+      return `/entry?customerId=${encodeURIComponent(data.customerId)}`;
+    }
+
+    // Category based routing
+    if (type === 'payment' || type === 'transaction') {
+      return '/transactions';
+    }
+    if (type === 'np' || type === 'overdue') {
+      return '/entry?filter=unpaid';
+    }
+    if (type === 'morning_route' || type === 'due_today' || type === 'upcoming') {
+      return '/entry?filter=pending';
+    }
+    if (type === 'evening_summary' || type === 'sync') {
+      return '/dashboard';
+    }
+
+    return '/dashboard';
+  }
+
+  /**
    * Deep-link action handler based on notification payload type
    */
   public handleNotificationDeepLink(data: Record<string, any> = {}) {
-    const type = data.type || data.alertCategory || data.notification_type || '';
-    let targetUrl = '/dashboard';
-
-    if (type === 'payment' || type === 'np' || type === 'overdue' || type === 'due_today' || type === 'upcoming') {
-      if (data.customerName) {
-        targetUrl = `/entry?search=${encodeURIComponent(data.customerName)}`;
-      } else if (data.customerId) {
-        targetUrl = `/entry?customerId=${encodeURIComponent(data.customerId)}`;
-      } else {
-        targetUrl = '/entry?filter=unpaid';
-      }
-    } else if (type === 'morning_route') {
-      targetUrl = '/entry?filter=pending';
-    } else if (type === 'evening_summary') {
-      targetUrl = '/dashboard';
-    } else if (data.click_action || data.url) {
-      targetUrl = data.click_action || data.url;
-    }
+    const targetUrl = this.resolveDeepLink(data);
 
     if (this.customNavigate) {
       this.customNavigate(targetUrl);
@@ -544,13 +604,38 @@ class NotificationService {
           console.warn('Capacitor Push registration error:', error);
         });
 
+        // Triggered when push arrives while app is in foreground
         await PushNotifications.addListener('pushNotificationReceived', (notification: PushNotificationSchema) => {
-          this.recordLog(
-            notification.title || 'Push Notification',
-            notification.body || '',
-            'push',
-            notification.data
-          );
+          const data = notification.data || {};
+          const title = notification.title || 'Pigmy Collection Alert';
+          const body = notification.body || 'New collection update received.';
+          const deepLinkUrl = this.resolveDeepLink(data);
+
+          this.recordLog(title, body, 'push', data);
+
+          // Trigger in-app toast listener
+          this.broadcastForegroundNotification({
+            title,
+            body,
+            data,
+            deepLinkUrl,
+            type: (data.type as any) || 'push'
+          });
+
+          // Local notifications on native foreground
+          LocalNotifications.schedule({
+            notifications: [{
+              id: Math.floor(Date.now() % 1000000),
+              title,
+              body,
+              channelId: (data.channelId as any) || 'collections_channel',
+              smallIcon: 'ic_stat_icon_config_sample',
+              iconColor: '#10b981',
+              extra: data,
+              schedule: { at: new Date(Date.now() + 100) }
+            }]
+          }).catch((e) => console.warn('Local notification trigger error:', e));
+
           if (this.settings.soundEnabled) {
             playNotificationChime('push');
           }
@@ -577,10 +662,21 @@ class NotificationService {
         const msg = messaging();
         if (msg) {
           onMessage(msg, (payload: MessagePayload) => {
-            const title = payload.notification?.title || payload.data?.title || 'Pigmy Collection Alert';
-            const body = payload.notification?.body || payload.data?.body || 'New collection update received.';
-            
-            this.recordLog(title, body, 'push', payload.data);
+            const data = payload.data || {};
+            const title = payload.notification?.title || data.title || 'Pigmy Collection Alert';
+            const body = payload.notification?.body || data.body || 'New collection update received.';
+            const deepLinkUrl = this.resolveDeepLink(data);
+
+            this.recordLog(title, body, 'push', data);
+
+            // Broadcast to in-app toast listeners for immediate user feedback
+            this.broadcastForegroundNotification({
+              title,
+              body,
+              data,
+              deepLinkUrl,
+              type: (data.type as any) || 'push'
+            });
 
             if (this.settings.soundEnabled) {
               playNotificationChime('push');
@@ -679,7 +775,17 @@ class NotificationService {
     if (!this.settings.enableNotifications) return false;
 
     const notifId = options.id || Math.floor(Date.now() % 100000000);
+    const deepLinkUrl = this.resolveDeepLink(options.extra || {});
     this.recordLog(options.title, options.body, options.type, options.extra);
+
+    // Broadcast to in-app feedback toasts
+    this.broadcastForegroundNotification({
+      title: options.title,
+      body: options.body,
+      data: options.extra,
+      deepLinkUrl,
+      type: options.type
+    });
 
     // 1. Android Capacitor Native Path
     if (Capacitor.isNativePlatform()) {
@@ -713,7 +819,7 @@ class NotificationService {
             body: options.body,
             icon: '/pwa-192x192.png',
             badge: '/pwa-192x192.png',
-            data: options.extra
+            data: { ...options.extra, deepLinkUrl }
           };
           if (this.settings.vibrationEnabled) {
             opts.vibrate = [100, 50, 100];
@@ -774,6 +880,23 @@ class NotificationService {
       channelId: 'np_alerts_channel',
       type: 'np',
       extra: { customerName, amount, dateStr, notification_type: 'np' }
+    });
+  }
+
+  // Cloud & Queue Sync Complete Notification
+  public async notifyCollectionSync(
+    syncedCount: number,
+    totalAmount: number
+  ): Promise<boolean> {
+    const title = `🔄 Collections Synchronized`;
+    const body = `Successfully synced ${syncedCount} collection${syncedCount === 1 ? '' : 's'} (₹${totalAmount.toLocaleString('en-IN')}) to Cloud Ledger.`;
+
+    return this.dispatchNotification({
+      title,
+      body,
+      channelId: 'collections_channel',
+      type: 'sync',
+      extra: { syncedCount, totalAmount, notification_type: 'sync' }
     });
   }
 

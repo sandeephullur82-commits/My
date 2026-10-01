@@ -1,6 +1,6 @@
 {
-	"appId": "com.pigmy.app",
-	"appName": "Pigmy App",
+	"appId": "com.pigmypro.smartcollection",
+	"appName": "Pigmy Pro",
 	"webDir": "dist",
 	"plugins": {
 		"LocalNotifications": {

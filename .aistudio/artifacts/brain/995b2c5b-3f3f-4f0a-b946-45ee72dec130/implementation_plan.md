@@ -1,83 +1,35 @@
-# Implementation Plan: FCM & Capacitor Push Notifications with Deep-Linking
+# Implementation Plan: In-App Toast System & FCM-to-Capacitor Deep Linking
 
-Comprehensive initialization of Firebase Cloud Messaging (FCM) and Capacitor Native Push Notifications in `src/services/notificationService.ts`, complete with multi-platform device token synchronization (Firestore + backend `/api/tokens`), background push event listeners, and type-based deep linking.
-
----
-
-## 1. Confirmed User Decisions
-
-- **Token Storage Strategy**: Dual registration — Store tokens in Firestore under `users/{userId}` (and `deviceTokens` sub-collection) and register with the backend `/api/tokens` endpoint.
-- **Deep Linking Behavior**:
-  - `overdue` / `np` / `payment`: Deep link directly to the customer collection screen (`/entry?search={customerName}` or `/customers?id={customerId}`).
-  - `morning_route`: Deep link to pending collection route (`/entry?filter=pending`).
-  - `evening_summary`: Deep link to dashboard and financial reports (`/dashboard` or `/reports`).
-  - Fallback: Safely navigate to `/dashboard` if the payload or target ID cannot be resolved.
+Build a high-performance, top-floating visual toast system for instant user feedback on collection syncs and receipts, combined with FCM foreground listener and deep-link payload routing in `notificationService.ts`.
 
 ---
 
-## 2. Architecture & Notification Flow
+## Proposed Changes
 
-```
-                               ┌────────────────────────────────────────────────────────┐
-                               │                 Incoming Push Event                    │
-                               └──────────────────────────┬─────────────────────────────┘
-                                                          │
-                             ┌────────────────────────────┴────────────────────────────┐
-                             ▼                                                         ▼
-            [Native Android / Capacitor]                                  [Web Browser / PWA]
-            • PushNotifications listener                                  • Service Worker (`firebase-messaging-sw.js`)
-            • Background intent / notification tray                       • FCM `onMessage` / Web Push API
-                             │                                                         │
-                             └────────────────────────────┬────────────────────────────┘
-                                                          │
-                                                          ▼
-                                          Notification Type Router
-                 ┌────────────────────────────────────────┼──────────────────────────────────────┐
-                 ▼                                        ▼                                      ▼
-     [Payment / NP / Overdue]                     [Morning Route]                        [Evening Summary]
-  ➔ `/entry?search={customerName}`             ➔ `/entry?tab=pending`                   ➔ `/dashboard`
-```
+### 1. In-App Visual Toast Feedback System (`src/components/FintechToast.tsx` & `src/context/FeedbackContext.tsx`)
+- **Top-Floating Interactive Banner**: Rendered in a fixed top-center viewport portal with high z-index, frosted glass backdrop, and fintech color accents (Emerald for payments, Amber for unpaid/overdue, Indigo for syncs/reports).
+- **Auto-Dismiss & Interactions**:
+  - 4-second default timeout with subtle countdown progress bar.
+  - Pause auto-dismiss on pointer hover / touch.
+  - Swipe-to-dismiss drag gestures powered by `motion/react`.
+  - Action buttons (e.g. "View Ledger", "Print Receipt", "Undo", "Navigate").
+  - Haptic feedback (`navigator.vibrate`) and audio chimes on event trigger.
 
----
+### 2. Update `src/services/notificationService.ts`
+- **FCM Foreground Listener & In-App Bridge**:
+  - Listen for Web & native FCM payloads when the app is active.
+  - Dispatch both native Capacitor Local Notification UI and in-app visual toast banners simultaneously.
+- **Deep-Link Payload Field Mapper**:
+  - Map `customerId`, `customerName`, `amount`, `paymentType`, `alertType`, `receiptId`, and `url` to targeted app views (`/entry`, `/transactions`, `/dashboard`, `/reports`).
+  - Broadcast incoming push events to registered UI listeners for instant reactivity.
 
-## 3. Proposed Changes & Implementation Steps
-
-### Phase 1: `src/services/notificationService.ts` Implementation
-- **FCM Web Initialization**:
-  - Safe import of `messaging()` from `../lib/firebase`.
-  - Fetch FCM Web token with `getToken` using VAPID key (`VITE_FIREBASE_VAPID_KEY`).
-  - Foreground message handler with `onMessage` dispatching chimes, vibration, and in-app feedback.
-- **Capacitor Push Notifications Initialization**:
-  - `PushNotifications.requestPermissions()` & `PushNotifications.register()`.
-  - Event listeners:
-    - `registration`: Extracts device token and triggers token registration.
-    - `registrationError`: Logs error details with clear diagnostic feedback.
-    - `pushNotificationReceived`: Logs to local notification history and triggers local channel chime.
-    - `pushNotificationActionPerformed`: Handles notification tray click and performs type-based deep-linking.
-- **Token Registration Engine**:
-  - `registerDeviceToken(userId, token, platform)`:
-    - Writes device token to Firestore (`users/{userId}/deviceTokens/{tokenId}`).
-    - Posts token to `/api/tokens` backend endpoint.
-- **Type-Based Deep-Linking Engine**:
-  - `handleNotificationClick(data)`: Resolves type (`payment`, `np`, `overdue`, `morning_route`, `evening_summary`) and routes the user safely to the corresponding screen.
-- **Maintain App-Wide Compatibility**:
-  - Preserve all exported interfaces, helper methods (`evaluatePaymentAlerts`, `playNotificationChime`, `dispatchWebPush`, etc.), and singleton methods.
-
-### Phase 2: Background Service Worker (`public/firebase-messaging-sw.js`)
-- Ensure standard FCM service worker is present in `public/` to handle background web push events, parse custom notification payloads, and handle `notificationclick` navigation to the target route.
-
-### Phase 3: Backend Token Route Verification
-- Ensure `server.ts` exposes `/api/tokens` endpoint to persist and validate active device push tokens.
+### 3. App-Level Sync & Receipt Feedback
+- Connect collection transactions, offline queue syncs, and manual receipts so each generates crisp, non-intrusive in-app visual feedback with quick action links.
 
 ---
 
-## 4. Verification Plan
+## Verification Plan
 
-### Automated Verification
-- Run `lint_applet` to guarantee type safety with Firebase Messaging and Capacitor Push APIs.
-- Run `compile_applet` to verify clean production build output.
-
-### Interactive Device Verification
-1. Open Notification Settings / Drawer and verify permissions are requested.
-2. Verify token generation in console / Firestore and successful `/api/tokens` sync.
-3. Test dispatch of local and push notification payload with `type: 'payment'` to verify deep linking to the customer's entry screen upon click.
+1. **Compilation & Linting**: Run `lint_applet` and `compile_applet`.
+2. **Capacitor Sync**: Run `npx cap sync android` to ensure all native push and notification plugins are up to date.
+3. **Interactive Testing**: Verify test notification triggers, foreground FCM message handling, action clicks, auto-dismiss, and swipe-to-dismiss.

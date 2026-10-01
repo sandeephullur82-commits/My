@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Moon, Sun, LogOut, User, 
   ShieldCheck, Palette, LayoutDashboard, 
-  ChevronRight, ToggleLeft, ToggleRight, Lock, Delete
+  ChevronRight, ToggleLeft, ToggleRight, Lock, Delete,
+  Bell
 } from 'lucide-react';
 import { useSecurity } from '../context/SecurityContext';
 import { useTheme } from '../components/ThemeProvider';
@@ -13,6 +15,7 @@ import { useFeedback } from '../context/FeedbackContext';
 import { BottomSheet } from '../components/BottomSheet';
 
 export function Settings() {
+  const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const { isCompact, toggleCompact } = useUI();
   const { user, logout } = useAuth();
@@ -102,6 +105,24 @@ export function Settings() {
               <div className="flex items-center gap-2">
                  {isCompact ? <ToggleRight size={24} className="text-accent" /> : <ToggleLeft size={24} className="text-text-secondary opacity-30" />}
               </div>
+            </button>
+
+            <button
+              onClick={() => navigate('/settings/notifications')}
+              className="w-full flex items-center justify-between p-4 rounded-2xl hover:bg-bg transition-colors"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+                  <Bell size={20} />
+                </div>
+                <div className="text-left">
+                  <p className="font-bold text-sm text-text-primary tracking-tight">Push Notifications</p>
+                  <p className="text-[10px] font-medium text-text-secondary opacity-60 uppercase tracking-widest leading-none mt-1">
+                    Receipts, NP & Route Alerts
+                  </p>
+                </div>
+              </div>
+              <ChevronRight size={16} className="text-text-secondary opacity-30" />
             </button>
           </div>
         </div>

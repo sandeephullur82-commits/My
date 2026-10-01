@@ -17,6 +17,7 @@ import {
   setCachedPreferences,
   isAlertAlreadyDispatchedToday,
   markAlertDispatched,
+  notificationService,
 } from '../services/notificationService';
 
 interface NotificationContextType {
@@ -161,15 +162,14 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   }, [permissionStatus, user, initFCM]);
 
-  // Foreground FCM listener
+  // Initialize notificationService & listen to foreground events
   useEffect(() => {
-    const msg = messaging();
-    if (!msg) return;
+    notificationService.initialize();
 
-    const unsubscribe = onMessage(msg, (payload) => {
-      const title = payload.notification?.title || 'Pigmy Payment Alert';
-      const body = payload.notification?.body || 'New collection update received.';
-      const clickUrl = payload.data?.click_action || '/entry?filter=pending';
+    const unsubForeground = notificationService.onForegroundNotification((payload) => {
+      const title = payload.title || 'Pigmy Collection Alert';
+      const body = payload.body || 'New collection update received.';
+      const deepLinkUrl = payload.deepLinkUrl || notificationService.resolveDeepLink(payload.data || {});
 
       if (preferences.enableSound) playNotificationChime('test');
       if (preferences.enableVibration && navigator.vibrate) navigator.vibrate([100, 50, 100]);
@@ -177,16 +177,17 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       toastAction({
         title,
         message: body,
-        label: 'Open',
+        label: 'View',
         priority: 'high',
-        type: 'warning',
+        type: payload.type === 'payment' ? 'success' : payload.type === 'np' ? 'warning' : 'info',
+        deepLinkUrl,
         onCommit: () => {
-          navigate(clickUrl);
+          navigate(deepLinkUrl);
         },
       });
     });
 
-    return () => unsubscribe();
+    return () => unsubForeground();
   }, [preferences, toastAction, navigate]);
 
   // Dynamic evaluation of current active alerts
