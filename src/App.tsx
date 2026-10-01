@@ -26,6 +26,7 @@ import { NotificationProvider } from './context/NotificationContext';
 import { FeedbackProvider } from './context/FeedbackContext';
 import { LockScreen } from './components/LockScreen';
 import { PageContainer } from './components/PageContainer';
+import { notificationService } from './services/notificationService';
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -34,6 +35,12 @@ function AppContent() {
   const navigate = useNavigate();
   const location = useLocation();
   const [isSplashDone, setIsSplashDone] = useState(false);
+
+  React.useEffect(() => {
+    notificationService.setNavigationHandler((url: string) => {
+      navigate(url);
+    });
+  }, [navigate]);
 
   // Derive currentTab from location (mapping callback paths gracefully to entry)
   const rawTab = location.pathname.split('/')[1] || 'dashboard';

@@ -10,6 +10,7 @@ import { useSwipeActions } from '../../hooks/useSwipeActions';
 import { SwipeActionBackground } from '../SwipeActionBackground';
 import { ContactPermissionModal } from '../ContactPermissionModal';
 import { playSuccessSound } from '../../lib/sound';
+import { notificationService } from '../../services/notificationService';
 
 interface CustomerCardProps {
   customer: Customer;
@@ -252,6 +253,13 @@ export const CustomerCard = React.memo(function CustomerCard({
       if (navigator.vibrate) navigator.vibrate(40);
       playSuccessSound();
 
+      // Dispatch to Android Notification Center
+      if (isNP) {
+        notificationService.notifyNPLogged(customer.name, targetAmount, todayStr);
+      } else {
+        notificationService.notifyPaymentReceived(customer.name, targetAmount, actualType as 'cash' | 'phonepe', newBal);
+      }
+
       if (onSuccess) {
         onSuccess(newTx, previousBal, newBal);
       }
@@ -276,32 +284,18 @@ export const CustomerCard = React.memo(function CustomerCard({
     const dateLabel = pendingNPDateLabel;
 
     try {
-      // Update existing NP record to paid
-      await firestoreService.updateTransaction(
-        targetNP.id,
-        {
-          type: payType,
-          status: 'paid',
-          amount: targetAmount,
-          paidAt: Date.now(),
-          notes: `NP for ${targetNP.date || dateLabel} Cleared via ${payType.toUpperCase()}`
-        },
+      // Convert existing NP record to paid Cash or UPI
+      const settlementTx = await firestoreService.convertNPTransaction(
         targetNP,
         customer,
-        `Clear NP (${targetNP.date})`
+        payType
       );
-
-      const settlementTx: Transaction = {
-        ...targetNP,
-        type: payType,
-        status: 'paid',
-        amount: targetAmount,
-        paidAt: Date.now(),
-        notes: `NP for ${targetNP.date || dateLabel} Cleared via ${payType.toUpperCase()}`
-      };
 
       if (navigator.vibrate) navigator.vibrate(50);
       playSuccessSound();
+
+      // Dispatch payment notification for cleared NP
+      notificationService.notifyPaymentReceived(customer.name, targetAmount, payType, newBal);
 
       // Show receipt popup immediately for this NP clearance
       if (onSuccess) {

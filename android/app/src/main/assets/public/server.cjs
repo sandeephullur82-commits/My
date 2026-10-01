@@ -1,41 +1,57 @@
-import express from "express";
-import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
-import { createServer as createViteServer } from "vite";
-import admin from "firebase-admin";
-import cron from "node-cron";
-import dotenv from "dotenv";
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 
-dotenv.config();
-
-const currentFilename = typeof import.meta !== 'undefined' && import.meta.url ? fileURLToPath(import.meta.url) : (typeof __filename !== 'undefined' ? __filename : '');
-const currentDirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(currentFilename);
-
-// Helper to parse Firebase Service Account JSON supporting single quotes, base64, and escaped strings
-function parseFirebaseServiceAccount(raw?: string): any {
+// server.ts
+var import_express = __toESM(require("express"), 1);
+var import_path = __toESM(require("path"), 1);
+var import_fs = __toESM(require("fs"), 1);
+var import_url = require("url");
+var import_vite = require("vite");
+var import_firebase_admin = __toESM(require("firebase-admin"), 1);
+var import_node_cron = __toESM(require("node-cron"), 1);
+var import_dotenv = __toESM(require("dotenv"), 1);
+var import_meta = {};
+import_dotenv.default.config();
+var currentFilename = typeof import_meta !== "undefined" && import_meta.url ? (0, import_url.fileURLToPath)(import_meta.url) : typeof __filename !== "undefined" ? __filename : "";
+var currentDirname = typeof __dirname !== "undefined" ? __dirname : import_path.default.dirname(currentFilename);
+function parseFirebaseServiceAccount(raw) {
   if (!raw) return null;
   let str = raw.trim();
-
-  // 1. Check if base64 encoded
-  if (!str.startsWith('{') && !str.startsWith('"') && !str.startsWith("'")) {
+  if (!str.startsWith("{") && !str.startsWith('"') && !str.startsWith("'")) {
     try {
-      const decoded = Buffer.from(str, 'base64').toString('utf-8');
-      if (decoded.trim().startsWith('{')) {
+      const decoded = Buffer.from(str, "base64").toString("utf-8");
+      if (decoded.trim().startsWith("{")) {
         str = decoded.trim();
       }
     } catch {
-      // ignore
     }
   }
-
-  // 2. Strip outer enclosing quotes if stringified twice
-  if ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
+  if (str.startsWith('"') && str.endsWith('"') || str.startsWith("'") && str.endsWith("'")) {
     try {
       const unquoted = JSON.parse(str);
-      if (typeof unquoted === 'object' && unquoted !== null) {
+      if (typeof unquoted === "object" && unquoted !== null) {
         if (unquoted.private_key) {
-          unquoted.private_key = unquoted.private_key.replace(/\\n/g, '\n');
+          unquoted.private_key = unquoted.private_key.replace(/\\n/g, "\n");
         }
         return unquoted;
       }
@@ -44,112 +60,93 @@ function parseFirebaseServiceAccount(raw?: string): any {
       str = str.slice(1, -1);
     }
   }
-
-  // 3. Attempt standard JSON.parse
   try {
     const parsed = JSON.parse(str);
-    if (parsed && typeof parsed === 'object') {
+    if (parsed && typeof parsed === "object") {
       if (parsed.private_key) {
-        parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+        parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
       }
       return parsed;
     }
   } catch {
-    // 4. Handle JS object literal / single-quoted JSON (e.g., {'type': 'service_account', ...})
     try {
       const parsed = new Function(`"use strict"; return (${str});`)();
-      if (parsed && typeof parsed === 'object') {
+      if (parsed && typeof parsed === "object") {
         if (parsed.private_key) {
-          parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+          parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
         }
         return parsed;
       }
     } catch {
-      // 5. Try regex normalization of quotes
       try {
-        const doubleQuoted = str
-          .replace(/([{,]\s*)'([^']+)'(\s*:)/g, '$1"$2"$3')
-          .replace(/:\s*'([^']*)'/g, ': "$1"');
+        const doubleQuoted = str.replace(/([{,]\s*)'([^']+)'(\s*:)/g, '$1"$2"$3').replace(/:\s*'([^']*)'/g, ': "$1"');
         const parsed = JSON.parse(doubleQuoted);
-        if (parsed && typeof parsed === 'object') {
+        if (parsed && typeof parsed === "object") {
           if (parsed.private_key) {
-            parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+            parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
           }
           return parsed;
         }
       } catch {
-        // give up
       }
     }
   }
   return null;
 }
-
-// Initialize Firebase Admin
-let firebaseAdmin: admin.app.App | null = null;
-
+var firebaseAdmin = null;
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   try {
     const serviceAccount = parseFirebaseServiceAccount(process.env.FIREBASE_SERVICE_ACCOUNT);
     if (serviceAccount && serviceAccount.project_id) {
-      firebaseAdmin = admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
+      firebaseAdmin = import_firebase_admin.default.initializeApp({
+        credential: import_firebase_admin.default.credential.cert(serviceAccount)
       });
       console.log("Firebase Admin Initialized with Service Account");
     } else {
       console.warn("FIREBASE_SERVICE_ACCOUNT could not be resolved into a valid credentials object. Falling back to default credentials.");
       try {
-        firebaseAdmin = admin.initializeApp();
+        firebaseAdmin = import_firebase_admin.default.initializeApp();
       } catch (err) {
         console.warn("Firebase Admin default initialization failed:", err);
       }
     }
-  } catch (e: any) {
+  } catch (e) {
     console.warn("Failed to initialize Firebase Admin with service account:", e?.message || e);
     try {
-      firebaseAdmin = admin.initializeApp(); 
+      firebaseAdmin = import_firebase_admin.default.initializeApp();
     } catch (err) {
       console.warn("Firebase Admin default initialization failed:", err);
     }
   }
 } else {
-  // Basic initialization if no service account
   try {
-    firebaseAdmin = admin.initializeApp();
+    firebaseAdmin = import_firebase_admin.default.initializeApp();
     console.log("Firebase Admin Initialized with Default Credentials");
   } catch (e) {
     console.warn("Firebase Admin credentials not provided. Most backend admin features will be dormant until configured.");
   }
 }
-
 async function startServer() {
-  const app = express();
-  const PORT = 3000;
-
-  let db: admin.firestore.Firestore | null = null;
-  let messaging: admin.messaging.Messaging | null = null;
-
-  if (admin.apps.length > 0) {
+  const app = (0, import_express.default)();
+  const PORT = 3e3;
+  let db = null;
+  let messaging = null;
+  if (import_firebase_admin.default.apps.length > 0) {
     try {
-      db = admin.firestore();
+      db = import_firebase_admin.default.firestore();
     } catch (e) {
       console.warn("Firestore not available in Firebase Admin:", e);
     }
     try {
-      messaging = admin.messaging();
+      messaging = import_firebase_admin.default.messaging();
     } catch (e) {
       console.warn("Firebase Messaging not available in Firebase Admin:", e);
     }
   }
-
-  // API Routes
-  app.use(express.json());
-
+  app.use(import_express.default.json());
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", timestamp: new Date().toISOString() });
+    res.json({ status: "ok", timestamp: (/* @__PURE__ */ new Date()).toISOString() });
   });
-
-  // Auto-login / Instant Session Token Endpoint
   app.get("/api/auth/demo-token", async (req, res) => {
     try {
       if (!firebaseAdmin) {
@@ -157,40 +154,31 @@ async function startServer() {
       }
       const token = await firebaseAdmin.auth().createCustomToken("wPl2ArOdESRN0Xt9TzYihOe1C2Y2");
       return res.json({ token, email: "sandeephullur82@gmail.com" });
-    } catch (err: any) {
+    } catch (err) {
       console.error("[Auth API] Error generating token:", err);
       return res.status(500).json({ error: err.message || "Failed to create session token" });
     }
   });
-
-  // WhatsApp Redirect Callback Handler (GET)
-  const handleWhatsAppGet = (req: express.Request, res: express.Response) => {
-    // Browser redirect callback: safely route back to the client callback page
-    const queryString = new URLSearchParams(req.query as Record<string, string>).toString();
+  const handleWhatsAppGet = (req, res) => {
+    const queryString = new URLSearchParams(req.query).toString();
     const targetUrl = `/whatsapp/callback${queryString ? `?${queryString}` : ""}`;
     return res.redirect(targetUrl);
   };
-
-  // WhatsApp Webhook & Callback Event Receiver (POST)
-  const handleWhatsAppPost = (req: express.Request, res: express.Response) => {
+  const handleWhatsAppPost = (req, res) => {
     console.log("[WhatsApp Webhook] Received POST event:", JSON.stringify(req.body));
     return res.status(200).json({ status: "EVENT_RECEIVED", success: true });
   };
-
   const whatsappApiRoutes = [
     "/api/whatsapp/callback",
     "/api/whatsapp/webhook",
     "/api/whatsapp",
     "/api/callback",
-    "/api/webhook",
+    "/api/webhook"
   ];
-
   whatsappApiRoutes.forEach((route) => {
     app.get(route, handleWhatsAppGet);
     app.post(route, handleWhatsAppPost);
   });
-
-  // Serve Messaging Service Worker with injected environment variables
   app.get("/firebase-messaging-sw.js", (req, res) => {
     const swContent = `
       importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
@@ -240,17 +228,14 @@ async function startServer() {
     res.setHeader("Content-Type", "application/javascript");
     res.send(swContent);
   });
-
-  // Store FCM Token
   app.post("/api/tokens", async (req, res) => {
     const { token, userId } = req.body;
     if (!token || !userId) return res.status(400).json({ error: "Missing token or userId" });
     if (!db) return res.status(503).json({ error: "Database not connected" });
-
     try {
       await db.collection("users").doc(userId).collection("fcmTokens").doc(token).set({
         token,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: import_firebase_admin.default.firestore.FieldValue.serverTimestamp(),
         deviceInfo: req.headers["user-agent"]
       });
       res.json({ success: true });
@@ -259,74 +244,61 @@ async function startServer() {
       res.status(500).json({ error: "Failed to store token" });
     }
   });
-
-  // Test Notification Endpoint
   app.post("/api/notifications/test", async (req, res) => {
     const { userId, token } = req.body;
     if (!userId) return res.status(400).json({ error: "Missing userId" });
     if (!messaging) return res.status(503).json({ error: "Messaging not configured" });
-
     try {
-      const title = "🔔 Payment Reminder Test";
+      const title = "\u{1F514} Payment Reminder Test";
       const body = "Push notifications are active for Pigmy Collection! You will receive timely alerts for upcoming and overdue customer payments.";
-      
       if (token) {
         await messaging.send({
           token,
           notification: { title, body },
-          data: { click_action: '/settings' },
+          data: { click_action: "/settings" },
           webpush: {
             notification: {
-              icon: '/pwa-192x192.png',
-              badge: '/favicon.ico',
+              icon: "/pwa-192x192.png",
+              badge: "/favicon.ico"
             }
           }
         });
       } else {
-        await sendNotificationToUser(userId, title, body, { click_action: '/settings' });
+        await sendNotificationToUser(userId, title, body, { click_action: "/settings" });
       }
-
       res.json({ success: true, message: "Test notification dispatched" });
     } catch (error) {
       console.error("Error sending test notification:", error);
       res.status(500).json({ error: "Failed to send test notification" });
     }
   });
-
-  // Helper to send notifications to a user
-  const sendNotificationToUser = async (userId: string, title: string, body: string, data = {}) => {
+  const sendNotificationToUser = async (userId, title, body, data = {}) => {
     if (!db || !messaging) return;
     try {
       const tokensSnap = await db.collection("users").doc(userId).collection("fcmTokens").get();
-      const tokens = tokensSnap.docs.map(d => d.id);
-
+      const tokens = tokensSnap.docs.map((d) => d.id);
       if (tokens.length === 0) return;
-
-      const message: admin.messaging.MulticastMessage = {
+      const message = {
         tokens,
         notification: { title, body },
-        data: { ...data, click_action: (data as any).click_action || '/dashboard' },
+        data: { ...data, click_action: data.click_action || "/dashboard" },
         webpush: {
           notification: {
-            icon: '/pwa-192x192.png',
-            badge: '/favicon.ico'
+            icon: "/pwa-192x192.png",
+            badge: "/favicon.ico"
           }
         }
       };
-
       const response = await messaging.sendEachForMulticast(message);
-      
-      // Clean up invalid tokens
       if (response.failureCount > 0) {
-        const failedTokens: string[] = [];
+        const failedTokens = [];
         response.responses.forEach((resp, idx) => {
           if (!resp.success) {
             failedTokens.push(tokens[idx]);
           }
         });
-        
         const cleanupBatch = db.batch();
-        failedTokens.forEach(t => {
+        failedTokens.forEach((t) => {
           cleanupBatch.delete(db.collection("users").doc(userId).collection("fcmTokens").doc(t));
         });
         await cleanupBatch.commit();
@@ -335,58 +307,42 @@ async function startServer() {
       console.error(`Error sending notification to user ${userId}:`, error);
     }
   };
-
-  // Triggers Logic: Evaluates upcoming due dates and overdue payments based on customer 'endDate' and 'pending'
   const checkPaymentsAndRemind = async () => {
     if (!db) return;
     console.log("Running Payment Reminders & Due Date Check...");
     try {
       const usersSnap = await db.collection("users").get();
-      const now = new Date();
+      const now = /* @__PURE__ */ new Date();
       const todayDateOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-
       for (const userDoc of usersSnap.docs) {
         const userId = userDoc.id;
-        
-        // Use standard collection query per user to avoid collectionGroup composite index errors
-        const customersSnap = await db.collection("users").doc(userId).collection("customers")
-          .where("isDeleted", "==", false).get();
-          
-        const customerList = customersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-        // Fetch user preferences if available
+        const customersSnap = await db.collection("users").doc(userId).collection("customers").where("isDeleted", "==", false).get();
+        const customerList = customersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         let prefs = {
           enabled: true,
           upcomingReminders: true,
           upcomingReminderDays: [3, 1, 0],
           overdueReminders: true,
-          minimumPendingAmount: 0,
+          minimumPendingAmount: 0
         };
-
         try {
           const prefDoc = await db.collection("users").doc(userId).collection("settings").doc("notifications").get();
           if (prefDoc.exists) {
             prefs = { ...prefs, ...prefDoc.data() };
           }
         } catch (e) {
-          // fallback to defaults
         }
-
         if (!prefs.enabled) continue;
-
-        const upcomingList: any[] = [];
-        const dueTodayList: any[] = [];
-        const overdueList: any[] = [];
-
-        customerList.forEach((c: any) => {
-          const pending = c.pending !== undefined ? c.pending : ((c.loan || 0) - (c.paid || 0));
+        const upcomingList = [];
+        const dueTodayList = [];
+        const overdueList = [];
+        customerList.forEach((c) => {
+          const pending = c.pending !== void 0 ? c.pending : (c.loan || 0) - (c.paid || 0);
           if (pending <= (prefs.minimumPendingAmount || 0)) return;
           if (!c.endDate) return;
-
           const endDateTime = new Date(c.endDate);
           const endDateOnly = new Date(endDateTime.getFullYear(), endDateTime.getMonth(), endDateTime.getDate()).getTime();
-          const diffDays = Math.round((endDateOnly - todayDateOnly) / (1000 * 60 * 60 * 24));
-
+          const diffDays = Math.round((endDateOnly - todayDateOnly) / (1e3 * 60 * 60 * 24));
           if (diffDays > 0 && prefs.upcomingReminders && prefs.upcomingReminderDays.includes(diffDays)) {
             upcomingList.push({ ...c, diffDays, pending });
           } else if (diffDays === 0 && prefs.upcomingReminders && prefs.upcomingReminderDays.includes(0)) {
@@ -395,37 +351,31 @@ async function startServer() {
             overdueList.push({ ...c, diffDays, daysOverdue: Math.abs(diffDays), pending });
           }
         });
-
-        // 1. Dispatch Due Today alerts
         if (dueTodayList.length > 0) {
           const totalPending = dueTodayList.reduce((s, c) => s + c.pending, 0);
-          const title = `🚨 Loan Due Today (${dueTodayList.length})`;
-          const body = `${dueTodayList.length === 1 ? dueTodayList[0].name : `${dueTodayList.length} customers`} maturity date is today! Total ₹${totalPending.toLocaleString('en-IN')}.`;
-          await sendNotificationToUser(userId, title, body, { 
-            type: 'due_today',
-            click_action: '/notifications?filter=due_soon' 
+          const title = `\u{1F6A8} Loan Due Today (${dueTodayList.length})`;
+          const body = `${dueTodayList.length === 1 ? dueTodayList[0].name : `${dueTodayList.length} customers`} maturity date is today! Total \u20B9${totalPending.toLocaleString("en-IN")}.`;
+          await sendNotificationToUser(userId, title, body, {
+            type: "due_today",
+            click_action: "/notifications?filter=due_soon"
           });
         }
-
-        // 2. Dispatch Upcoming Due Date alerts
         if (upcomingList.length > 0) {
           const totalPending = upcomingList.reduce((s, c) => s + c.pending, 0);
-          const title = `⏳ Payment Reminders (${upcomingList.length} Upcoming)`;
-          const body = `${upcomingList.length} customer loan${upcomingList.length > 1 ? 's are' : ' is'} approaching end date. Total ₹${totalPending.toLocaleString('en-IN')}.`;
-          await sendNotificationToUser(userId, title, body, { 
-            type: 'upcoming',
-            click_action: '/notifications?filter=due_soon' 
+          const title = `\u23F3 Payment Reminders (${upcomingList.length} Upcoming)`;
+          const body = `${upcomingList.length} customer loan${upcomingList.length > 1 ? "s are" : " is"} approaching end date. Total \u20B9${totalPending.toLocaleString("en-IN")}.`;
+          await sendNotificationToUser(userId, title, body, {
+            type: "upcoming",
+            click_action: "/notifications?filter=due_soon"
           });
         }
-
-        // 3. Dispatch Overdue alerts
         if (overdueList.length > 0) {
           const totalPending = overdueList.reduce((s, c) => s + c.pending, 0);
-          const title = `⚠️ Overdue Payment Alert (${overdueList.length})`;
-          const body = `${overdueList.length} customer${overdueList.length > 1 ? 's are' : ''} past maturity end date. Outstanding ₹${totalPending.toLocaleString('en-IN')}.`;
-          await sendNotificationToUser(userId, title, body, { 
-            type: 'overdue',
-            click_action: '/notifications?filter=overdue' 
+          const title = `\u26A0\uFE0F Overdue Payment Alert (${overdueList.length})`;
+          const body = `${overdueList.length} customer${overdueList.length > 1 ? "s are" : ""} past maturity end date. Outstanding \u20B9${totalPending.toLocaleString("en-IN")}.`;
+          await sendNotificationToUser(userId, title, body, {
+            type: "overdue",
+            click_action: "/notifications?filter=overdue"
           });
         }
       }
@@ -433,82 +383,61 @@ async function startServer() {
       console.error("Error in checkPaymentsAndRemind:", err);
     }
   };
-
-  // Manual Trigger Endpoint
   app.post("/api/notifications/scan-and-trigger", async (req, res) => {
     if (!db) return res.status(503).json({ error: "Database not connected" });
     try {
       await checkPaymentsAndRemind();
       res.json({ success: true, message: "Payment check completed" });
-    } catch (e: any) {
+    } catch (e) {
       res.status(500).json({ error: e.message });
     }
   });
-
   const checkUnsettledAndRemind = async () => {
     if (!db) return;
     console.log("Running Unsettled check...");
     try {
       const usersSnap = await db.collection("users").get();
-      
       for (const userDoc of usersSnap.docs) {
         const userId = userDoc.id;
-        // Use standard collection query per user to avoid collectionGroup composite index errors
-        const entriesSnap = await db.collection("users").doc(userId).collection("entries")
-          .where("status", "==", "unsettled")
-          .where("isDeleted", "==", false)
-          .get();
-        
+        const entriesSnap = await db.collection("users").doc(userId).collection("entries").where("status", "==", "unsettled").where("isDeleted", "==", false).get();
         let count = 0;
         let total = 0;
-        
-        entriesSnap.docs.forEach(doc => {
+        entriesSnap.docs.forEach((doc) => {
           const tx = doc.data();
           count++;
           total += tx.amount;
         });
-
         if (count > 0) {
-          const title = "📑 Unsettled Ledger Reminder";
-          const body = `You have ${count} unsettled entries totaling ₹${total.toLocaleString('en-IN')}. Tap to clear.`;
-          await sendNotificationToUser(userId, title, body, { type: 'unsettled' });
+          const title = "\u{1F4D1} Unsettled Ledger Reminder";
+          const body = `You have ${count} unsettled entries totaling \u20B9${total.toLocaleString("en-IN")}. Tap to clear.`;
+          await sendNotificationToUser(userId, title, body, { type: "unsettled" });
         }
       }
     } catch (err) {
       console.error("Error in checkUnsettledAndRemind:", err);
     }
   };
-
-  // Morning Reminder: 9:00 AM (Checks payments and sends daily reminders)
-  cron.schedule("0 9 * * *", async () => {
+  import_node_cron.default.schedule("0 9 * * *", async () => {
     console.log("Morning reminder trigger");
     await checkPaymentsAndRemind();
   }, { timezone: "Asia/Kolkata" });
-
-  // Evening Summary: 7:00 PM
-  cron.schedule("0 19 * * *", async () => {
+  import_node_cron.default.schedule("0 19 * * *", async () => {
     console.log("Evening summary trigger");
     await checkUnsettledAndRemind();
   }, { timezone: "Asia/Kolkata" });
-
-  // Hourly Check for Upcoming and Overdue Payments
-  cron.schedule("0 * * * *", async () => {
+  import_node_cron.default.schedule("0 * * * *", async () => {
     await checkPaymentsAndRemind();
   });
-
-  // Vite Middleware
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
+    const vite = await (0, import_vite.createServer)({
       server: { middlewareMode: true },
-      appType: "spa",
+      appType: "spa"
     });
     app.use(vite.middlewares);
-
-    // Fallback for any client route to prevent 404 in dev
     app.use("*", async (req, res, next) => {
       if (req.method === "GET" && !req.path.startsWith("/api/")) {
         try {
-          const template = fs.readFileSync(path.join(process.cwd(), "index.html"), "utf-8");
+          const template = import_fs.default.readFileSync(import_path.default.join(process.cwd(), "index.html"), "utf-8");
           const html = await vite.transformIndexHtml(req.originalUrl || req.url, template);
           res.status(200).set({ "Content-Type": "text/html" }).end(html);
         } catch (e) {
@@ -519,16 +448,15 @@ async function startServer() {
       }
     });
   } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    const distPath = import_path.default.join(process.cwd(), "dist");
+    app.use(import_express.default.static(distPath));
     app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      res.sendFile(import_path.default.join(distPath, "index.html"));
     });
   }
-
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
-
 startServer();
+//# sourceMappingURL=server.cjs.map

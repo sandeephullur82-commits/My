@@ -418,8 +418,8 @@ export const firestoreService = {
 
         // Date fields handling
         const nowServer = serverTimestamp();
-        let newPaidAt = currentTx.paidAt;
-        let newUnsettledAt = currentTx.unsettledAt;
+        let newPaidAt = currentTx.paidAt || null;
+        let newUnsettledAt = currentTx.unsettledAt || null;
 
         if (newStatus === 'paid') {
           updatedCustomerData.lastPayment = nowServer;
@@ -433,12 +433,12 @@ export const firestoreService = {
           newUnsettledAt = null;
         }
 
-        // Update Customer Balances
+        // Update Customer Balances (allowed: paid, pending, lastPayment, updatedAt)
         transaction.update(customerRef, updatedCustomerData);
 
-        // Pre-clean updates
-        const cleanedUpdates = cleanData({
-          ...updates,
+        // Pre-clean updates: only include keys strictly permitted by firestore.rules
+        // ['amount', 'type', 'status', 'paidAt', 'unsettledAt', 'updatedAt', 'isDeleted', 'history', 'entryStatus']
+        const cleanedUpdates: any = {
           status: newStatus,
           type: newType,
           amount: newAmount,
@@ -446,24 +446,96 @@ export const firestoreService = {
           unsettledAt: newUnsettledAt,
           history: [...history, auditRecord],
           updatedAt: nowServer,
-          entryStatus: 'active',
-          createdBy: uid
-        });
+          entryStatus: 'active'
+        };
+
+        if (updates.isDeleted !== undefined) {
+          cleanedUpdates.isDeleted = updates.isDeleted;
+        }
 
         // Direct Patch the Transaction
         transaction.update(txRef, cleanedUpdates);
-
-        // Also write standalone audit record to a dedicated subcollection to satisfy strict history logging
-        const historyRef = doc(collection(txRef, 'history'));
-        transaction.set(historyRef, {
-          ...auditRecord,
-          createdAt: serverTimestamp()
-        });
       });
       return true;
     } catch (error) {
       console.error('Update Transaction failed:', error);
       handleFirestoreError(error, OperationType.WRITE, `users/${uid}/entries/${txId}`);
+      throw error;
+    }
+  },
+
+  async convertNPTransaction(npTx: Transaction, customer: Customer, newType: 'cash' | 'phonepe'): Promise<Transaction> {
+    if (!npTx?.id) throw new Error('Invalid entry ID');
+    if (!customer?.id) throw new Error('Invalid customer ID');
+    if (!auth.currentUser) throw new Error('Auth required');
+    const uid = auth.currentUser.uid;
+    const nowServer = serverTimestamp();
+    const nowMillis = Date.now();
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const customerRef = doc(db, 'users', uid, 'customers', customer.id);
+        const txRef = doc(db, 'users', uid, 'entries', npTx.id);
+
+        const [customerSnap, txSnap] = await Promise.all([
+          transaction.get(customerRef),
+          transaction.get(txRef)
+        ]);
+
+        if (!txSnap.exists()) throw new Error('Transaction entry not found');
+
+        const currentCustomer = customerSnap.exists() ? (customerSnap.data() as Customer) : customer;
+        const currentTx = txSnap.data() as Transaction;
+
+        // Calculate balance differences (NP was debt with 0 paid contribution; converting brings +amount to paid)
+        const oldEffectiveAmt = (currentTx.status === 'paid' && currentTx.type !== 'NP' && currentTx.type !== 'unsettled') ? currentTx.amount : 0;
+        const newEffectiveAmt = npTx.amount;
+        const paidDiff = newEffectiveAmt - oldEffectiveAmt;
+        const pendingDiff = -paidDiff;
+
+        const currentCustPaid = Number(currentCustomer.paid || 0);
+        const currentCustLoan = Number(currentCustomer.loanAmount || currentCustomer.loan || 0);
+        const currentCustPending = currentCustomer.pending !== undefined ? Number(currentCustomer.pending) : (currentCustLoan - currentCustPaid);
+
+        // Update customer balances: strictly whitelisted keys ['paid', 'pending', 'lastPayment', 'updatedAt']
+        transaction.update(customerRef, {
+          paid: Math.max(0, currentCustPaid + paidDiff),
+          pending: Math.max(0, currentCustPending + pendingDiff),
+          lastPayment: nowServer,
+          updatedAt: nowServer
+        });
+
+        // Audit history
+        const existingHistory = Array.isArray(currentTx.history) ? currentTx.history : [];
+        const auditRecord: AuditRecord = {
+          timestamp: nowMillis,
+          oldValue: { amount: currentTx.amount, type: currentTx.type, status: currentTx.status },
+          newValue: { amount: currentTx.amount, type: newType, status: 'paid' },
+          action: `Converted NP to ${newType === 'cash' ? 'Cash' : 'UPI'}`
+        };
+
+        // Update entry: strictly whitelisted keys ['amount', 'type', 'status', 'paidAt', 'unsettledAt', 'updatedAt', 'isDeleted', 'history', 'entryStatus']
+        transaction.update(txRef, {
+          type: newType,
+          status: 'paid',
+          paidAt: nowServer,
+          unsettledAt: null,
+          entryStatus: 'active',
+          updatedAt: nowServer,
+          history: [...existingHistory, auditRecord]
+        });
+      });
+
+      return {
+        ...npTx,
+        type: newType,
+        status: 'paid',
+        paidAt: nowMillis,
+        unsettledAt: undefined
+      };
+    } catch (error) {
+      console.error('[convertNPTransaction] Failed:', error);
+      handleFirestoreError(error, OperationType.WRITE, `users/${uid}/entries/${npTx.id}`);
       throw error;
     }
   },
@@ -642,6 +714,47 @@ export const firestoreService = {
       await batch.commit();
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'clearAll');
+    }
+  },
+
+  async deleteAllTransactions() {
+    if (!auth.currentUser) return { count: 0 };
+    const uid = auth.currentUser.uid;
+    try {
+      const txSnap = await getDocs(query(collection(db, 'users', uid, 'entries')));
+      const totalTx = txSnap.docs.length;
+      
+      const docs = txSnap.docs;
+      for (let i = 0; i < docs.length; i += 400) {
+        const batch = writeBatch(db);
+        const chunk = docs.slice(i, i + 400);
+        chunk.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+
+      // Reset customer balances back to zero collected and full principal pending
+      const customersSnap = await getDocs(query(collection(db, 'users', uid, 'customers')));
+      const custDocs = customersSnap.docs;
+      for (let i = 0; i < custDocs.length; i += 400) {
+        const batch = writeBatch(db);
+        const chunk = custDocs.slice(i, i + 400);
+        chunk.forEach(d => {
+          const c = d.data() as Customer;
+          const totalLoan = Number(c.loanAmount || c.loan || 0);
+          batch.update(d.ref, {
+            paid: 0,
+            pending: totalLoan,
+            lastPayment: null,
+            updatedAt: serverTimestamp()
+          });
+        });
+        await batch.commit();
+      }
+
+      return { count: totalTx };
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `users/${uid}/entries`);
+      throw error;
     }
   },
 

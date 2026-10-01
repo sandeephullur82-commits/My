@@ -6,7 +6,15 @@ import { WifiOff, Bell } from 'lucide-react';
 import { useUI } from '../../context/UIContext';
 import { useFeedback } from '../../context/FeedbackContext';
 
-export function SyncStatus({ customTitle, customSubtitle }: { customTitle?: string, customSubtitle?: string }) {
+export function SyncStatus({ 
+  customTitle, 
+  customSubtitle,
+  onOpenNotifications 
+}: { 
+  customTitle?: string; 
+  customSubtitle?: string;
+  onOpenNotifications?: () => void;
+}) {
   const { isCompact } = useUI();
   const { status, lastSynced, pendingCount } = useSync();
   const { setCenterOpen, history } = useFeedback();
@@ -50,6 +58,18 @@ export function SyncStatus({ customTitle, customSubtitle }: { customTitle?: stri
         </div>
         
         <div className="flex items-center gap-2">
+            {onOpenNotifications && (
+              <button
+                type="button"
+                onClick={onOpenNotifications}
+                className="p-2 rounded-xl bg-card hover:bg-muted border border-border/70 text-text-secondary hover:text-blue-600 dark:hover:text-blue-400 flex items-center justify-center transition-all active:scale-95 shadow-xs relative cursor-pointer"
+                title="Android Notification Center & Alert Settings"
+              >
+                <Bell size={15} />
+                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              </button>
+            )}
+
             <motion.div
               key={status}
               initial={{ opacity: 0, scale: 0.9 }}

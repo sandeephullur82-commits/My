@@ -255,7 +255,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
               customerPhone: alert.customerPhone,
               customerId: alert.customerId,
               alertCategory: alert.alertType,
-              dueDate: alert.endDate,
+              dueDate: alert.endDate ? new Date(alert.endDate).getTime() : undefined,
               diffDays: alert.diffDays,
               timestamp: Date.now(),
             });

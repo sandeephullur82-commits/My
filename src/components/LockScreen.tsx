@@ -5,7 +5,7 @@ import { useSecurity } from '../context/SecurityContext';
 import { toast } from 'sonner';
 
 export function LockScreen() {
-  const { verifyPin, cooldownUntil } = useSecurity();
+  const { verifyPin, cooldownUntil, setIsLocked, setPin } = useSecurity();
   const [input, setInput] = useState('');
   const [error, setError] = useState(false);
 
@@ -94,7 +94,6 @@ export function LockScreen() {
               width: 'fit-content',
               marginLeft: 'auto',
               marginRight: 'auto',
-              transform: 'translateX(-100px)'
             }}
             className="w-fit mx-auto mt-6 flex-shrink-0"
           >
@@ -136,6 +135,18 @@ export function LockScreen() {
               );
             })}
           </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setPin(null);
+              setIsLocked(false);
+              toast.info('PIN security reset. Session unlocked.');
+            }}
+            className="text-[11px] font-bold text-accent hover:opacity-80 uppercase tracking-wider mt-4 active:scale-95 transition-all"
+          >
+            Reset PIN / Direct Unlock
+          </button>
         </div>
       </motion.div>
 

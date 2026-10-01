@@ -1,6 +1,6 @@
 {
-  "summary":  "Completed implementation for Any Day NP detection and settlement, prioritizing the oldest pending NP day first.",
-  "updatedAt":  "2026-09-30T14:45:11.653760959Z",
+  "summary":  "Implementation plan for FCM and Capacitor Push Notifications initialization, token registration in Firestore & backend, and type-based deep linking for incoming push events.",
+  "updatedAt":  "2026-10-01T14:52:26.832217269Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

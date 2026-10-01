@@ -23,7 +23,9 @@ import {
   TrendingUp,
   Receipt,
   MessageSquare,
-  PlusCircle
+  PlusCircle,
+  History,
+  Bell
 } from 'lucide-react';
 import { CustomerCardSkeleton } from '../components/Skeleton';
 import { toast } from 'sonner';
@@ -33,6 +35,9 @@ import { safeFormat, toSafeMillis } from '../lib/utils';
 import { ReceiptSuccessModal, ReceiptData } from '../components/ReceiptSuccessModal';
 import { triggerWhatsApp } from '../lib/whatsapp';
 import { QuickPaymentModal } from '../components/Entry/QuickPaymentModal';
+import { AuditNPModal } from '../components/Entry/AuditNPModal';
+import { notificationService } from '../services/notificationService';
+import { NotificationSettingsModal } from '../components/Notifications/NotificationSettingsModal';
 
 export function Entry() {
   const { transactions, customers, loading } = useRealtimeData();
@@ -69,9 +74,19 @@ export function Entry() {
   
   // Quick payment modal state for multiple payments on same day
   const [quickPaymentCustomer, setQuickPaymentCustomer] = useState<Customer | null>(null);
+
+  // NP Historical Audit modal state
+  const [auditCustomer, setAuditCustomer] = useState<Customer | null>(null);
+
+  // Notification Center modal state
+  const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [debouncedQuery, setDebouncedQuery] = useState(globalSearch);
+
+  useEffect(() => {
+    notificationService.initialize();
+  }, []);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<any>(null);
@@ -208,7 +223,8 @@ export function Entry() {
   const todayPaidEntries = useMemo(() => {
     return transactions
       .filter(tx => {
-        const isTodayPaid = tx.status === 'paid' && tx.type !== 'NP' && tx.type !== 'unsettled' && tx.date === todayStr && !tx.isDeleted;
+        const isPaidToday = (tx.date === todayStr || (tx.paidAt && safeFormat(tx.paidAt, 'yyyy-MM-dd') === todayStr));
+        const isTodayPaid = tx.status === 'paid' && tx.type !== 'NP' && tx.type !== 'unsettled' && isPaidToday && !tx.isDeleted;
         if (!isTodayPaid) return false;
         if (!matchesSearch(tx.customerId)) return false;
 
@@ -349,7 +365,7 @@ export function Entry() {
     }
   };
 
-  // SETTLE NP ENTRY ACTION (Method 3: Records new Cash/UPI payment, preserving NP in audit history)
+  // SETTLE NP ENTRY ACTION: Directly converts NP transaction to Cash or UPI
   const [isSettlingNPId, setIsSettlingNPId] = useState<string | null>(null);
 
   const handleSettleNP = async (npTx: Transaction, customer: Customer, paymentMethod: 'cash' | 'phonepe') => {
@@ -361,50 +377,32 @@ export function Entry() {
       const paid = customer.paid || 0;
       const currentBalance = customer.pending !== undefined ? customer.pending : (loan - paid);
 
-      const newPaymentTx: Transaction = {
-        id: uuidv4(),
-        customerId: customer.id,
-        amount: npTx.amount,
-        type: paymentMethod,
-        status: 'paid',
-        date: todayStr,
-        timestamp: Date.now(),
-        paidAt: Date.now(),
-        notes: `Payment collected for NP due on ${npTx.date}`
-      };
-
-      // 1. Save new Cash/UPI payment transaction to credit customer balance
-      await firestoreService.saveTransaction(newPaymentTx, customer);
-
-      // 2. Mark the original NP record as settled in audit log while preserving it in history
-      try {
-        await firestoreService.updateTransaction(
-          npTx.id,
-          {
-            notes: `Settled via ${paymentMethod === 'cash' ? 'Cash' : 'UPI'} (${newPaymentTx.id.slice(0, 8)})`
-          },
-          npTx,
-          customer,
-          'settle_np_entry'
-        );
-      } catch (e) {
-        console.warn('Could not update NP note:', e);
-      }
+      // Directly convert NP transaction to paid Cash or UPI
+      const convertedTx = await firestoreService.convertNPTransaction(npTx, customer, paymentMethod);
 
       const newBal = Math.max(0, currentBalance - npTx.amount);
 
-      // 3. Open receipt with Share Image button
+      // Open receipt modal with the converted transaction
       setActiveReceipt({
-        transaction: newPaymentTx,
+        transaction: convertedTx,
         customer,
         previousBalance: currentBalance,
         newBalance: newBal
       });
 
-      toast.success(`Recorded ₹${npTx.amount.toLocaleString('en-IN')} ${paymentMethod === 'cash' ? 'Cash' : 'UPI'} payment for ${customer.name}`);
-    } catch (error) {
-      console.error('Failed to collect NP as payment:', error);
-      toast.error('Failed to record payment');
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate(30);
+      }
+
+      // Dispatch to Android Notification Center
+      notificationService.notifyPaymentReceived(customer.name, npTx.amount, paymentMethod, newBal);
+
+      toast.success(
+        `Converted NP entry to ${paymentMethod === 'cash' ? 'Cash' : 'UPI'} (₹${npTx.amount.toLocaleString('en-IN')}) for ${customer.name}`
+      );
+    } catch (error: any) {
+      console.error('Failed to convert NP to payment:', error);
+      toast.error('Failed to convert NP entry: ' + (error?.message || 'Transaction error'));
     } finally {
       setIsSettlingNPId(null);
     }
@@ -512,33 +510,46 @@ export function Entry() {
             </button>
           </div>
 
-          {/* SEARCH BAR */}
-          <div className="relative group">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary opacity-40 group-focus-within:opacity-100 group-focus-within:text-accent transition-all">
-              <Search size={16} />
+          {/* SEARCH BAR & NOTIFICATION CENTER TRIGGER */}
+          <div className="flex items-center gap-2">
+            <div className="relative group flex-1">
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary opacity-40 group-focus-within:opacity-100 group-focus-within:text-accent transition-all">
+                <Search size={16} />
+              </div>
+              <input 
+                id="entry-search-input"
+                type="text"
+                value={localSearch}
+                onChange={(e) => setLocalSearch(e.target.value)}
+                placeholder="Search Name, ID (003), or Phone..."
+                className="w-full pl-10 pr-10 py-3 bg-card border border-border/60 rounded-xl text-xs sm:text-sm font-medium focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/10 transition-all shadow-sm"
+              />
+              <AnimatePresence>
+                {localSearch && (
+                  <motion.button
+                    key="clear-search"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    onClick={() => setLocalSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-muted flex items-center justify-center rounded-full text-text-secondary hover:bg-border transition-colors"
+                  >
+                    <X size={12} />
+                  </motion.button>
+                )}
+              </AnimatePresence>
             </div>
-            <input 
-              id="entry-search-input"
-              type="text"
-              value={localSearch}
-              onChange={(e) => setLocalSearch(e.target.value)}
-              placeholder="Search Name, ID (003), or Phone..."
-              className="w-full pl-10 pr-10 py-3 bg-card border border-border/60 rounded-xl text-xs sm:text-sm font-medium focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/10 transition-all shadow-sm"
-            />
-            <AnimatePresence>
-              {localSearch && (
-                <motion.button
-                  key="clear-search"
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  onClick={() => setLocalSearch('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-muted flex items-center justify-center rounded-full text-text-secondary hover:bg-border transition-colors"
-                >
-                  <X size={12} />
-                </motion.button>
-              )}
-            </AnimatePresence>
+
+            {/* Android Notification Center Bell */}
+            <button
+              type="button"
+              onClick={() => setIsNotificationModalOpen(true)}
+              className="p-3 rounded-xl bg-card hover:bg-muted border border-border/70 text-text-secondary hover:text-blue-600 dark:hover:text-blue-400 flex items-center justify-center shrink-0 transition-all active:scale-95 shadow-sm relative cursor-pointer"
+              title="Android Notification Center & Alert Settings"
+            >
+              <Bell size={18} />
+              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+            </button>
           </div>
         </div>
 
@@ -1014,6 +1025,7 @@ export function Entry() {
                   const customerLoan = customer ? (customer.loanAmount || customer.loan || 0) : 0;
                   const customerPaid = customer ? (customer.paid || 0) : 0;
                   const customerBalance = customer ? (customer.pending !== undefined ? customer.pending : (customerLoan - customerPaid)) : 0;
+                  const custNPCount = customer ? transactions.filter(t => t.customerId === customer.id && (t.type === 'NP' || t.type === 'unsettled' || t.status === 'unsettled') && !t.isDeleted).length : 1;
 
                   return (
                     <motion.div
@@ -1075,7 +1087,23 @@ export function Entry() {
 
                         {/* Conversion & Notification Actions */}
                         {customer && (
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap justify-end">
+                            {/* Audit Historical Pending Dates Button */}
+                            <button
+                              type="button"
+                              onClick={() => setAuditCustomer(customer)}
+                              className="px-2.5 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-600 text-purple-600 dark:text-purple-400 hover:text-white border border-purple-500/25 flex items-center gap-1 text-[10px] font-black uppercase tracking-wider active:scale-95 transition-all shadow-xs cursor-pointer"
+                              title="Audit all historical pending dates for this customer"
+                            >
+                              <History size={12} strokeWidth={2.5} />
+                              <span>Audit</span>
+                              {custNPCount > 1 && (
+                                <span className="px-1.5 py-0.2 rounded-full bg-purple-600 text-white text-[9px] font-black">
+                                  {custNPCount}
+                                </span>
+                              )}
+                            </button>
+
                             {/* Convert to Cash */}
                             <button
                               type="button"
@@ -1268,6 +1296,22 @@ export function Entry() {
         onSuccess={(receipt) => {
           setActiveReceipt(receipt);
         }}
+      />
+
+      {/* HISTORICAL NP AUDIT MODAL */}
+      <AuditNPModal
+        isOpen={!!auditCustomer}
+        onClose={() => setAuditCustomer(null)}
+        customer={auditCustomer}
+        transactions={transactions}
+        onSettleNP={handleSettleNP}
+        isSettlingNPId={isSettlingNPId}
+      />
+
+      {/* ANDROID NOTIFICATION CENTER SETTINGS MODAL */}
+      <NotificationSettingsModal
+        isOpen={isNotificationModalOpen}
+        onClose={() => setIsNotificationModalOpen(false)}
       />
 
     </PageContainer>
