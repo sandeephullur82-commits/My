@@ -9,12 +9,10 @@ import { toast } from 'sonner';
 import { StatsSkeleton, Skeleton } from '../components/Skeleton';
 import { PageContainer } from '../components/PageContainer';
 import { notificationService } from '../services/notificationService';
-import { NotificationSettingsModal } from '../components/Notifications/NotificationSettingsModal';
 
 export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: any, customerId?: string, entryTabVal?: any, dateFilterVal?: any, urlFilter?: string) => void }) {
   const { transactions, customers, loading } = useRealtimeData();
   const [isReady, setIsReady] = useState(false);
-  const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
 
   useEffect(() => {
     notificationService.initialize();
@@ -116,7 +114,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
     <PageContainer>
       <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
         {/* Top Section */}
-        <SyncStatus onOpenNotifications={() => setIsNotificationModalOpen(true)} />
+        <SyncStatus />
 
         {/* Quick Info Strip */}
         <div className="flex items-center justify-between px-5 py-3 bg-card border border-border/10 rounded-[20px] shadow-sm">
@@ -162,12 +160,6 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
           />
         </div>
       </div>
-
-      {/* ANDROID NOTIFICATION CENTER SETTINGS MODAL */}
-      <NotificationSettingsModal
-        isOpen={isNotificationModalOpen}
-        onClose={() => setIsNotificationModalOpen(false)}
-      />
     </PageContainer>
   );
 }

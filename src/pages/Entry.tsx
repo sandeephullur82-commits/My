@@ -37,7 +37,6 @@ import { triggerWhatsApp } from '../lib/whatsapp';
 import { QuickPaymentModal } from '../components/Entry/QuickPaymentModal';
 import { AuditNPModal } from '../components/Entry/AuditNPModal';
 import { notificationService } from '../services/notificationService';
-import { NotificationSettingsModal } from '../components/Notifications/NotificationSettingsModal';
 
 export function Entry() {
   const { transactions, customers, loading } = useRealtimeData();
@@ -80,9 +79,6 @@ export function Entry() {
 
   // Selected NP transaction for responsive quick conversion sheet
   const [selectedNpTx, setSelectedNpTx] = useState<{ tx: Transaction; customer: Customer } | null>(null);
-
-  // Notification Center modal state
-  const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [debouncedQuery, setDebouncedQuery] = useState(globalSearch);
@@ -605,17 +601,6 @@ export function Entry() {
                 )}
               </AnimatePresence>
             </div>
-
-            {/* Android Notification Center Bell */}
-            <button
-              type="button"
-              onClick={() => setIsNotificationModalOpen(true)}
-              className="p-3 rounded-xl bg-card hover:bg-muted border border-border/70 text-text-secondary hover:text-accent flex items-center justify-center shrink-0 transition-all active:scale-95 shadow-sm relative cursor-pointer"
-              title="Android Notification Center & Alert Settings"
-            >
-              <Bell size={18} />
-              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-accent animate-pulse" />
-            </button>
           </div>
         </div>
 
@@ -1508,12 +1493,6 @@ export function Entry() {
         transactions={transactions}
         onSettleNP={handleSettleNP}
         isSettlingNPId={isSettlingNPId}
-      />
-
-      {/* ANDROID NOTIFICATION CENTER SETTINGS MODAL */}
-      <NotificationSettingsModal
-        isOpen={isNotificationModalOpen}
-        onClose={() => setIsNotificationModalOpen(false)}
       />
 
     </PageContainer>

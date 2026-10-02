@@ -6,7 +6,7 @@ import {
   ChevronLeft, Trash2, CheckCheck, 
   Banknote, Smartphone, AlertCircle, 
   Info, CheckCircle2, XCircle, Clock,
-  Calendar, Phone, MessageSquare, ArrowRight, Settings as SettingsIcon, BellRing
+  Calendar, Phone, MessageSquare, ArrowRight, BellRing
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { format, isToday, isYesterday } from 'date-fns';
@@ -125,14 +125,6 @@ export function Notifications() {
             >
               <BellRing size={15} className={isScanning ? 'animate-spin' : ''} />
               <span className="hidden sm:inline">Scan Now</span>
-            </button>
-
-            <button
-              onClick={() => navigate('/settings')}
-              className="w-10 h-10 rounded-xl bg-card border border-border/20 flex items-center justify-center text-text-secondary hover:text-text-primary transition-all active:scale-95"
-              title="Notification Settings"
-            >
-              <SettingsIcon size={18} />
             </button>
 
             {unreadCount > 0 && (

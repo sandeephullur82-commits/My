@@ -5,7 +5,11 @@ import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
 
-export function Login() {
+interface LoginProps {
+  onLoginSuccess?: () => void;
+}
+
+export function Login({ onLoginSuccess }: LoginProps = {}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -21,7 +25,7 @@ export function Login() {
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // Success is handled by AuthContext listener
+      onLoginSuccess?.();
     } catch (error: any) {
       let msg = 'An error occurred during login';
       if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {

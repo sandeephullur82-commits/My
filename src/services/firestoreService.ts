@@ -304,6 +304,14 @@ export const firestoreService = {
     }
   },
 
+  async updateCustomer(id: string, updates: Partial<Customer>) {
+    if (!auth.currentUser) throw new Error('Auth required');
+    const uid = auth.currentUser.uid;
+    const customerRef = doc(db, 'users', uid, 'customers', id);
+    const data = cleanData({ ...updates, updatedAt: serverTimestamp() });
+    await setDoc(customerRef, data, { merge: true });
+  },
+
   async deleteCustomer(id: string) {
     if (!auth.currentUser) throw new Error('Auth required');
     const uid = auth.currentUser.uid;

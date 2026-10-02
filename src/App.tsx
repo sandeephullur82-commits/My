@@ -30,28 +30,17 @@ function AppContent() {
   const { setEntryTab, setPaymentFilter, setDateFilter, resetEntryFilters, setSearchTerm } = useUI();
   const navigate = useNavigate();
   const location = useLocation();
-  const [isSplashDone, setIsSplashDone] = useState(false);
+
+  // Instant redirect to dashboard upon login if on /login
+  React.useEffect(() => {
+    if (user && (location.pathname === '/login' || location.pathname === '')) {
+      navigate('/', { replace: true });
+    }
+  }, [user, location.pathname, navigate]);
 
   // Derive currentTab from location (mapping callback paths gracefully to entry)
   const rawTab = location.pathname.split('/')[1] || 'dashboard';
   const currentTab = ['whatsapp', 'whatsapp-callback', 'callback', 'api'].includes(rawTab) ? 'entry' : rawTab;
-
-  React.useEffect(() => {
-    // Safety fallback: splash screen should never block UI indefinitely
-    const splashFallback = setTimeout(() => {
-      setIsSplashDone(true);
-    }, 1500);
-
-    if (!loading) {
-      const timer = setTimeout(() => setIsSplashDone(true), 600);
-      return () => {
-        clearTimeout(timer);
-        clearTimeout(splashFallback);
-      };
-    }
-
-    return () => clearTimeout(splashFallback);
-  }, [loading]);
 
   const handleTabChange = (tab: string) => {
     if (tab === 'entry') resetEntryFilters();
@@ -100,43 +89,22 @@ function AppContent() {
     handleNavigate('entry', undefined, customerId);
   };
 
-  if (loading || !isSplashDone) {
+  if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-bg relative overflow-hidden">
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="flex flex-col items-center gap-8 z-10"
-        >
-          <div className="w-24 h-24 bg-accent rounded-3xl flex items-center justify-center shadow-2xl shadow-accent/20">
-             <IndianRupee size={48} className="text-white" />
+        <div className="flex flex-col items-center gap-4 z-10">
+          <div className="w-16 h-16 bg-accent rounded-2xl flex items-center justify-center shadow-lg shadow-accent/20">
+            <IndianRupee size={32} className="text-white" />
           </div>
-          <div className="text-center">
-            <h1 className="text-4xl font-black tracking-tight text-text-primary">Pigmy Pro</h1>
-            <p className="text-[11px] font-bold text-text-secondary opacity-40 uppercase tracking-[0.4em] mt-2">Fintech Collection Suite</p>
-          </div>
-          
-          <div className="flex flex-col items-center gap-3">
-             <div className="w-48 h-1 bg-border/20 rounded-full relative overflow-hidden">
-                <motion.div 
-                  initial={{ x: '-100%' }}
-                  animate={{ x: '100%' }}
-                  transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-                  className="absolute inset-0 bg-accent"
-                />
-             </div>
-             <p className="text-[10px] font-bold text-text-secondary animate-pulse uppercase tracking-[0.1em]">Securing Workspace...</p>
-          </div>
-        </motion.div>
-        
-        {/* Background Decorative */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-accent/5 rounded-full blur-[120px] pointer-events-none" />
+          <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin mt-2" />
+        </div>
       </div>
     );
   }
 
+  // If not logged in, instantly show the login page
   if (!user) {
-    return <Login />;
+    return <Login onLoginSuccess={() => navigate('/', { replace: true })} />;
   }
 
   return (
