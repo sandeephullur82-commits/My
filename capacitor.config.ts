@@ -17,6 +17,9 @@ const config: CapacitorConfig = {
   android: {
     allowMixedContent: true,
     backgroundColor: '#0f172a'
+  },
+  server: {
+    androidScheme: 'https'
   }
 };
 

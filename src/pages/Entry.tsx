@@ -78,6 +78,9 @@ export function Entry() {
   // NP Historical Audit modal state
   const [auditCustomer, setAuditCustomer] = useState<Customer | null>(null);
 
+  // Selected NP transaction for responsive quick conversion sheet
+  const [selectedNpTx, setSelectedNpTx] = useState<{ tx: Transaction; customer: Customer } | null>(null);
+
   // Notification Center modal state
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   
@@ -240,11 +243,13 @@ export function Entry() {
       });
   }, [transactions, todayStr, paymentFilter, debouncedQuery, customers]);
 
-  // UNPAID SECTION: Today's NP entries
+  // UNPAID SECTION: Today's NP entries (excluding settled / converted)
   const todayUnpaidEntries = useMemo(() => {
     return transactions
       .filter(tx => {
-        const isNP = (tx.type === 'NP' || tx.type === 'unsettled' || tx.status === 'unsettled') && tx.date === todayStr && !tx.isDeleted;
+        const isNP = (tx.type === 'NP' || tx.type === 'unsettled' || tx.status === 'unsettled') && 
+          !tx.isSettled && tx.status !== 'settled' && !tx.settledAt && 
+          tx.date === todayStr && !tx.isDeleted;
         if (!isNP) return false;
         return matchesSearch(tx.customerId);
       })
@@ -255,11 +260,13 @@ export function Entry() {
       });
   }, [transactions, todayStr, debouncedQuery, customers]);
 
-  // ALL UNPAID ENTRIES: All unsettled NP entries across history
+  // ALL UNPAID ENTRIES: All unsettled NP entries across history (excluding settled / converted)
   const allUnpaidEntries = useMemo(() => {
     return transactions
       .filter(tx => {
-        const isNP = (tx.type === 'NP' || tx.type === 'unsettled' || tx.status === 'unsettled') && !tx.isDeleted;
+        const isNP = (tx.type === 'NP' || tx.type === 'unsettled' || tx.status === 'unsettled') && 
+          !tx.isSettled && tx.status !== 'settled' && !tx.settledAt && 
+          !tx.isDeleted;
         if (!isNP) return false;
         return matchesSearch(tx.customerId);
       })
@@ -364,7 +371,7 @@ export function Entry() {
     }
   };
 
-  // SETTLE NP ENTRY ACTION (Method 3: Records new Cash/UPI payment, preserving NP in audit history)
+  // CONVERT / SETTLE NP ENTRY ACTION (Converts today's NP directly to Cash or Phone, or settles past NP debt)
   const [isSettlingNPId, setIsSettlingNPId] = useState<string | null>(null);
 
   const handleSettleNP = async (npTx: Transaction, customer: Customer, paymentMethod: 'cash' | 'phonepe') => {
@@ -372,53 +379,95 @@ export function Entry() {
     setIsSettlingNPId(npTx.id);
 
     try {
+      const isTodayNP = npTx.date === todayStr;
       const loan = customer.loanAmount || customer.loan || 0;
       const paid = customer.paid || 0;
       const currentBalance = customer.pending !== undefined ? customer.pending : (loan - paid);
+      const newBal = Math.max(0, currentBalance - npTx.amount);
 
-      const newPaymentTx: Transaction = {
-        id: uuidv4(),
-        customerId: customer.id,
-        amount: npTx.amount,
-        type: paymentMethod,
-        status: 'paid',
-        date: todayStr,
-        timestamp: Date.now(),
-        paidAt: Date.now(),
-        notes: `Payment collected for NP due on ${npTx.date}`
-      };
+      let resultingTx: Transaction;
 
-      // 1. Save new Cash/UPI payment transaction to credit customer balance
-      await firestoreService.saveTransaction(newPaymentTx, customer);
+      if (isTodayNP) {
+        // 1. Direct conversion of today's NP entry to Cash or Phone (UPI)
+        const updatedTx: Partial<Transaction> = {
+          type: paymentMethod,
+          status: 'paid',
+          paidAt: Date.now(),
+          convertedFromNP: true,
+          npMarkedAt: npTx.unsettledAt || npTx.timestamp,
+          npMarkedDate: npTx.date,
+          notes: `Converted from NP to ${paymentMethod === 'cash' ? 'Cash' : 'Phone (UPI)'} collection`
+        };
 
-      // 2. Mark the original NP record as settled in audit log while preserving it in history
-      try {
+        await firestoreService.updateTransaction(
+          npTx.id,
+          updatedTx,
+          npTx,
+          customer,
+          'convert_np_to_paid'
+        );
+
+        // Credit customer paid and pending balance in ledger
+        await firestoreService.updateCustomer(customer.id, {
+          paid: (customer.paid || 0) + npTx.amount,
+          pending: newBal
+        });
+
+        resultingTx = {
+          ...npTx,
+          ...updatedTx
+        } as Transaction;
+      } else {
+        // 2. Historical NP debt entry: mark old NP as settled, create new payment record for today
+        const newPaymentTx: Transaction = {
+          id: uuidv4(),
+          customerId: customer.id,
+          amount: npTx.amount,
+          type: paymentMethod,
+          status: 'paid',
+          date: todayStr,
+          timestamp: Date.now(),
+          paidAt: Date.now(),
+          convertedFromNP: true,
+          npMarkedAt: npTx.unsettledAt || npTx.timestamp,
+          npMarkedDate: npTx.date,
+          settledFromNpId: npTx.id,
+          notes: `Settled past NP debt from ${npTx.date} via ${paymentMethod === 'cash' ? 'Cash' : 'Phone'}`
+        };
+
+        await firestoreService.saveTransaction(newPaymentTx, customer);
+
         await firestoreService.updateTransaction(
           npTx.id,
           {
-            notes: `Settled via ${paymentMethod === 'cash' ? 'Cash' : 'UPI'} (${newPaymentTx.id.slice(0, 8)})`
+            status: 'settled',
+            isSettled: true,
+            settledAt: Date.now(),
+            settledMethod: paymentMethod,
+            notes: `Settled via ${paymentMethod === 'cash' ? 'Cash' : 'Phone (UPI)'} on ${todayStr}`
           },
           npTx,
           customer,
           'settle_np_entry'
         );
-      } catch (e) {
-        console.warn('Could not update NP note:', e);
+
+        resultingTx = newPaymentTx;
       }
 
-      const newBal = Math.max(0, currentBalance - npTx.amount);
+      // Close conversion sheet if open
+      setSelectedNpTx(null);
 
-      // 3. Open receipt with Share Image button
+      // Open receipt showing NP marked time & paid time
       setActiveReceipt({
-        transaction: newPaymentTx,
+        transaction: resultingTx,
         customer,
         previousBalance: currentBalance,
         newBalance: newBal
       });
 
-      toast.success(`Recorded ₹${npTx.amount.toLocaleString('en-IN')} ${paymentMethod === 'cash' ? 'Cash' : 'UPI'} payment for ${customer.name}`);
+      toast.success(`Converted ₹${npTx.amount.toLocaleString('en-IN')} NP to ${paymentMethod === 'cash' ? 'Cash' : 'Phone (UPI)'} for ${customer.name}`);
     } catch (error) {
-      console.error('Failed to collect NP as payment:', error);
+      console.error('Failed to convert NP to payment:', error);
       toast.error('Failed to record payment');
     } finally {
       setIsSettlingNPId(null);
@@ -1038,7 +1087,15 @@ export function Entry() {
             ) : (
               <div className="flex flex-col gap-2.5">
                 {displayedUnpaidEntries.map((tx) => {
-                  const customer = customers.find(c => c.id === tx.customerId);
+                  const customer = customers.find(c => String(c.id) === String(tx.customerId)) || {
+                    id: tx.customerId,
+                    name: (tx as any).customerName || 'Customer',
+                    phone: (tx as any).customerPhone || '',
+                    loanAmount: tx.amount,
+                    paid: 0,
+                    pending: tx.amount,
+                    displayId: (tx as any).displayId || ''
+                  };
                   const customerLoan = customer ? (customer.loanAmount || customer.loan || 0) : 0;
                   const customerPaid = customer ? (customer.paid || 0) : 0;
                   const customerBalance = customer ? (customer.pending !== undefined ? customer.pending : (customerLoan - customerPaid)) : 0;
@@ -1049,11 +1106,12 @@ export function Entry() {
                       layout="position"
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="p-3.5 sm:p-4 bg-card border border-amber-500/20 hover:border-amber-500/40 rounded-2xl shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all"
+                      onClick={() => setSelectedNpTx({ tx, customer })}
+                      className="p-3.5 sm:p-4 bg-card border border-amber-500/25 hover:border-amber-500/50 rounded-2xl shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all cursor-pointer active:scale-[0.99] group select-none"
                     >
                       {/* Left: Customer Info */}
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
+                        <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                           <Clock size={18} />
                         </div>
 
@@ -1092,8 +1150,8 @@ export function Entry() {
 
                       {/* Right: Amount & Convert Actions */}
                       <div className="flex items-center justify-between sm:justify-end gap-2.5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-border/40">
-                        <div className="text-left sm:text-right">
-                          <span className="text-base font-black tracking-tight text-amber-600 dark:text-amber-400 block">
+                        <div className="text-left sm:text-right pr-1">
+                          <span className="text-base font-black tracking-tight text-amber-600 dark:text-amber-400 block leading-tight">
                             ₹{tx.amount.toLocaleString('en-IN')}
                           </span>
                           <span className="text-[8px] font-bold uppercase tracking-wider text-text-secondary opacity-60">
@@ -1101,70 +1159,67 @@ export function Entry() {
                           </span>
                         </div>
 
-                        {/* Conversion & Notification Actions */}
-                        {customer && (
-                          <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap justify-end">
-                            {/* Audit Historical Pending Dates Button */}
+                        {/* Conversion & Direct Actions (NO AUDIT BUTTON) */}
+                        <div className="flex items-center gap-1.5 flex-nowrap justify-end">
+                          {/* Convert to Cash */}
+                          <button
+                            type="button"
+                            disabled={isSettlingNPId === tx.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSettleNP(tx, customer, 'cash');
+                            }}
+                            className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 text-xs font-black uppercase tracking-wider active:scale-95 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                            title="Convert this today's NP to Cash payment now"
+                          >
+                            {isSettlingNPId === tx.id ? <Loader2 size={13} className="animate-spin" /> : <Banknote size={13} strokeWidth={2.5} />}
+                            <span>Cash</span>
+                          </button>
+
+                          {/* Convert to Phone (UPI / PhonePe) */}
+                          <button
+                            type="button"
+                            disabled={isSettlingNPId === tx.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSettleNP(tx, customer, 'phonepe');
+                            }}
+                            className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 text-xs font-black uppercase tracking-wider active:scale-95 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                            title="Convert this today's NP to Phone (UPI) payment now"
+                          >
+                            {isSettlingNPId === tx.id ? <Loader2 size={13} className="animate-spin" /> : <Smartphone size={13} strokeWidth={2.5} />}
+                            <span>Phone</span>
+                          </button>
+
+                          {/* WhatsApp Reminder */}
+                          {customer.phone && (
                             <button
                               type="button"
-                              onClick={() => setAuditCustomer(customer)}
-                              className="px-2.5 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-600 text-purple-600 dark:text-purple-400 hover:text-white border border-purple-500/25 flex items-center gap-1 text-[10px] font-black uppercase tracking-wider active:scale-95 transition-all shadow-xs cursor-pointer"
-                              title="Audit all historical pending dates for this customer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const msg = `Hello ${customer.name}, your Pigmy installment of ₹${tx.amount.toLocaleString('en-IN')} for ${safeFormat(tx.timestamp, 'dd MMM yyyy', 'today')} was marked as Not Paid (NP). Please keep cash ready or pay via PhonePe / UPI.`;
+                                triggerWhatsApp(customer.phone, customer.name, msg, customer.id);
+                              }}
+                              className="p-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500 text-emerald-600 hover:text-white border border-emerald-500/20 transition-all flex items-center justify-center active:scale-90"
+                              title="Send WhatsApp reminder to customer"
                             >
-                              <History size={12} strokeWidth={2.5} />
-                              <span>Audit</span>
+                              <MessageSquare size={13} />
                             </button>
+                          )}
 
-                            {/* Convert to Cash */}
-                            <button
-                              type="button"
-                              disabled={isSettlingNPId === tx.id}
-                              onClick={() => handleSettleNP(tx, customer, 'cash')}
-                              className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 text-[10px] font-black uppercase tracking-wider active:scale-95 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
-                              title="Convert this NP to Cash payment now"
-                            >
-                              {isSettlingNPId === tx.id ? <Loader2 size={12} className="animate-spin" /> : <Banknote size={12} strokeWidth={2.5} />}
-                              <span>Cash</span>
-                            </button>
-
-                            {/* Convert to UPI */}
-                            <button
-                              type="button"
-                              disabled={isSettlingNPId === tx.id}
-                              onClick={() => handleSettleNP(tx, customer, 'phonepe')}
-                              className="px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1 text-[10px] font-black uppercase tracking-wider active:scale-95 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
-                              title="Convert this NP to UPI payment now"
-                            >
-                              {isSettlingNPId === tx.id ? <Loader2 size={12} className="animate-spin" /> : <Smartphone size={12} strokeWidth={2.5} />}
-                              <span>UPI</span>
-                            </button>
-
-                            {/* WhatsApp Reminder */}
-                            {customer.phone && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const msg = `Hello ${customer.name}, your Pigmy installment of ₹${tx.amount.toLocaleString('en-IN')} for ${safeFormat(tx.timestamp, 'dd MMM yyyy', 'today')} is marked as Not Paid (NP). Please keep cash ready or pay via UPI.`;
-                                  triggerWhatsApp(customer.phone, customer.name, msg, customer.id);
-                                }}
-                                className="p-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500 text-emerald-600 hover:text-white border border-emerald-500/20 transition-all flex items-center justify-center active:scale-90"
-                                title="Send WhatsApp reminder to customer"
-                              >
-                                <MessageSquare size={13} />
-                              </button>
-                            )}
-
-                            {/* Revert / Delete NP */}
-                            <button
-                              type="button"
-                              onClick={() => setDeleteModalTx(tx)}
-                              className="p-2 rounded-xl bg-danger/10 hover:bg-danger text-danger hover:text-white border border-danger/20 transition-all flex items-center justify-center active:scale-90"
-                              title="Cancel NP record and return customer to Pending"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        )}
+                          {/* Revert / Delete NP */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteModalTx(tx);
+                            }}
+                            className="p-2 rounded-xl bg-danger/10 hover:bg-danger text-danger hover:text-white border border-danger/20 transition-all flex items-center justify-center active:scale-90"
+                            title="Cancel NP record and return customer to Pending"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </div>
                     </motion.div>
                   );
@@ -1283,6 +1338,142 @@ export function Entry() {
                 >
                   Cancel
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {/* QUICK NP CONVERT MODAL (When tapping an NP card) */}
+      {selectedNpTx && typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          <div 
+            className="fixed inset-0 z-[99999] flex items-center justify-center p-4 overflow-hidden pointer-events-auto"
+            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
+          >
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+              onClick={() => !isSettlingNPId && setSelectedNpTx(null)}
+            />
+
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0, y: 12 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.92, opacity: 0, y: 12 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+              className="relative w-full max-w-[380px] bg-card text-text-primary rounded-[32px] p-6 shadow-2xl border border-amber-500/25 flex flex-col z-10 select-none overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Close Button */}
+              <button
+                type="button"
+                disabled={!!isSettlingNPId}
+                onClick={() => setSelectedNpTx(null)}
+                className="absolute top-4 right-4 p-1.5 rounded-full text-text-secondary hover:text-text-primary hover:bg-muted transition-colors active:scale-90"
+              >
+                <X size={18} />
+              </button>
+
+              {/* Header with Amount & Customer */}
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
+                  <Clock size={24} />
+                </div>
+                <div className="text-left min-w-0">
+                  <h3 className="text-base font-black text-text-primary uppercase tracking-tight truncate">
+                    {selectedNpTx.customer.name}
+                  </h3>
+                  <div className="flex items-center gap-2 text-xs text-text-secondary">
+                    {selectedNpTx.customer.displayId && (
+                      <span className="font-mono font-bold">#{selectedNpTx.customer.displayId}</span>
+                    )}
+                    <span>•</span>
+                    <span className="font-semibold text-amber-600 dark:text-amber-400">NP Marked</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Due Amount Highlight Card */}
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-center mb-4">
+                <span className="text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400 block mb-1">
+                  Unpaid Installment Due
+                </span>
+                <span className="text-3xl font-black text-text-primary tracking-tight">
+                  ₹{selectedNpTx.tx.amount.toLocaleString('en-IN')}
+                </span>
+                <div className="text-[10px] font-medium text-text-secondary mt-1 flex items-center justify-center gap-1">
+                  <Clock size={11} />
+                  <span>Marked on {safeFormat(selectedNpTx.tx.unsettledAt || selectedNpTx.tx.timestamp, 'dd MMM yyyy, hh:mm a', 'Today')}</span>
+                </div>
+              </div>
+
+              {/* Conversion Buttons */}
+              <div className="flex flex-col gap-2.5 w-full">
+                <span className="text-[10px] font-black uppercase tracking-widest text-text-secondary opacity-60 text-left px-1">
+                  Convert to Payment Now:
+                </span>
+
+                {/* Convert to Cash */}
+                <button
+                  type="button"
+                  disabled={isSettlingNPId === selectedNpTx.tx.id}
+                  onClick={() => handleSettleNP(selectedNpTx.tx, selectedNpTx.customer, 'cash')}
+                  className="w-full py-3.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider flex items-center justify-between shadow-lg shadow-emerald-600/25 active:scale-98 transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  <div className="flex items-center gap-2.5">
+                    {isSettlingNPId === selectedNpTx.tx.id ? <Loader2 size={18} className="animate-spin" /> : <Banknote size={18} strokeWidth={2.5} />}
+                    <span>Pay in Cash</span>
+                  </div>
+                  <span className="font-mono text-sm">₹{selectedNpTx.tx.amount.toLocaleString('en-IN')}</span>
+                </button>
+
+                {/* Convert to Phone (UPI / PhonePe) */}
+                <button
+                  type="button"
+                  disabled={isSettlingNPId === selectedNpTx.tx.id}
+                  onClick={() => handleSettleNP(selectedNpTx.tx, selectedNpTx.customer, 'phonepe')}
+                  className="w-full py-3.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-wider flex items-center justify-between shadow-lg shadow-blue-600/25 active:scale-98 transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  <div className="flex items-center gap-2.5">
+                    {isSettlingNPId === selectedNpTx.tx.id ? <Loader2 size={18} className="animate-spin" /> : <Smartphone size={18} strokeWidth={2.5} />}
+                    <span>Pay via Phone (UPI / PhonePe)</span>
+                  </div>
+                  <span className="font-mono text-sm">₹{selectedNpTx.tx.amount.toLocaleString('en-IN')}</span>
+                </button>
+
+                {/* WhatsApp & Revert Secondary Actions */}
+                <div className="flex items-center gap-2 pt-1">
+                  {selectedNpTx.customer.phone && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const msg = `Hello ${selectedNpTx.customer.name}, your Pigmy installment of ₹${selectedNpTx.tx.amount.toLocaleString('en-IN')} for ${safeFormat(selectedNpTx.tx.timestamp, 'dd MMM yyyy', 'today')} was marked as Not Paid (NP). Please keep cash ready or pay via PhonePe / UPI.`;
+                        triggerWhatsApp(selectedNpTx.customer.phone, selectedNpTx.customer.name, msg, selectedNpTx.customer.id);
+                      }}
+                      className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 font-bold text-xs flex items-center justify-center gap-1.5 border border-emerald-500/20 active:scale-95 transition-all"
+                    >
+                      <MessageSquare size={14} />
+                      <span>WhatsApp Notice</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const txToDelete = selectedNpTx.tx;
+                      setSelectedNpTx(null);
+                      setDeleteModalTx(txToDelete);
+                    }}
+                    className="flex-1 py-2.5 px-3 rounded-xl bg-danger/10 hover:bg-danger/20 text-danger font-bold text-xs flex items-center justify-center gap-1.5 border border-danger/20 active:scale-95 transition-all"
+                  >
+                    <Trash2 size={14} />
+                    <span>Cancel NP</span>
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

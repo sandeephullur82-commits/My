@@ -156,12 +156,26 @@ export async function generateReceiptImage(data: ReceiptData): Promise<Generated
   );
   const isUpi = transaction.type === 'phonepe';
   const isNP = transaction.type === 'NP' || transaction.type === 'unsettled' || transaction.status === 'unsettled';
-  const paymentModeLabel = isUpi ? 'UPI / PHONEPE' : isNP ? 'NOT PAID (DUE RECORDED)' : 'CASH COLLECTION';
+  
+  const wasNP = Boolean(
+    transaction.convertedFromNP || 
+    transaction.npMarkedAt || 
+    transaction.settledFromNpId || 
+    (transaction as any).originalNpTimestamp || 
+    (transaction.notes && transaction.notes.toLowerCase().includes('np'))
+  );
+  
+  const rawNpTime = transaction.npMarkedAt || (transaction as any).originalNpTimestamp || transaction.unsettledAt;
+  const npDateStr = rawNpTime 
+    ? safeFormat(rawNpTime, 'dd MMM yyyy, hh:mm a', safeFormat(rawNpTime, 'dd MMM yyyy', 'Earlier'))
+    : (transaction.npMarkedDate ? safeFormat(transaction.npMarkedDate, 'dd MMM yyyy', transaction.npMarkedDate) : null);
+
+  const paymentModeLabel = isUpi ? 'UPI / PHONEPE' : isNP ? 'NOT PAID (DUE RECORDED)' : wasNP ? 'CASH (SETTLED FROM NP)' : 'CASH COLLECTION';
   const fileName = `Receipt_${(customer.name || 'Customer').replace(/[^a-zA-Z0-9]/g, '_')}_${receiptNo}.png`;
 
   // Logical dimensions (rendered at 2.5x scale for razor-sharp Retina/OLED mobile clarity)
   const logicalWidth = 600;
-  const logicalHeight = 860;
+  const logicalHeight = wasNP && !isNP ? 890 : 860;
   const scale = 2.5;
 
   const canvas = document.createElement('canvas');
@@ -284,7 +298,7 @@ export async function generateReceiptImage(data: ReceiptData): Promise<Generated
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 10px system-ui, -apple-system, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(isNP ? '⚠ MISSED INSTALLMENT' : '✓ OFFICIAL RECEIPT', statusPillX + (statusPillWidth / 2), statusPillY + 18);
+  ctx.fillText(isNP ? '⚠ MISSED INSTALLMENT' : wasNP ? '✓ SETTLED FROM NP' : '✓ OFFICIAL RECEIPT', statusPillX + (statusPillWidth / 2), statusPillY + 18);
 
   // Sub-bar in Header: Receipt No & Date
   const subBarY = cardY + 94;
@@ -297,9 +311,13 @@ export async function generateReceiptImage(data: ReceiptData): Promise<Generated
   ctx.fillText(receiptNo, cardX + 22, subBarY + 30);
 
   ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-  ctx.font = '600 12px system-ui, -apple-system, sans-serif';
+  ctx.font = '600 11.5px system-ui, -apple-system, sans-serif';
   ctx.textAlign = 'right';
-  ctx.fillText(dateStr, cardX + cardWidth - 22, subBarY + 30);
+  if (wasNP && !isNP && npDateStr) {
+    ctx.fillText(`NP: ${npDateStr} | Paid: ${dateStr}`, cardX + cardWidth - 22, subBarY + 30);
+  } else {
+    ctx.fillText(dateStr, cardX + cardWidth - 22, subBarY + 30);
+  }
 
   // 4. Ticket Perforation Notches on Left & Right
   const notchY = cardY + 172;

@@ -22,7 +22,19 @@ function buildEscPosData(data: ReceiptData): Uint8Array {
   );
   const isUpi = transaction.type === 'phonepe';
   const isNP = transaction.type === 'NP' || transaction.type === 'unsettled' || transaction.status === 'unsettled';
-  const modeStr = isUpi ? 'UPI / PHONEPE' : isNP ? 'NP' : 'CASH';
+  const wasNP = Boolean(
+    transaction.convertedFromNP || 
+    transaction.npMarkedAt || 
+    transaction.settledFromNpId || 
+    (transaction as any).originalNpTimestamp || 
+    (transaction.notes && transaction.notes.toLowerCase().includes('np'))
+  );
+  const rawNpTime = transaction.npMarkedAt || (transaction as any).originalNpTimestamp || transaction.unsettledAt;
+  const npDateStr = rawNpTime 
+    ? safeFormat(rawNpTime, 'dd/MM/yyyy hh:mm a', 'Earlier') 
+    : (transaction.npMarkedDate || null);
+
+  const modeStr = isUpi ? 'UPI / PHONEPE' : isNP ? 'NP' : wasNP ? 'CASH (NP SETTLED)' : 'CASH';
 
   const encoder = new TextEncoder();
   const parts: Uint8Array[] = [];
@@ -54,7 +66,12 @@ function buildEscPosData(data: ReceiptData): Uint8Array {
   // 3. Left align: ESC a 0
   addCmd([0x1b, 0x61, 0x00]);
   addText(`Receipt No : ${receiptNo}\n`);
-  addText(`Date & Time: ${dateStr}\n`);
+  if (wasNP && !isNP && npDateStr) {
+    addText(`NP Recorded: ${npDateStr}\n`);
+    addText(`Payment Rec: ${dateStr}\n`);
+  } else {
+    addText(`Date & Time: ${dateStr}\n`);
+  }
   addText(`Txn ID     : ${(transaction.id || '').slice(0, 16)}\n`);
   addText('--------------------------------\n');
 
@@ -212,7 +229,19 @@ export function printViaSystemThermal(data: ReceiptData): void {
   );
   const isUpi = transaction.type === 'phonepe';
   const isNP = transaction.type === 'NP' || transaction.type === 'unsettled' || transaction.status === 'unsettled';
-  const paymentModeLabel = isUpi ? 'UPI / PhonePe' : isNP ? 'NP' : 'Cash Deposit';
+  const wasNP = Boolean(
+    transaction.convertedFromNP || 
+    transaction.npMarkedAt || 
+    transaction.settledFromNpId || 
+    (transaction as any).originalNpTimestamp || 
+    (transaction.notes && transaction.notes.toLowerCase().includes('np'))
+  );
+  const rawNpTime = transaction.npMarkedAt || (transaction as any).originalNpTimestamp || transaction.unsettledAt;
+  const npDateStr = rawNpTime 
+    ? safeFormat(rawNpTime, 'dd MMM yyyy, hh:mm a', 'Earlier') 
+    : (transaction.npMarkedDate || null);
+
+  const paymentModeLabel = isUpi ? 'UPI / PhonePe' : isNP ? 'NP' : wasNP ? 'Cash (Settled from NP)' : 'Cash Deposit';
 
   // Create an invisible iframe for isolated printing
   const iframe = document.createElement('iframe');
@@ -382,10 +411,21 @@ export function printViaSystemThermal(data: ReceiptData): void {
           <span class="meta-label">Receipt ID:</span>
           <span class="meta-value">${receiptNo}</span>
         </div>
+        ${wasNP && !isNP && npDateStr ? `
+        <div class="meta-row">
+          <span class="meta-label">NP Recorded:</span>
+          <span class="meta-value">${npDateStr}</span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">Payment Settled:</span>
+          <span class="meta-value" style="font-weight: bold;">${dateStr}</span>
+        </div>
+        ` : `
         <div class="meta-row">
           <span class="meta-label">Date & Time:</span>
           <span class="meta-value">${dateStr}</span>
         </div>
+        `}
         <div class="meta-row">
           <span class="meta-label">Transaction:</span>
           <span class="meta-value" style="font-family: monospace;">${(transaction.id || '').slice(0, 14)}</span>

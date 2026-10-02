@@ -68,7 +68,7 @@ export interface Transaction {
   customerId: string;
   amount: number;
   type: 'cash' | 'phonepe' | 'unsettled' | 'NP';
-  status: 'paid' | 'pending' | 'unsettled';
+  status: 'paid' | 'pending' | 'unsettled' | 'settled';
   entryStatus?: 'active' | 'modified';
   parentId?: string;
   date: string; // YYYY-MM-DD
@@ -77,6 +77,13 @@ export interface Transaction {
   updatedAt?: any;
   paidAt?: any;
   unsettledAt?: any;
+  npMarkedAt?: any;
+  npMarkedDate?: string;
+  convertedFromNP?: boolean;
+  settledAt?: any;
+  settledFromNpId?: string;
+  settledMethod?: 'cash' | 'phonepe';
+  isSettled?: boolean;
   createdBy?: string;
   isDeleted?: boolean;
   notes?: string;

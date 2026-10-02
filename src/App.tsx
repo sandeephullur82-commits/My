@@ -21,15 +21,12 @@ import { Notifications } from './pages/Notifications';
 import { Settings } from './pages/Settings';
 import { WhatsAppCallback } from './pages/WhatsAppCallback';
 import { Login } from './pages/Login';
-import { SecurityProvider, useSecurity } from './context/SecurityContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { FeedbackProvider } from './context/FeedbackContext';
-import { LockScreen } from './components/LockScreen';
 import { PageContainer } from './components/PageContainer';
 
 function AppContent() {
   const { user, loading } = useAuth();
-  const { isLocked } = useSecurity();
   const { setEntryTab, setPaymentFilter, setDateFilter, resetEntryFilters, setSearchTerm } = useUI();
   const navigate = useNavigate();
   const location = useLocation();
@@ -142,10 +139,6 @@ function AppContent() {
     return <Login />;
   }
 
-  if (isLocked) {
-    return <LockScreen />;
-  }
-
   return (
     <SyncProvider>
       <DataProvider>
@@ -187,13 +180,11 @@ export default function App() {
   return (
     <ThemeProvider>
       <UIProvider>
-        <SecurityProvider>
-          <AuthProvider>
-            <FeedbackProvider>
-              <AppContent />
-            </FeedbackProvider>
-          </AuthProvider>
-        </SecurityProvider>
+        <AuthProvider>
+          <FeedbackProvider>
+            <AppContent />
+          </FeedbackProvider>
+        </AuthProvider>
       </UIProvider>
     </ThemeProvider>
   );

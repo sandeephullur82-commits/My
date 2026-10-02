@@ -40,6 +40,21 @@ export function ReceiptSuccessModal({ receipt, onClose }: ReceiptSuccessModalPro
   const { transaction, customer, previousBalance, newBalance } = receipt;
   const isUpi = transaction.type === 'phonepe';
   const isNP = transaction.type === 'NP' || transaction.type === 'unsettled' || transaction.status === 'unsettled';
+  
+  // Track if this receipt was converted / settled from a previous NP record
+  const wasNP = Boolean(
+    transaction.convertedFromNP || 
+    transaction.npMarkedAt || 
+    transaction.settledFromNpId || 
+    (transaction as any).originalNpTimestamp || 
+    (transaction.notes && transaction.notes.toLowerCase().includes('np'))
+  );
+  
+  const rawNpTime = transaction.npMarkedAt || (transaction as any).originalNpTimestamp || transaction.unsettledAt;
+  const npMarkedTimeStr = rawNpTime 
+    ? safeFormat(rawNpTime, 'dd MMM yyyy, hh:mm a', safeFormat(rawNpTime, 'dd MMM yyyy', 'Recorded'))
+    : (transaction.npMarkedDate ? safeFormat(transaction.npMarkedDate, 'dd MMM yyyy', transaction.npMarkedDate) : null);
+
   const paidTime = safeFormat(
     transaction.paidAt || transaction.timestamp || transaction.date, 
     'dd MMM yyyy, hh:mm a', 
@@ -194,19 +209,43 @@ export function ReceiptSuccessModal({ receipt, onClose }: ReceiptSuccessModalPro
             </div>
 
             {/* Transaction Metadata */}
-            <div className="flex flex-col gap-1.5 text-[10px] text-text-secondary opacity-80 px-1">
-              <div className="flex justify-between">
-                <span>Receipt Number:</span>
-                <span className="font-mono font-bold">{receiptNo}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Date & Time:</span>
-                <span>{paidTime}</span>
-              </div>
+            <div className="flex flex-col gap-2 p-3 rounded-2xl bg-muted/30 border border-border/50 text-[11px] text-text-secondary">
               <div className="flex justify-between items-center">
-                <span>Ledger Security:</span>
+                <span className="font-medium text-text-secondary/70">Receipt Number:</span>
+                <span className="font-mono font-bold text-text-primary">{receiptNo}</span>
+              </div>
+
+              {/* If previously NP and now paid, explicitly show both dates */}
+              {wasNP && !isNP ? (
+                <div className="flex flex-col gap-1.5 py-1.5 px-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-text-primary">
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                      <Clock size={11} /> NP Due Recorded:
+                    </span>
+                    <span className="font-mono font-semibold">{npMarkedTimeStr || 'Earlier'}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 size={11} /> Payment Settled:
+                    </span>
+                    <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{paidTime}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="font-semibold text-text-secondary">Settled Via:</span>
+                    <span className="font-bold">{isUpi ? 'Phone (UPI / PhonePe)' : 'Cash'}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex justify-between items-center">
+                  <span className="font-medium text-text-secondary/70">{isNP ? 'NP Recorded Date:' : 'Date & Time:'}</span>
+                  <span className="font-mono font-bold text-text-primary">{paidTime}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center text-[10px] pt-0.5 border-t border-border/30">
+                <span className="text-text-secondary/60">Ledger Security:</span>
                 <span className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                  <ShieldCheck size={12} /> 100% Verified Ledger Record
+                  <ShieldCheck size={12} /> Verified Smart Ledger Record
                 </span>
               </div>
             </div>

@@ -1,100 +1,77 @@
-# Android Mobile Lock, Biometric & Face Authentication Plan
+# Standalone Offline Android App Build Plan
 
-Comprehensive security architecture to protect Pigmy Pro with Android native Biometric Authentication (Fingerprint, Face Unlock) and Android System Device Lock (PIN, Pattern, Password), enforced on app cold launch and every resume from background.
+This plan establishes the architecture and build pipeline to package the complete React web application directly inside a standalone Android APK. The app will run locally and offline via Capacitor's native WebView bridge without requiring any web server deployment or hosting.
 
 ---
 
 ### User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following user preferences were confirmed in Phase 1 and govern the authentication flow:
-> - **Enforcement Trigger**: App cold start and every time the application returns to the foreground from background/multitasking.
-> - **Fallback Mechanism**: Direct Android Device System Lock credentials (Device PIN / Pattern / Password) through native `BiometricPrompt` device credential fallback (`DEVICE_CREDENTIAL | BIOMETRIC_STRONG`).
-> - **Privacy Guard**: Native and web blur overlay shield active during backgrounding to prevent sensitive financial ledgers from leaking in the Android app switcher.
+> The following user preferences were confirmed and govern the build pipeline:
+> - **Execution Mode**: **Standalone Offline APK** — The entire compiled React bundle (HTML, JavaScript, CSS, SVGs, audio chimes, icons, and assets) will be bundled directly into the Android native assets (`android/app/src/main/assets/public/`), allowing the Android application to launch and run locally without requiring any cloud web server or internet connection.
+> - **Build Output**: **Ready-to-install Debug APK** — We will run the Gradle build pipeline (`./gradlew assembleDebug`) to generate `app-debug.apk` that can be directly transferred, side-loaded, or installed on any physical Android phone or Android emulator.
 
 ---
 
-## 1. Overview & Core Concept
+## 1. Architecture: How the Web App Runs Inside Android Without Deployment
 
-- **What It Does**: Secures all daily collection records, ledger adjustments, customer balance sheets, and cash summaries behind the device's hardware-backed biometric security (Fingerprint / Face Unlock / Iris) with immediate fallback to the Android device PIN/Pattern screen lock.
-- **Target Audience**: Field collection agents, bank officers, and administrators who carry financial and sensitive customer balance data on their Android devices.
-- **Key Value**: Zero unauthorized access if the device is lost, shared, or left unattended.
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Android Device (Phone / Tablet)             │
+│                                                                 │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │                    Pigmy Pro Android APK                  │  │
+│  │                                                           │  │
+│  │  ┌───────────────────────┐     ┌───────────────────────┐  │  │
+│  │  │   Android Native OS   │     │  Embedded Web Assets  │  │  │
+│  │  │  - BiometricPrompt    │     │  (Inside APK Assets)  │  │  │
+│  │  │  - Android Keystore   │◄───►│  - index.html         │  │  │
+│  │  │  - Device PIN/Pattern │     │  - app.bundle.js      │  │  │
+│  │  │  - Push & Alarms      │     │  - styles.css         │  │  │
+│  │  └───────────────────────┘     └───────────────────────┘  │  │
+│  │                 ▲                                         │  │
+│  │                 │ Capacitor JavaScript Bridge             │  │
+│  │                 ▼                                         │  │
+│  │  ┌─────────────────────────────────────────────────────┐  │  │
+│  │  │   Hardware-Accelerated Android WebView              │  │  │
+│  │  │   Scheme: https://localhost (Local APK Files)       │  │  │
+│  │  │   - No web server / external hosting needed         │  │  │
+│  │  │   - Full React SPA with offline IndexedDB storage   │  │  │
+│  │  └─────────────────────────────────────────────────────┘  │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+1. **Local WebView Asset Loader**:
+   Capacitor configures Android's `WebViewAssetLoader` with a virtual scheme (`https://localhost`). When the Android app opens, it loads files directly from the app's internal read-only assets directory. There are **zero network roundtrips** to load the app UI.
+2. **Offline-First Storage**:
+   Customer balance records, transactions, agent preferences, and authentication states persist locally in SQLite / IndexedDB (`idb`), so agents can record daily collections even in low or no network coverage areas.
+3. **Hardware Biometrics & Mobile Lock**:
+   Uses the Android Keystore API and native `BiometricPrompt` with device credential fallback (Fingerprint, Face Recognition, Device PIN/Pattern) directly on the device.
 
 ---
 
-## 2. User Experience & Visual Design
+## 2. Implementation Steps
 
-```
-┌─────────────────────────────────────────────────────────┐
-│               Pigmy Pro Biometric Lock Screen           │
-│                                                         │
-│    ┌───────────────────────────────────────────────┐    │
-│    │               [ Pigmy Pro Logo ]              │    │
-│    │           Smart Collection Security           │    │
-│    │                                               │    │
-│    │               ┌───────────────┐               │    │
-│    │               │  (  ◎ 🛡️ ◎  ) │               │    │
-│    │               │  Touch Sensor │               │    │
-│    │               │   or Face ID  │               │    │
-│    │               └───────────────┘               │    │
-│    │                                               │    │
-│    │         "Verify your identity to unlock"      │    │
-│    │                                               │    │
-│    │        ┌─────────────────────────────┐        │    │
-│    │        │  [ Unlock with Biometrics ] │        │    │
-│    │        └─────────────────────────────┘        │    │
-│    │                                               │    │
-│    │        ┌─────────────────────────────┐        │    │
-│    │        │ [ Use Device PIN / Pattern ]│        │    │
-│    │        └─────────────────────────────┘        │    │
-│    └───────────────────────────────────────────────┘    │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
-```
+### Step 1: Capacitor Configuration Verification
+- Ensure `capacitor.config.ts` is explicitly configured for offline asset serving:
+  - `webDir: 'dist'`
+  - `bundledWebRuntime: false`
+  - `server: { androidScheme: 'https' }`
 
-- **Lock Screen UI**: Sleek, distraction-free fintech security curtain featuring emerald neon ambient lighting, animated biometric pulses, and instant prompt triggers.
-- **Background Privacy Shield**: When the app transitions to the background (app switcher / home button pressed), a secure opaque backdrop obscures financial customer lists and collection totals.
-- **Instant Resume Authentication**: When brought back to the foreground, the native Android `BiometricPrompt` dialogue immediately triggers.
+### Step 2: Production React Asset Compilation
+- Run `npm run build` (or Vite production build) to generate fully minified, optimized production JavaScript, CSS, and HTML bundles in `./dist`.
 
----
+### Step 3: Capacitor Android Sync
+- Run `npx cap sync android` to copy the production assets into `android/app/src/main/assets/public/` and synchronize all native Android plugins (`@capgo/capacitor-native-biometric`, `@capacitor/app`, `@capacitor/local-notifications`, `@capacitor/push-notifications`).
 
-## 3. Key Product Decisions & Trade-Offs
+### Step 4: Gradle Build Execution
+- Set permissions on `android/gradlew` (`chmod +x android/gradlew`).
+- Check Android SDK / JDK environment variables (`ANDROID_HOME`, `JAVA_HOME`).
+- Execute Gradle build: `./gradlew assembleDebug` in the `/android` directory.
+- Verify the generated APK file: `android/app/build/outputs/apk/debug/app-debug.apk`.
 
-- **Decision 1: Native BiometricPrompt with Device Credential Support**:
-  - *Chosen Approach*: Configure `@capgo/capacitor-native-biometric` (or `@capacitor-community/biometric-auth`) with `useFallback: true` and `BIOMETRIC_STRONG | DEVICE_CREDENTIAL` flags on Android so that users who don't have biometric enrolled can seamlessly use their phone's PIN/Pattern.
-  - *Why*: Direct compliance with Android 10+ Keystore guidelines and zero friction for agents without fingerprint hardware.
-- **Decision 2: Web / Browser Preview Fallback**:
-  - *Chosen Approach*: In web browser preview environments (where native Android Keystore is unavailable), provide WebAuthn / TouchID / Windows Hello fallback alongside an intuitive simulated device credential test prompt so developers and administrators can test lock flows seamlessly.
-  - *Why*: Ensures 100% functional fidelity both inside the Android APK and in the web preview.
-
----
-
-## 4. Technical Architecture & Security Lifecycle
-
-```
-       [ App Launch / Android Resume from Background ]
-                              │
-                              ▼
-                 [ App State Check (Is Locked?) ]
-                 ┌────────────┴────────────┐
-             [ No ]                      [ Yes ]
-               │                           │
-               ▼                           ▼
-        [ Normal View ]          [ Render Security Shield ]
-                                           │
-                                           ▼
-                            [ Trigger BiometricPrompt ]
-                            ┌──────────────┴──────────────┐
-                    [ Success ]                      [ Failed / Cancelled ]
-                        │                                     │
-                        ▼                                     ▼
-                [ Dismiss Shield ]                  [ Stay Locked / Offer ]
-                [ Grant Access ]                    [ Device PIN Fallback ]
-```
-
-### Execution Steps Upon Approval:
-1. **Plugin Installation**: Install `@capgo/capacitor-native-biometric` & `@capacitor/app` for native hardware keystore access and Android lifecycle events (`appStateChange`).
-2. **Android Permissions**: Ensure `USE_BIOMETRIC` and `USE_FINGERPRINT` permissions in `AndroidManifest.xml`.
-3. **Biometric Security Service & Context**: Create `src/services/biometricService.ts` and `src/context/SecurityContext.tsx` to handle authentication state, hardware capabilities check, background lock timers, and native prompt invocation.
-4. **App Integration**: Wrap the main application layout in the security guard and add a dedicated "Security & Biometrics" control inside the Settings drawer.
-5. **Compilation & Native Android Sync**: Verify compilation with `compile_applet` and run `npx cap sync android`.
+### Step 5: Verification & Distribution
+- Check APK size, package structure, and verify the manifest declarations.
+- Provide clear instructions on how to install and test the APK on physical devices (via USB/ADB or direct download) or Android Studio.

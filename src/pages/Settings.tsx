@@ -8,9 +8,8 @@ import {
   Database, AlertCircle, Calendar, Hash, Scale, 
   RefreshCw, Files, FileSpreadsheet, FileJson, FileText,
   Bell, BellRing, Clock, Volume2, VolumeX, CheckCircle2,
-  Send, Zap, Check, Fingerprint, ScanFace
+  Send, Zap, Check
 } from 'lucide-react';
-import { useSecurity } from '../context/SecurityContext';
 import { useTheme } from '../components/ThemeProvider';
 import { useUI } from '../context/UIContext';
 import { useAuth } from '../context/AuthContext';
@@ -25,15 +24,6 @@ export function Settings() {
   const { isCompact, toggleCompact } = useUI();
   const { user, logout } = useAuth();
   const { 
-    hasPin, 
-    setPin, 
-    setIsLocked, 
-    lockNow, 
-    biometricsEnabled, 
-    setBiometricsEnabled, 
-    biometricStatus 
-  } = useSecurity();
-  const { 
     permissionStatus, 
     requestPermission, 
     preferences, 
@@ -47,8 +37,6 @@ export function Settings() {
   const { toastSuccess, toastError, toastAction } = useFeedback();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [showSetPin, setShowSetPin] = useState(false);
-  const [showDisablePin, setShowDisablePin] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [isTestingPush, setIsTestingPush] = useState(false);
 
@@ -106,19 +94,6 @@ export function Settings() {
     } finally {
       setIsScanning(false);
     }
-  };
-
-  const handleToggleLock = () => {
-    if (hasPin) {
-      setShowDisablePin(true);
-    } else {
-      setShowSetPin(true);
-    }
-  };
-
-  const handleManualLock = () => {
-    lockNow();
-    toastSuccess('Session Locked', 'Access restricted behind biometric and device lock.');
   };
 
 
