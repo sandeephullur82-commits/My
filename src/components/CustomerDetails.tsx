@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Customer, Transaction } from '../services/firestoreService';
 import { ArrowLeft, Phone, Calendar, IndianRupee, Plus, Edit2, AlertTriangle, Trash2, X, Lock, Pin, Search, MoreVertical, MessageCircle, Eye, Clock, Receipt, PlusCircle } from 'lucide-react';
@@ -11,6 +12,7 @@ import { ReceiptSuccessModal, ReceiptData } from './ReceiptSuccessModal';
 import { safeFormat, safeDifferenceInDays } from '../lib/utils';
 import { triggerWhatsApp } from '../lib/whatsapp';
 import { QuickPaymentModal } from './Entry/QuickPaymentModal';
+import { useUI } from '../context/UIContext';
 
 interface CustomerDetailsProps {
   key?: string;
@@ -24,7 +26,17 @@ interface CustomerDetailsProps {
 }
 
 export function CustomerDetails({ customer, transactions, onClose, onAddEntry, onEdit, onDelete, onTogglePin }: CustomerDetailsProps) {
+  const { setIsCustomerDetailsOpen, setIsModalOpen } = useUI();
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
+
+  useEffect(() => {
+    setIsCustomerDetailsOpen(true);
+    setIsModalOpen(true);
+    return () => {
+      setIsCustomerDetailsOpen(false);
+      setIsModalOpen(false);
+    };
+  }, [setIsCustomerDetailsOpen, setIsModalOpen]);
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [pendingAction, setPendingAction] = React.useState<'call' | 'whatsapp' | null>(null);
   const [previewReport, setPreviewReport] = React.useState<{ blob: Blob, fileName: string, title: string } | null>(null);
@@ -131,13 +143,13 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
     }
   };
 
-  return (
+  const content = (
     <motion.div
       initial={{ x: '100%' }}
       animate={{ x: 0 }}
       exit={{ x: '100%' }}
       transition={{ type: 'spring', damping: 20, stiffness: 260 }}
-      className="fixed inset-0 z-[1000] bg-bg flex flex-col"
+      className="fixed inset-0 z-[9999] bg-bg flex flex-col"
     >
       {/* Header */}
       <div className="flex items-center gap-3 p-4 pt-safe-top bg-card border-b border-border sticky top-0 z-10">
@@ -515,4 +527,6 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
       />
     </motion.div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(content, document.body) : null;
 }

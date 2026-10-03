@@ -20,7 +20,7 @@ interface CustomersProps {
 
 export function Customers({ onNavigate }: CustomersProps) {
   const { customers, transactions, loading, error, refreshData } = useRealtimeData();
-  const { searchTerm, setSearchTerm, setIsModalOpen } = useUI();
+  const { searchTerm, setSearchTerm, setIsModalOpen, setIsCustomerDetailsOpen } = useUI();
   const [isReady, setIsReady] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -52,13 +52,15 @@ export function Customers({ onNavigate }: CustomersProps) {
   const [showFilterSheet, setShowFilterSheet] = useState(false);
   const [showSortSheet, setShowSortSheet] = useState(false);
 
-  // Sync modal state with UI context
+  // Sync modal & customer details state with UI context
   useEffect(() => {
+    setIsCustomerDetailsOpen(!!selectedCustomer);
     setIsModalOpen(!!selectedCustomer || !!editCustomer || showAdd);
     return () => {
+      setIsCustomerDetailsOpen(false);
       setIsModalOpen(false);
     };
-  }, [selectedCustomer, editCustomer, showAdd, setIsModalOpen]);
+  }, [selectedCustomer, editCustomer, showAdd, setIsModalOpen, setIsCustomerDetailsOpen]);
 
   const filterOptions = [
     { value: 'all', label: 'All Accounts' },

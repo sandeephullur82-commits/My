@@ -16,6 +16,8 @@ interface UIContextType {
   resetEntryFilters: () => void;
   isModalOpen: boolean;
   setIsModalOpen: (isOpen: boolean) => void;
+  isCustomerDetailsOpen: boolean;
+  setIsCustomerDetailsOpen: (isOpen: boolean) => void;
 }
 
 const UIContext = createContext<UIContextType | undefined>(undefined);
@@ -31,6 +33,7 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
   const [dateFilter, setDateFilter] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [isCustomerDetailsOpen, setIsCustomerDetailsOpen] = useState<boolean>(false);
 
   const setCompact = (compact: boolean) => {
     setIsCompact(compact);
@@ -63,7 +66,9 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
       setSearchTerm,
       resetEntryFilters,
       isModalOpen,
-      setIsModalOpen
+      setIsModalOpen,
+      isCustomerDetailsOpen,
+      setIsCustomerDetailsOpen
     }}>
       {children}
     </UIContext.Provider>

@@ -21,7 +21,7 @@ const navItems = [
 ];
 
 export function Layout({ children, currentTab, setCurrentTab }: { children: React.ReactNode, currentTab: string, setCurrentTab: (t: string) => void }) {
-  const { isCompact, isModalOpen } = useUI();
+  const { isCompact, isModalOpen, isCustomerDetailsOpen } = useUI();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [showLive, setShowLive] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -205,7 +205,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
         </AnimatePresence>
 
         {/* Global Floating Action Button (FAB) (Only on Dashboard and Customers where actions exist) */}
-        {['dashboard', 'customers'].includes(currentTab) && !isSettingsOpen && !isModalOpen && (
+        {['dashboard', 'customers'].includes(currentTab) && !isSettingsOpen && !isModalOpen && !isCustomerDetailsOpen && (
           <>
             {/* Backdrop for FAB Menu */}
             {['dashboard', 'customers'].includes(currentTab) && showFABMenu && (
@@ -382,7 +382,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
       </main>
 
       {/* Bottom Navigation */}
-      {!showGlobalCollection && !isModalOpen && (
+      {!showGlobalCollection && !isModalOpen && !isCustomerDetailsOpen && (
         <nav 
           className="fixed bottom-0 left-0 right-0 z-[990] bg-card/95 backdrop-blur-md border-t border-border shadow-[0_-4px_20px_rgba(0,0,0,0.04)] pb-[env(safe-area-inset-bottom)]"
         >
