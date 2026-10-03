@@ -61,7 +61,13 @@ export function CustomerForm({ customer, onSave, onCancel, onDelete }: CustomerF
   const paidAmount = customer?.paid || 0;
   const balance = loanAmountNum - paidAmount;
 
-  const [idSuffix, setIdSuffix] = useState(isEdit ? (customer.displayId?.split('-')[1] || customer.id.replace('CUST-','')) : '001');
+  const [idSuffix, setIdSuffix] = useState(
+    isEdit
+      ? (typeof customer.displayId === 'string' && customer.displayId.includes('-')
+          ? customer.displayId.split('-')[1]
+          : String(customer.displayId || customer.id.replace('CUST-', '')))
+      : '001'
+  );
   const [isSyncingId, setIsSyncingId] = useState(false);
   const [isIdUnique, setIsIdUnique] = useState(true);
   const [isCheckingId, setIsCheckingId] = useState(false);

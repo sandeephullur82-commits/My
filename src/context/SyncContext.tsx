@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { onSnapshotsInSync, onSnapshot, query, collection } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { useAuth } from './AuthContext';
 import { toast } from 'sonner';
 
 export type SyncStatusType = 'synced' | 'pending' | 'offline';
@@ -27,7 +26,6 @@ const SyncContext = createContext<SyncContextType>({
 });
 
 export function SyncProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [status, setStatus] = useState<SyncStatusType>(navigator.onLine ? 'synced' : 'offline');
   const [lastSynced, setLastSynced] = useState<number | null>(Date.now());
@@ -67,17 +65,9 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     };
   }, [pendingCount]);
 
-  // Track Firestore metadata changes for pending writes
+  // Track Firestore metadata changes for pending writes across collections
   useEffect(() => {
-    if (!user) {
-      setPendingCustomers(0);
-      setPendingEntries(0);
-      return;
-    }
-
-    console.log(`[SyncProvider] Subscribing to metadata writes for user ${user.uid}`);
-
-    const qCust = query(collection(db, 'users', user.uid, 'customers'));
+    const qCust = query(collection(db, 'customers'));
     const unsubCust = onSnapshot(qCust, { includeMetadataChanges: true }, (snap) => {
       const pending = snap.docs.filter(doc => doc.metadata.hasPendingWrites).length;
       setPendingCustomers(pending);
@@ -85,7 +75,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       console.warn('[SyncProvider] Error listening to customers metadata:', err);
     });
 
-    const qEntries = query(collection(db, 'users', user.uid, 'entries'));
+    const qEntries = query(collection(db, 'entries'));
     const unsubEntries = onSnapshot(qEntries, { includeMetadataChanges: true }, (snap) => {
       const pending = snap.docs.filter(doc => doc.metadata.hasPendingWrites).length;
       setPendingEntries(pending);
@@ -97,7 +87,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       unsubCust();
       unsubEntries();
     };
-  }, [user]);
+  }, []);
 
   // Handle status update and sync toast transitions
   useEffect(() => {

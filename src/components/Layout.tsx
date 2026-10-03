@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Home, Users, PlusCircle, Settings, LogOut, Activity, Bell, X, Plus, Zap, UserPlus, Search } from 'lucide-react';
+import { Home, Users, PlusCircle, Settings, Activity, Bell, X, Plus, Zap, UserPlus, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useAuth } from '../context/AuthContext';
 import { useSync } from '../context/SyncContext';
 import { useUI } from '../context/UIContext';
 import { useFeedback } from '../context/FeedbackContext';
@@ -34,9 +33,6 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
   const [showFABMenu, setShowFABMenu] = useState(false);
   const [showGlobalAddCustomer, setShowGlobalAddCustomer] = useState(false);
   const [showGlobalCollection, setShowGlobalCollection] = useState(false);
-
-  // Check if current view is one of the main nav tabs, and no full-screen modal is active
-  const isNavVisible = navItems.some(item => item.id === currentTab) && !isModalOpen;
 
   const handleGlobalAddCustomerSave = async (customer: any) => {
     try {
@@ -90,7 +86,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
   }, [isSyncing, isOnline]);
 
   return (
-    <div className="flex flex-col h-[100dvh] w-full bg-bg text-text-primary overflow-hidden relative">
+    <div className="flex flex-col h-full w-full bg-bg text-text-primary overflow-hidden relative">
       
       {/* Top Bar - Shows only on Dashboard */}
       {currentTab === 'dashboard' && (
@@ -220,7 +216,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
             )}
 
             {/* Menu options structure */}
-            <div className="fixed right-5 bottom-[88px] z-[985] flex flex-col items-end gap-3.5 pointer-events-none">
+            <div className="fixed right-5 bottom-[calc(76px+env(safe-area-inset-bottom))] z-[985] flex flex-col items-end gap-3.5 pointer-events-none">
               <AnimatePresence>
                 {currentTab === 'dashboard' && showFABMenu && (
                   <motion.div
@@ -386,49 +382,40 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
       </main>
 
       {/* Bottom Navigation */}
-      <AnimatePresence>
-        {!isSettingsOpen && isNavVisible && (
-          <motion.nav 
-            key="bottom-nav"
-            initial={{ y: 100 }}
-            animate={{ y: 0 }}
-            exit={{ y: 100 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="flex-shrink-0 bg-card border-t border-border z-[100] pb-[env(safe-area-inset-bottom)]"
-          >
-        <div className="flex justify-around items-center h-16">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = currentTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => handleTabClick(item.id)}
-                className="relative flex flex-col items-center justify-center w-full h-full text-text-secondary hover:text-text-primary transition-colors outline-none"
-              >
-                <motion.div
-                  animate={{ scale: isActive ? 1.1 : 1 }}
-                  whileTap={{ scale: 0.9 }}
-                  className={cn(
-                    "p-1.5 rounded-xl transition-colors",
-                    isActive ? "text-accent bg-accent/10" : "opacity-40"
-                  )}
+      {!showGlobalCollection && !isModalOpen && (
+        <nav 
+          className="fixed bottom-0 left-0 right-0 z-[990] bg-card/95 backdrop-blur-md border-t border-border shadow-[0_-4px_20px_rgba(0,0,0,0.04)] pb-[env(safe-area-inset-bottom)]"
+        >
+          <div className="max-w-xl mx-auto flex justify-around items-center h-16 px-2">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = currentTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => handleTabClick(item.id)}
+                  className="relative flex flex-col items-center justify-center flex-1 h-full text-text-secondary hover:text-text-primary transition-colors outline-none py-1 group"
                 >
-                  <Icon size={20} strokeWidth={isActive ? 3 : 2} />
-                </motion.div>
-                <span className={cn(
-                  "text-[9px] items-center transition-colors uppercase tracking-[0.1em] font-black",
-                  isActive ? "text-accent opacity-100" : "opacity-30 mt-0.5"
-                )}>
-                  {item.label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </motion.nav>
-    )}
-  </AnimatePresence>
-</div>
+                  <div
+                    className={cn(
+                      "p-1.5 rounded-xl transition-all duration-200",
+                      isActive ? "text-accent bg-accent/10 scale-110" : "opacity-50 group-hover:opacity-80"
+                    )}
+                  >
+                    <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+                  </div>
+                  <span className={cn(
+                    "text-[10px] items-center transition-colors uppercase tracking-[0.08em] font-bold mt-0.5",
+                    isActive ? "text-accent opacity-100" : "opacity-40"
+                  )}>
+                    {item.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+      )}
+    </div>
   );
 }

@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { X } from 'lucide-react';
+import { useUI } from '../context/UIContext';
 
 interface BottomSheetProps {
   isOpen: boolean;
@@ -23,7 +25,18 @@ export function BottomSheet({
   showCloseButton = true,
   maxWidth = 'max-w-xl'
 }: BottomSheetProps) {
-  return (
+  const { setIsModalOpen } = useUI();
+
+  useEffect(() => {
+    if (isOpen) {
+      setIsModalOpen(true);
+      return () => {
+        setIsModalOpen(false);
+      };
+    }
+  }, [isOpen, setIsModalOpen]);
+
+  const content = (
     <AnimatePresence>
       {isOpen && (
         <motion.div
@@ -100,4 +113,6 @@ export function BottomSheet({
       )}
     </AnimatePresence>
   );
+
+  return typeof document !== 'undefined' ? createPortal(content, document.body) : null;
 }

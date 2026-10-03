@@ -55,6 +55,9 @@ export function Customers({ onNavigate }: CustomersProps) {
   // Sync modal state with UI context
   useEffect(() => {
     setIsModalOpen(!!selectedCustomer || !!editCustomer || showAdd);
+    return () => {
+      setIsModalOpen(false);
+    };
   }, [selectedCustomer, editCustomer, showAdd, setIsModalOpen]);
 
   const filterOptions = [

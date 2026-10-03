@@ -29,7 +29,6 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
   const [pendingAction, setPendingAction] = React.useState<'call' | 'whatsapp' | null>(null);
   const [previewReport, setPreviewReport] = React.useState<{ blob: Blob, fileName: string, title: string } | null>(null);
   const [showPreview, setShowPreview] = React.useState(false);
-  const [showFABMenu, setShowFABMenu] = React.useState(false);
   const [selectedReceipt, setSelectedReceipt] = React.useState<ReceiptData | null>(null);
   const [showQuickPayment, setShowQuickPayment] = React.useState(false);
 
@@ -185,7 +184,7 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto scrollbar-hide pb-[140px]">
+      <div className="flex-1 overflow-y-auto scrollbar-hide pb-12">
         {/* Summary Section */}
         <div className="p-6 flex flex-col items-center justify-center bg-card border-b border-border">
           <div className="relative w-32 h-32 mb-4">
@@ -205,7 +204,7 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
             </div>
           </div>
           
-          <div className="text-center">
+          <div className="text-center w-full">
             <p className="text-sm text-text-secondary mb-1">Pending Amount</p>
             <p className={`text-4xl font-bold ${isOverdue ? 'text-danger' : 'text-warning'}`}>
               ₹{pendingAmount.toLocaleString()}
@@ -213,16 +212,51 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
             <p className="text-sm text-success font-medium mt-2">
               Total Paid: ₹{paidAmount.toLocaleString()}
             </p>
-            {pendingAmount > 0 && (
+
+            {/* Direct Action Buttons (Replaces Floating Action Button) */}
+            <div className="flex items-center justify-center gap-2 mt-4 flex-wrap">
+              {pendingAmount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowQuickPayment(true)}
+                  className="px-4 py-2 rounded-xl bg-accent hover:brightness-110 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-accent/20 active:scale-95 transition-all"
+                >
+                  <PlusCircle size={15} strokeWidth={2.5} />
+                  <span>Add Payment</span>
+                </button>
+              )}
+
+              {customer.phone && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleWhatsAppClick}
+                    className="px-3.5 py-2 rounded-xl bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#25D366] font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 border border-[#25D366]/30 active:scale-95 transition-all"
+                  >
+                    <MessageCircle size={15} />
+                    <span>WhatsApp</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCallClick}
+                    className="px-3.5 py-2 rounded-xl bg-card hover:bg-muted text-text-primary font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 border border-border active:scale-95 transition-all"
+                  >
+                    <Phone size={14} />
+                    <span>Call</span>
+                  </button>
+                </>
+              )}
+
               <button
                 type="button"
-                onClick={() => setShowQuickPayment(true)}
-                className="mt-3.5 px-5 py-2.5 rounded-2xl bg-accent hover:brightness-110 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-accent/25 active:scale-95 transition-all cursor-pointer"
+                onClick={handleViewReport}
+                className="px-3.5 py-2 rounded-xl bg-card hover:bg-muted text-text-primary font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 border border-border active:scale-95 transition-all"
               >
-                <PlusCircle size={15} strokeWidth={2.5} />
-                <span>Add Payment</span>
+                <Eye size={14} />
+                <span>Statement</span>
               </button>
-            )}
+            </div>
           </div>
         </div>
 
@@ -392,115 +426,6 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
             </div>
           )}
         </div>
-      </div>
-
-      {/* Floating Action Button Menu (Speed Dial) */}
-      <div className="fixed right-5 bottom-8 z-[1050] flex flex-col items-end gap-3.5 pointer-events-none">
-        
-        {/* Backdrop for FAB Menu */}
-        <AnimatePresence>
-          {showFABMenu && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-bg/40 backdrop-blur-sm z-[-1] pointer-events-auto"
-              onClick={(e) => { e.stopPropagation(); setShowFABMenu(false); }}
-            />
-          )}
-        </AnimatePresence>
-
-        <AnimatePresence>
-          {showFABMenu && (
-            <motion.div
-              key="whatsapp-btn"
-              initial={{ opacity: 0, y: 15, scale: 0.85 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 15, scale: 0.85 }}
-              transition={{ duration: 0.18, delay: 0.09 }}
-              className="flex items-center gap-2.5 pointer-events-auto cursor-pointer group"
-              onClick={(e) => { e.stopPropagation(); setShowFABMenu(false); handleWhatsAppClick(); }}
-            >
-              <span className="bg-card dark:bg-muted/80 px-3 py-1.5 rounded-xl border border-border/50 text-[10px] font-black uppercase tracking-widest text-text-primary shadow-sm hover:border-[#25D366]/40 transition-colors">
-                WhatsApp
-              </span>
-              <div className="w-12 h-12 rounded-full bg-[#25D366] text-white flex items-center justify-center shadow-lg shadow-[#25D366]/20 active:scale-90 transition-all">
-                <MessageCircle size={20} fill="white" />
-              </div>
-            </motion.div>
-          )}
-
-          {showFABMenu && (
-            <motion.div
-              key="call-btn"
-              initial={{ opacity: 0, y: 15, scale: 0.85 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 15, scale: 0.85 }}
-              transition={{ duration: 0.18, delay: 0.06 }}
-              className="flex items-center gap-2.5 pointer-events-auto cursor-pointer group"
-              onClick={(e) => { e.stopPropagation(); setShowFABMenu(false); handleCallClick(); }}
-            >
-              <span className="bg-card dark:bg-muted/80 px-3 py-1.5 rounded-xl border border-border/50 text-[10px] font-black uppercase tracking-widest text-text-primary shadow-sm hover:border-accent/40 transition-colors">
-                Call
-              </span>
-              <div className="w-12 h-12 rounded-full bg-card border border-border text-text-primary flex items-center justify-center shadow-lg active:scale-90 transition-all">
-                <Phone size={20} />
-              </div>
-            </motion.div>
-          )}
-
-          {showFABMenu && (
-            <motion.div
-              key="report-btn"
-              initial={{ opacity: 0, y: 15, scale: 0.85 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 15, scale: 0.85 }}
-              transition={{ duration: 0.18, delay: 0.03 }}
-              className="flex items-center gap-2.5 pointer-events-auto cursor-pointer group"
-              onClick={(e) => { e.stopPropagation(); setShowFABMenu(false); handleViewReport(); }}
-            >
-              <span className="bg-card dark:bg-muted/80 px-3 py-1.5 rounded-xl border border-border/50 text-[10px] font-black uppercase tracking-widest text-text-primary shadow-sm hover:border-accent/40 transition-colors">
-                Ledger Report
-              </span>
-              <div className="w-12 h-12 rounded-full bg-card border border-border text-text-primary flex items-center justify-center shadow-lg active:scale-90 transition-all">
-                <Eye size={20} />
-              </div>
-            </motion.div>
-          )}
-
-          {showFABMenu && (
-            <motion.div
-              key="entry-btn"
-              initial={{ opacity: 0, y: 15, scale: 0.85 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 15, scale: 0.85 }}
-              transition={{ duration: 0.18, delay: 0 }}
-              className="flex items-center gap-2.5 pointer-events-auto cursor-pointer group"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowFABMenu(false);
-                setShowQuickPayment(true);
-              }}
-            >
-              <span className="bg-card dark:bg-muted/80 px-3 py-1.5 rounded-xl border border-border/50 text-[10px] font-black uppercase tracking-widest text-text-primary shadow-sm hover:border-accent/40 transition-colors">
-                Add Entry
-              </span>
-              <div className="w-12 h-12 rounded-full bg-accent text-white flex items-center justify-center shadow-lg active:scale-90 transition-all">
-                <Plus size={22} strokeWidth={3} />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-        
-        {/* Main Toggle FAB */}
-        <motion.button
-          whileTap={{ scale: 0.9 }}
-          onClick={(e) => { e.stopPropagation(); setShowFABMenu(!showFABMenu); }}
-          className="w-14 h-14 rounded-full bg-accent text-white flex items-center justify-center shadow-xl shadow-accent/30 pointer-events-auto transition-transform z-10"
-          animate={{ rotate: showFABMenu ? 45 : 0 }}
-        >
-          <Plus size={24} strokeWidth={2.5} />
-        </motion.button>
       </div>
 
       {/* Contact Permission Modal */}

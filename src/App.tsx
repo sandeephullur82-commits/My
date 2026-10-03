@@ -3,14 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import { ThemeProvider } from './components/ThemeProvider';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider } from './context/AuthContext';
 import { SyncProvider } from './context/SyncContext';
 import { UIProvider, useUI } from './context/UIContext';
 import { DataProvider } from './hooks/useRealtimeData';
 import { Layout } from './components/Layout';
-import { IndianRupee } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Dashboard } from './pages/Dashboard';
@@ -20,23 +19,20 @@ import { TransactionsList } from './pages/TransactionsList';
 import { Notifications } from './pages/Notifications';
 import { Settings } from './pages/Settings';
 import { WhatsAppCallback } from './pages/WhatsAppCallback';
-import { Login } from './pages/Login';
 import { NotificationProvider } from './context/NotificationContext';
 import { FeedbackProvider } from './context/FeedbackContext';
-import { PageContainer } from './components/PageContainer';
 
 function AppContent() {
-  const { user, loading } = useAuth();
   const { setEntryTab, setPaymentFilter, setDateFilter, resetEntryFilters, setSearchTerm } = useUI();
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Instant redirect to dashboard upon login if on /login
+  // If accidentally navigated to /login, redirect cleanly to /
   React.useEffect(() => {
-    if (user && (location.pathname === '/login' || location.pathname === '')) {
+    if (location.pathname === '/login') {
       navigate('/', { replace: true });
     }
-  }, [user, location.pathname, navigate]);
+  }, [location.pathname, navigate]);
 
   // Derive currentTab from location (mapping callback paths gracefully to entry)
   const rawTab = location.pathname.split('/')[1] || 'dashboard';
@@ -46,7 +42,6 @@ function AppContent() {
     if (tab === 'entry') resetEntryFilters();
     if (tab === 'customers') setSearchTerm('');
     
-    // Use navigate instead of setCurrentTab
     if (tab === 'dashboard') navigate('/');
     else if (tab === 'transactions') navigate('/transactions', { state: { fromTab: true } });
     else navigate(`/${tab}`);
@@ -70,7 +65,6 @@ function AppContent() {
     }
 
     if (tab === 'transactions') {
-      // Pass the filter in state as requested by the user
       navigate('/transactions', { state: { filter: filter || 'ALL' } });
     }
 
@@ -82,30 +76,6 @@ function AppContent() {
       navigate('/');
     }
   };
-
-  const goToEntry = (customerId: string) => {
-    console.log(`[Add Entry] Triggered for: ${customerId}`);
-    if (!customerId) return;
-    handleNavigate('entry', undefined, customerId);
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-bg relative overflow-hidden">
-        <div className="flex flex-col items-center gap-4 z-10">
-          <div className="w-16 h-16 bg-accent rounded-2xl flex items-center justify-center shadow-lg shadow-accent/20">
-            <IndianRupee size={32} className="text-white" />
-          </div>
-          <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin mt-2" />
-        </div>
-      </div>
-    );
-  }
-
-  // If not logged in, instantly show the login page
-  if (!user) {
-    return <Login onLoginSuccess={() => navigate('/', { replace: true })} />;
-  }
 
   return (
     <SyncProvider>

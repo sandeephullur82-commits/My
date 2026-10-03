@@ -2,13 +2,13 @@ import React, { useRef, useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { useRealtimeData } from '../hooks/useRealtimeData';
 import { 
-  Moon, Sun, LogOut, User, 
+  Moon, Sun, User, 
   Palette, LayoutDashboard, ShieldCheck,
   ChevronRight, ToggleLeft, ToggleRight, Smartphone, Delete,
   Database, AlertCircle, Calendar, Hash, Scale, 
   RefreshCw, Files, FileSpreadsheet, FileJson, FileText,
   Bell, BellRing, Clock, Volume2, VolumeX, CheckCircle2,
-  Send, Zap, Check, Copy, History, Trash2, ChevronDown, ChevronUp
+  Send, Zap, Check, Copy, History, Trash2, ChevronDown, ChevronUp, CheckCircle
 } from 'lucide-react';
 import { useTheme } from '../components/ThemeProvider';
 import { useUI } from '../context/UIContext';
@@ -125,7 +125,7 @@ export function Settings() {
 
 
   return (
-    <div className="px-6 py-8 flex flex-col gap-8 pb-20 animate-in fade-in duration-500">
+    <div className="h-full overflow-y-auto px-6 py-8 flex flex-col gap-8 pb-32 animate-in fade-in duration-500">
       {/* Account Section */}
       <div className="flex flex-col items-center gap-4 py-4 px-2">
         <div className="relative group">
@@ -137,8 +137,8 @@ export function Settings() {
           </div>
         </div>
         <div className="text-center">
-          <h2 className="text-xl font-black text-text-primary tracking-tighter">Administrator</h2>
-          <p className="text-[11px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] mt-0.5">{user?.email}</p>
+          <h2 className="text-xl font-black text-text-primary tracking-tighter">Direct Firestore Access</h2>
+          <p className="text-[11px] font-black text-text-secondary opacity-50 uppercase tracking-[0.2em] mt-0.5">Authentication Disabled • Live Ledger Sync</p>
         </div>
       </div>
 
@@ -640,22 +640,17 @@ export function Settings() {
 
         {/* Account Section */}
         <div>
-          <h3 className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] px-4 mb-3">Account & Session</h3>
-          <div className="bg-card rounded-[24px] border border-border/50 shadow-sm overflow-hidden p-2 space-y-1">
-            <button
-              onClick={logout}
-              className="w-full flex items-center justify-between p-4 rounded-2xl bg-danger/5 hover:bg-danger/10 transition-colors"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl bg-danger/10 text-danger flex items-center justify-center">
-                  <LogOut size={20} />
-                </div>
-                <div className="text-left">
-                  <p className="font-bold text-sm text-danger tracking-tight">Sign Out</p>
-                  <p className="text-[10px] font-medium text-danger/60 uppercase tracking-widest leading-none mt-1">End active session ({user?.email || 'User'})</p>
-                </div>
+          <h3 className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] px-4 mb-3">Database Mode</h3>
+          <div className="bg-card rounded-[24px] border border-border/50 shadow-sm overflow-hidden p-4">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl bg-success/10 text-success flex items-center justify-center">
+                <CheckCircle size={20} />
               </div>
-            </button>
+              <div className="text-left flex-1 min-w-0">
+                <p className="font-bold text-sm text-text-primary tracking-tight">Direct Access Active</p>
+                <p className="text-[10px] font-medium text-text-secondary opacity-70 uppercase tracking-widest leading-none mt-1">Full dataset access without login credentials</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>

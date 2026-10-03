@@ -97,7 +97,7 @@ export function Notifications() {
   const unreadCount = history.filter(n => !n.isRead).length;
 
   return (
-    <div className="min-h-screen bg-bg pb-24">
+    <div className="h-full overflow-y-auto bg-bg pb-28">
       {/* Header */}
       <div className="sticky top-0 z-40 bg-bg/90 backdrop-blur-md border-b border-border/40">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">

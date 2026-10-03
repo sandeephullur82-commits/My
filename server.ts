@@ -331,12 +331,18 @@ async function startServer() {
       const now = new Date();
       const todayDateOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 
-      for (const userDoc of usersSnap.docs) {
-        const userId = userDoc.id;
-        
-        // Use standard collection query per user to avoid collectionGroup composite index errors
-        const customersSnap = await db.collection("users").doc(userId).collection("customers")
+      // Collect user IDs or fallback to admin_user
+      const userList = usersSnap.docs.map(d => d.id);
+      if (userList.length === 0) userList.push("admin_user");
+
+      for (const userId of userList) {
+        // Query user customers, or root customers if none under user
+        let customersSnap = await db.collection("users").doc(userId).collection("customers")
           .where("isDeleted", "==", false).get();
+          
+        if (customersSnap.empty) {
+          customersSnap = await db.collection("customers").where("isDeleted", "==", false).get();
+        }
           
         const customerList = customersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
@@ -436,14 +442,21 @@ async function startServer() {
     console.log("Running Unsettled check...");
     try {
       const usersSnap = await db.collection("users").get();
+      const userList = usersSnap.docs.map(d => d.id);
+      if (userList.length === 0) userList.push("admin_user");
       
-      for (const userDoc of usersSnap.docs) {
-        const userId = userDoc.id;
-        // Use standard collection query per user to avoid collectionGroup composite index errors
-        const entriesSnap = await db.collection("users").doc(userId).collection("entries")
+      for (const userId of userList) {
+        let entriesSnap = await db.collection("users").doc(userId).collection("entries")
           .where("status", "==", "unsettled")
           .where("isDeleted", "==", false)
           .get();
+
+        if (entriesSnap.empty) {
+          entriesSnap = await db.collection("entries")
+            .where("status", "==", "unsettled")
+            .where("isDeleted", "==", false)
+            .get();
+        }
         
         let count = 0;
         let total = 0;

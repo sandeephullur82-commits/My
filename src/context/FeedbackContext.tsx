@@ -3,8 +3,6 @@ import { FintechToast, FintechToastProps } from '../components/FintechToast';
 import { AnimatePresence } from 'motion/react';
 import { createPortal } from 'react-dom';
 import { firestoreService, NotificationRecord } from '../services/firestoreService';
-import { auth } from '../lib/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
 
 interface FeedbackContextType {
   toastSuccess: (title: string, message?: string, saveToHistory?: boolean) => void;
@@ -46,23 +44,15 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
   const timeoutsMap = useRef<Map<string | number, NodeJS.Timeout>>(new Map());
 
   useEffect(() => {
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        const unsubNotify = firestoreService.subscribeNotifications(user.uid, (data) => {
-          setHistory(data);
-        });
-        return () => unsubNotify();
-      } else {
-        setHistory([]);
-      }
+    const unsubNotify = firestoreService.subscribeNotifications((data) => {
+      setHistory(data);
     });
-    return () => unsubAuth();
+    return () => unsubNotify();
   }, []);
 
   const saveToStore = useCallback(async (toast: Omit<FintechToastProps, 'onClose' | 'id'>) => {
-    if (!auth.currentUser) return;
     const recordType: NotificationRecord['type'] = toast.type === 'sync' ? 'info' : (toast.type || 'info');
-    await firestoreService.addNotification(auth.currentUser.uid, {
+    await firestoreService.addNotification({
       type: recordType,
       priority: toast.priority || 'medium',
       title: toast.title || 'Notification',
@@ -234,15 +224,15 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
   }, [addToast]);
 
   const deleteNotification = useCallback(async (id: string) => {
-    if (auth.currentUser) await firestoreService.deleteNotification(auth.currentUser.uid, id);
+    await firestoreService.deleteNotification(id);
   }, []);
 
   const markAsRead = useCallback(async (id: string) => {
-    if (auth.currentUser) await firestoreService.markNotificationRead(auth.currentUser.uid, id);
+    await firestoreService.markNotificationRead(id);
   }, []);
 
   const clearHistory = useCallback(async () => {
-    if (auth.currentUser) await firestoreService.clearNotifications(auth.currentUser.uid);
+    await firestoreService.clearNotifications();
   }, []);
 
   return (

@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { firestoreService, Customer, Transaction } from '../services/firestoreService';
-import { useAuth } from '../context/AuthContext';
 
 interface DataContextType {
   customers: Customer[];
@@ -19,9 +18,7 @@ const DataContext = createContext<DataContextType>({
 });
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
-  
-  // Try to load initial data from cache for instant loading experience
+  // Load initial data from cache for instant offline render
   const [customers, setCustomers] = useState<Customer[]>(() => {
     try {
       const cached = localStorage.getItem('cache_customers');
@@ -45,11 +42,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-
     let custLoaded = false;
     let txLoaded = false;
 
@@ -60,11 +52,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     };
 
     const unsubCust = firestoreService.subscribeCustomers(
-      user.uid, 
       (data) => {
         console.log(`[DataProvider] realtime sync customers active. Received count: ${data.length}`);
         setCustomers(data);
-        localStorage.setItem('cache_customers', JSON.stringify(data));
+        try {
+          localStorage.setItem('cache_customers', JSON.stringify(data));
+        } catch {
+          // ignore cache overflow
+        }
         custLoaded = true;
         setError(null);
         checkDone();
@@ -77,11 +72,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     );
 
     const unsubTx = firestoreService.subscribeTransactions(
-      user.uid, 
       (data) => {
         console.log(`[DataProvider] realtime sync transactions active. Received count: ${data.length}`);
         setTransactions(data);
-        localStorage.setItem('cache_transactions', JSON.stringify(data));
+        try {
+          localStorage.setItem('cache_transactions', JSON.stringify(data));
+        } catch {
+          // ignore cache overflow
+        }
         txLoaded = true;
         setError(null);
         checkDone();
@@ -97,7 +95,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       unsubCust();
       unsubTx();
     };
-  }, [user, refreshKey]);
+  }, [refreshKey]);
 
   const refreshData = () => {
     setLoading(true);
