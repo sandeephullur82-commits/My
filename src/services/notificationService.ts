@@ -1,5 +1,5 @@
 import { Capacitor } from '@capacitor/core';
-import { LocalNotifications, Channel } from '@capacitor/local-notifications';
+import { LocalNotifications, Channel, ActionPerformed as LocalActionPerformed } from '@capacitor/local-notifications';
 import { PushNotifications, Token, ActionPerformed, PushNotificationSchema } from '@capacitor/push-notifications';
 import { messaging, db, auth } from '../lib/firebase';
 import { getToken, onMessage, MessagePayload } from 'firebase/messaging';
@@ -614,6 +614,78 @@ class NotificationService {
           }
         }
 
+        try {
+          await LocalNotifications.registerActionTypes({
+            types: [
+              {
+                id: 'PAYMENT_ACTIONS',
+                actions: [
+                  { id: 'view_receipt', title: '🧾 View Receipt' },
+                  { id: 'whatsapp', title: '💬 WhatsApp' }
+                ]
+              },
+              {
+                id: 'NP_ACTIONS',
+                actions: [
+                  { id: 'collect_now', title: '⚡ Collect Now' },
+                  { id: 'whatsapp_reminder', title: '💬 Send Reminder' }
+                ]
+              },
+              {
+                id: 'ROUTE_ACTIONS',
+                actions: [
+                  { id: 'open_route', title: '🚀 Open Routes' },
+                  { id: 'view_dashboard', title: '📊 View Goals' }
+                ]
+              },
+              {
+                id: 'SUMMARY_ACTIONS',
+                actions: [
+                  { id: 'export_pdf', title: '📥 Export PDF' },
+                  { id: 'view_history', title: '📈 Ledger' }
+                ]
+              },
+              {
+                id: 'SYNC_ACTIONS',
+                actions: [
+                  { id: 'view_history', title: '📋 Ledger' }
+                ]
+              }
+            ]
+          });
+
+          LocalNotifications.addListener('localNotificationActionPerformed', (notificationAction: LocalActionPerformed) => {
+            const actionId = notificationAction.actionId;
+            const extra = (notificationAction.notification as any).extra || {};
+            
+            if (actionId === 'whatsapp' || actionId === 'whatsapp_reminder') {
+              const rawPhone = extra.phone || extra.customerPhone || '';
+              const cleanPhone = String(rawPhone).replace(/[^\d]/g, '');
+              const phoneWithCode = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+              const textMsg = actionId === 'whatsapp_reminder'
+                ? `Dear ${extra.customerName || 'Customer'}, your daily installment is pending. Please keep it ready or pay via UPI. Thank you!`
+                : `Hello ${extra.customerName || 'Customer'}, payment received for your Pigmy account. Thank you!`;
+              if (phoneWithCode) {
+                window.open(`https://wa.me/${phoneWithCode}?text=${encodeURIComponent(textMsg)}`, '_blank');
+              }
+            } else if (actionId === 'collect_now') {
+              window.location.href = extra.customerId ? `/entry?customerId=${extra.customerId}` : '/entry';
+            } else if (actionId === 'view_receipt') {
+              window.location.href = extra.receiptId ? `/transactions?receipt=${extra.receiptId}` : '/transactions';
+            } else if (actionId === 'export_pdf') {
+              window.location.href = '/transactions?export=pdf';
+            } else if (actionId === 'open_route') {
+              window.location.href = '/entry';
+            } else if (actionId === 'view_dashboard') {
+              window.location.href = '/';
+            } else if (actionId === 'view_history') {
+              window.location.href = '/transactions';
+            }
+          });
+        } catch (e) {
+          console.warn('Could not register action types:', e);
+        }
+
         await PushNotifications.addListener('registration', (token: Token) => {
           const currentUid = auth.currentUser?.uid || 'anonymous';
           this.registerDeviceToken(currentUid, token.value, Capacitor.getPlatform() as 'android' | 'ios');
@@ -801,6 +873,12 @@ class NotificationService {
 
     if (Capacitor.isNativePlatform()) {
       try {
+        let actionTypeId = 'PAYMENT_ACTIONS';
+        if (options.type === 'np') actionTypeId = 'NP_ACTIONS';
+        else if (options.type === 'morning_route') actionTypeId = 'ROUTE_ACTIONS';
+        else if (options.type === 'evening_summary') actionTypeId = 'SUMMARY_ACTIONS';
+        else if (options.type === 'sync') actionTypeId = 'SYNC_ACTIONS';
+
         await LocalNotifications.schedule({
           notifications: [
             {
@@ -810,6 +888,7 @@ class NotificationService {
               channelId: options.channelId || 'collections_channel',
               smallIcon: 'ic_stat_icon_config_sample',
               iconColor: '#10b981',
+              actionTypeId: actionTypeId,
               extra: options.extra,
               schedule: { at: new Date(Date.now() + 100) }
             }
@@ -823,23 +902,96 @@ class NotificationService {
 
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
       try {
-        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        // Build rich Android Notification Center Action Buttons
+        let actions: { action: string; title: string }[] = [];
+        let vibrationPattern = [0, 100, 50, 100];
+        let requireInteraction = false;
+
+        switch (options.type) {
+          case 'payment':
+            actions = [
+              { action: 'view_receipt', title: '🧾 View Receipt' },
+              { action: 'whatsapp', title: '💬 WhatsApp' }
+            ];
+            vibrationPattern = [0, 120, 80, 140, 60, 200];
+            break;
+
+          case 'np':
+            actions = [
+              { action: 'collect_now', title: '⚡ Collect Now' },
+              { action: 'whatsapp_reminder', title: '💬 Send Reminder' }
+            ];
+            vibrationPattern = [0, 250, 120, 250, 120, 400];
+            requireInteraction = true;
+            break;
+
+          case 'morning_route':
+            actions = [
+              { action: 'open_route', title: '🚀 Open Routes' },
+              { action: 'view_dashboard', title: '📊 View Goals' }
+            ];
+            vibrationPattern = [0, 150, 100, 150];
+            break;
+
+          case 'evening_summary':
+            actions = [
+              { action: 'export_pdf', title: '📥 Export PDF' },
+              { action: 'view_history', title: '📈 Ledger' }
+            ];
+            vibrationPattern = [0, 100, 50, 100, 50, 100];
+            break;
+
+          case 'sync':
+            actions = [
+              { action: 'view_history', title: '📋 Ledger' }
+            ];
+            vibrationPattern = [0, 80, 40, 80];
+            break;
+
+          default:
+            actions = [
+              { action: 'open_app', title: '📱 Open App' }
+            ];
+            break;
+        }
+
+        const tag = `pigmy-${options.type}-${options.extra?.customerId || options.extra?.txId || Date.now()}`;
+
+        if ('serviceWorker' in navigator) {
           const reg = await navigator.serviceWorker.ready;
           const opts: any = {
             body: options.body,
             icon: '/pwa-192x192.png',
-            badge: '/pwa-192x192.png',
-            data: { ...options.extra, deepLinkUrl }
+            badge: '/notification-badge.png', // Crisp monochrome silhouette for Android status bar
+            tag: tag,
+            renotify: true,
+            requireInteraction: requireInteraction,
+            actions: actions,
+            timestamp: Date.now(),
+            silent: false,
+            data: { 
+              ...options.extra, 
+              deepLinkUrl,
+              click_action: deepLinkUrl,
+              phone: options.extra?.phone || options.extra?.customerPhone,
+              customerId: options.extra?.customerId,
+              customerName: options.extra?.customerName,
+              receiptId: options.extra?.receiptId || options.extra?.txId
+            }
           };
+
           if (this.settings.vibrationEnabled) {
-            opts.vibrate = [100, 50, 100];
+            opts.vibrate = vibrationPattern;
           }
+
           await reg.showNotification(options.title, opts);
           return true;
         } else {
           new Notification(options.title, {
             body: options.body,
-            icon: '/pwa-192x192.png'
+            icon: '/pwa-192x192.png',
+            badge: '/notification-badge.png',
+            tag: tag
           });
           return true;
         }

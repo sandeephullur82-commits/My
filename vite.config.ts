@@ -14,8 +14,9 @@ export default defineConfig(({ mode }) => {
         registerType: 'autoUpdate',
         workbox: {
           maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+          importScripts: ['/firebase-messaging-sw.js'],
         },
-        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg', 'notification-badge.png'],
         manifest: {
           name: 'Pigmy App',
           short_name: 'Pigmy',
