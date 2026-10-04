@@ -80,6 +80,32 @@ function buildAndroidNotificationOptions(payload) {
       vibrationPattern = [0, 100, 50, 100, 50, 100];
       break;
 
+    case 'renewal':
+    case 'renewal_due':
+    case 'renewal_summary':
+      actions = [
+        { action: 'open_renewal', title: '🔄 Review Renewal' },
+        { action: 'whatsapp_renewal', title: '💬 WhatsApp' }
+      ];
+      vibrationPattern = [0, 200, 100, 200, 100, 300];
+      requireInteraction = true;
+      break;
+
+    case 'renewal_completed':
+      actions = [
+        { action: 'view_dashboard', title: '📊 Dashboard' },
+        { action: 'whatsapp_renewal', title: '💬 WhatsApp Terms' }
+      ];
+      vibrationPattern = [0, 150, 80, 150];
+      break;
+
+    case 'renewal_rejected':
+      actions = [
+        { action: 'view_dashboard', title: '📊 Dashboard' }
+      ];
+      vibrationPattern = [0, 100, 50, 100];
+      break;
+
     case 'sync':
       actions = [
         { action: 'view_history', title: '📋 View Ledger' }
@@ -136,7 +162,7 @@ self.addEventListener('notificationclick', (event) => {
   let targetUrl = data.click_action || '/';
 
   // 1. WhatsApp Action (Direct chat with borrower from Android Notification Center)
-  if (action === 'whatsapp' || action === 'whatsapp_reminder') {
+  if (action === 'whatsapp' || action === 'whatsapp_reminder' || action === 'whatsapp_renewal') {
     const rawPhone = data.phone || '';
     const cleanPhone = String(rawPhone).replace(/[^\d]/g, '');
     const phoneWithCode = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
@@ -144,6 +170,10 @@ self.addEventListener('notificationclick', (event) => {
     let textMsg = `Hello ${data.customerName || 'Customer'}, this is regarding your Pigmy deposit account with Pigmy Pro.`;
     if (action === 'whatsapp_reminder') {
       textMsg = `Dear ${data.customerName || 'Customer'}, your daily Pigmy deposit installment is pending. Please keep it ready or pay via UPI. Thank you!`;
+    } else if (action === 'whatsapp_renewal') {
+      textMsg = data.newTotalDebt
+        ? `Dear ${data.customerName || 'Customer'}, your loan has been successfully renewed for Cycle #${data.cycleNumber || 2} with new total balance ₹${Number(data.newTotalDebt).toLocaleString('en-IN')}. Daily installment: ₹${Number(data.dailyInstallment || 0).toLocaleString('en-IN')}/day. Thank you!`
+        : `Hello ${data.customerName || 'Customer'}, your loan tenure has completed with a pending balance of ₹${Number(data.pending || 0).toLocaleString('en-IN')}. Please contact us to renew or restructure your loan.`;
     }
 
     if (phoneWithCode) {
@@ -151,6 +181,11 @@ self.addEventListener('notificationclick', (event) => {
       event.waitUntil(clients.openWindow(targetUrl));
       return;
     }
+  }
+
+  // Open Renewal in Dashboard
+  if (action === 'open_renewal') {
+    targetUrl = '/';
   }
 
   // 2. Call Customer Action (Direct dialer prompt from Android Notification Center)

@@ -14,6 +14,7 @@ export interface NotificationSettings {
   notifyNP: boolean;
   notifyMorningRoute: boolean;
   notifyEveningSummary: boolean;
+  notifyRenewals: boolean;
   soundEnabled: boolean;
   vibrationEnabled: boolean;
 }
@@ -23,7 +24,7 @@ export interface NotificationLog {
   title: string;
   body: string;
   timestamp: number;
-  type: 'payment' | 'np' | 'morning_route' | 'evening_summary' | 'test' | 'push' | 'sync';
+  type: 'payment' | 'np' | 'morning_route' | 'evening_summary' | 'test' | 'push' | 'sync' | 'renewal' | 'renewal_summary' | 'renewal_completed' | 'renewal_rejected';
   data?: Record<string, any>;
 }
 
@@ -45,6 +46,7 @@ export interface NotificationPreferences {
   enableUpcomingAlerts: boolean;
   enableDueTodayAlerts: boolean;
   enableOverdueAlerts: boolean;
+  enableRenewalAlerts: boolean;
 }
 
 export const REMINDER_TIMING_OPTIONS = [
@@ -74,6 +76,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   enableUpcomingAlerts: true,
   enableDueTodayAlerts: true,
   enableOverdueAlerts: true,
+  enableRenewalAlerts: true,
 };
 
 export interface PaymentAlert {
@@ -86,8 +89,8 @@ export interface PaymentAlert {
   paidAmount?: number;
   pendingAmount: number;
   dailyInstallment?: number;
-  alertType: 'upcoming' | 'due_today' | 'overdue';
-  type?: 'upcoming' | 'due_today' | 'overdue';
+  alertType: 'upcoming' | 'due_today' | 'overdue' | 'renewal';
+  type?: 'upcoming' | 'due_today' | 'overdue' | 'renewal';
   title: string;
   message: string;
   collectionUrl: string;
@@ -603,6 +606,17 @@ class NotificationService {
             vibration: true,
             lights: true,
             lightColor: '#8b5cf6'
+          },
+          {
+            id: 'renewals_channel',
+            name: 'Loan Renewals & Restructuring',
+            description: 'Alerts for matured accounts ready for renewal or restructuring',
+            importance: 4,
+            visibility: 1,
+            sound: 'beep.wav',
+            vibration: true,
+            lights: true,
+            lightColor: '#f59e0b'
           }
         ];
 
@@ -650,6 +664,20 @@ class NotificationService {
                 actions: [
                   { id: 'view_history', title: '📋 Ledger' }
                 ]
+              },
+              {
+                id: 'RENEWAL_ACTIONS',
+                actions: [
+                  { id: 'open_renewal', title: '🔄 Review Renewal' },
+                  { id: 'whatsapp_renewal', title: '💬 WhatsApp' }
+                ]
+              },
+              {
+                id: 'RENEWED_CONFIRM_ACTIONS',
+                actions: [
+                  { id: 'view_dashboard', title: '📊 Dashboard' },
+                  { id: 'whatsapp_renewal', title: '💬 WhatsApp Terms' }
+                ]
               }
             ]
           });
@@ -668,6 +696,18 @@ class NotificationService {
               if (phoneWithCode) {
                 window.open(`https://wa.me/${phoneWithCode}?text=${encodeURIComponent(textMsg)}`, '_blank');
               }
+            } else if (actionId === 'whatsapp_renewal') {
+              const rawPhone = extra.phone || extra.customerPhone || '';
+              const cleanPhone = String(rawPhone).replace(/[^\d]/g, '');
+              const phoneWithCode = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+              const textMsg = extra.newTotalDebt
+                ? `Dear ${extra.customerName || 'Customer'}, your loan has been successfully renewed for Cycle #${extra.cycleNumber || 2} with total amount ₹${extra.newTotalDebt?.toLocaleString('en-IN')}. Daily installment: ₹${extra.dailyInstallment?.toLocaleString('en-IN')}. Thank you!`
+                : `Hello ${extra.customerName || 'Customer'}, your loan tenure has ended with a remaining balance of ₹${(extra.pending || 0).toLocaleString('en-IN')}. Please contact us to renew or restructure your terms.`;
+              if (phoneWithCode) {
+                window.open(`https://wa.me/${phoneWithCode}?text=${encodeURIComponent(textMsg)}`, '_blank');
+              }
+            } else if (actionId === 'open_renewal') {
+              window.location.href = '/';
             } else if (actionId === 'collect_now') {
               window.location.href = extra.customerId ? `/entry?customerId=${extra.customerId}` : '/entry';
             } else if (actionId === 'view_receipt') {
@@ -853,7 +893,7 @@ class NotificationService {
     id?: number;
     title: string;
     body: string;
-    channelId?: 'collections_channel' | 'np_alerts_channel' | 'daily_digest_channel';
+    channelId?: 'collections_channel' | 'np_alerts_channel' | 'daily_digest_channel' | 'renewals_channel';
     type: NotificationLog['type'];
     extra?: Record<string, any>;
   }): Promise<boolean> {
@@ -878,6 +918,8 @@ class NotificationService {
         else if (options.type === 'morning_route') actionTypeId = 'ROUTE_ACTIONS';
         else if (options.type === 'evening_summary') actionTypeId = 'SUMMARY_ACTIONS';
         else if (options.type === 'sync') actionTypeId = 'SYNC_ACTIONS';
+        else if (options.type === 'renewal' || options.type === 'renewal_summary') actionTypeId = 'RENEWAL_ACTIONS';
+        else if (options.type === 'renewal_completed') actionTypeId = 'RENEWED_CONFIRM_ACTIONS';
 
         await LocalNotifications.schedule({
           notifications: [
@@ -887,7 +929,7 @@ class NotificationService {
               body: options.body,
               channelId: options.channelId || 'collections_channel',
               smallIcon: 'ic_stat_icon_config_sample',
-              iconColor: '#10b981',
+              iconColor: options.type?.startsWith('renewal') ? '#f59e0b' : '#10b981',
               actionTypeId: actionTypeId,
               extra: options.extra,
               schedule: { at: new Date(Date.now() + 100) }
@@ -931,6 +973,31 @@ class NotificationService {
               { action: 'view_dashboard', title: '📊 View Goals' }
             ];
             vibrationPattern = [0, 150, 100, 150];
+            break;
+
+          case 'renewal':
+          case 'renewal_summary':
+            actions = [
+              { action: 'open_renewal', title: '🔄 Review Renewal' },
+              { action: 'whatsapp_renewal', title: '💬 WhatsApp' }
+            ];
+            vibrationPattern = [0, 200, 100, 200, 100, 300];
+            requireInteraction = true;
+            break;
+
+          case 'renewal_completed':
+            actions = [
+              { action: 'view_dashboard', title: '📊 Dashboard' },
+              { action: 'whatsapp_renewal', title: '💬 WhatsApp Terms' }
+            ];
+            vibrationPattern = [0, 150, 80, 150];
+            break;
+
+          case 'renewal_rejected':
+            actions = [
+              { action: 'view_dashboard', title: '📊 Dashboard' }
+            ];
+            vibrationPattern = [0, 100, 50, 100];
             break;
 
           case 'evening_summary':
@@ -1094,6 +1161,112 @@ class NotificationService {
       channelId: 'daily_digest_channel',
       type: 'evening_summary',
       extra: { cashTotal, upiTotal, npCount, notification_type: 'evening_summary' }
+    });
+  }
+
+  public async notifyRenewalDue(customer: {
+    id: string;
+    name: string;
+    phone?: string;
+    pending: number;
+    endDate: number;
+    daysOverdue?: number;
+  }): Promise<boolean> {
+    if (!this.settings.enableNotifications) return false;
+
+    const daysText = customer.daysOverdue !== undefined && customer.daysOverdue > 0
+      ? ` (Matured ${customer.daysOverdue}d ago)`
+      : ' (Matured today)';
+    const title = `🔄 Renewal Due: ${customer.name}`;
+    const body = `Loan term completed${daysText}. Pending balance: ₹${customer.pending.toLocaleString('en-IN')}. Tap to renew or restructure terms.`;
+
+    return this.dispatchNotification({
+      title,
+      body,
+      channelId: 'renewals_channel',
+      type: 'renewal',
+      extra: {
+        customerId: customer.id,
+        customerName: customer.name,
+        phone: customer.phone,
+        pending: customer.pending,
+        click_action: '/',
+        notification_type: 'renewal'
+      }
+    });
+  }
+
+  public async notifyRenewalSummary(count: number, totalRemaining: number): Promise<boolean> {
+    if (!this.settings.enableNotifications) return false;
+
+    const title = `🔄 ${count} Matured Loan${count === 1 ? '' : 's'} Ready for Renewal`;
+    const body = `₹${totalRemaining.toLocaleString('en-IN')} pending balance across expired accounts. Review and renew on Dashboard.`;
+
+    return this.dispatchNotification({
+      title,
+      body,
+      channelId: 'renewals_channel',
+      type: 'renewal_summary',
+      extra: {
+        count,
+        totalRemaining,
+        click_action: '/',
+        notification_type: 'renewal_summary'
+      }
+    });
+  }
+
+  public async notifyLoanRenewed(
+    customerName: string,
+    cycleNumber: number,
+    newTotalDebt: number,
+    durationDays: number,
+    dailyInstallment: number,
+    customerId?: string,
+    customerPhone?: string
+  ): Promise<boolean> {
+    const title = `🎉 Loan Renewed: ${customerName} (Cycle #${cycleNumber})`;
+    const body = `Renewed successfully! New Total: ₹${newTotalDebt.toLocaleString('en-IN')} for ${durationDays} days (₹${dailyInstallment.toLocaleString('en-IN')}/day).`;
+
+    return this.dispatchNotification({
+      title,
+      body,
+      channelId: 'renewals_channel',
+      type: 'renewal_completed',
+      extra: {
+        customerName,
+        cycleNumber,
+        newTotalDebt,
+        durationDays,
+        dailyInstallment,
+        customerId,
+        phone: customerPhone,
+        click_action: '/',
+        notification_type: 'renewal_completed'
+      }
+    });
+  }
+
+  public async notifyRenewalRejected(
+    customerName: string,
+    pendingAmount: number,
+    customerId?: string
+  ): Promise<boolean> {
+    const title = `⚠️ Renewal Rejected: ${customerName}`;
+    const body = `Kept as overdue in regular collections (₹${pendingAmount.toLocaleString('en-IN')}). Re-assigned to overdue route.`;
+
+    return this.dispatchNotification({
+      title,
+      body,
+      channelId: 'renewals_channel',
+      type: 'renewal_rejected',
+      extra: {
+        customerName,
+        pendingAmount,
+        customerId,
+        click_action: '/',
+        notification_type: 'renewal_rejected'
+      }
     });
   }
 

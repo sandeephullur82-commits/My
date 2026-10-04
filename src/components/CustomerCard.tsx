@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, animate, PanInfo, useMotionValue, useTransform, AnimatePresence } from 'motion/react';
 import { Customer, Transaction } from '../services/firestoreService';
 import { safeDistanceToNow, safeDifferenceInDays } from '../lib/utils';
-import { Plus, Phone, X, IndianRupee, Clock, Pin, MessageCircle, CheckCircle2 } from 'lucide-react';
+import { Plus, Phone, X, IndianRupee, Clock, Pin, MessageCircle, CheckCircle2, RotateCcw } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useUI } from '../context/UIContext';
@@ -113,6 +113,8 @@ export function CustomerCard({
 
   const isOverdue = customer.endDate < Date.now() && pendingAmount > 0;
   const isFullyPaid = pendingAmount <= 0;
+  const isTopUpEligible = !isFullyPaid && loanAmount > 0 && pendingAmount <= loanAmount * 0.2;
+  const currentCycle = customer.currentCycle || 1;
 
   let statusColor = 'bg-warning';
   let statusText = 'text-warning';
@@ -196,9 +198,21 @@ export function CustomerCard({
             <h3 className={`font-black tracking-tight text-text-primary truncate pr-2 ${isCompact ? 'text-[15px]' : 'text-base'}`}>
               <Highlight text={String(customer.name)} highlight={searchTerm} />
             </h3>
-            <span className={`font-black text-text-secondary whitespace-nowrap opacity-40 ${isCompact ? 'text-[9px] tracking-widest uppercase' : 'text-xs px-2 py-0.5 rounded-md bg-bg'}`}>
-              {tag}
-            </span>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {currentCycle > 1 && (
+                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                  C#{currentCycle}
+                </span>
+              )}
+              {customer.renewalStatus === 'rejected' && isOverdue && (
+                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-red-500/15 text-red-600 dark:text-red-400">
+                  Overdue
+                </span>
+              )}
+              <span className={`font-black text-text-secondary whitespace-nowrap opacity-40 ${isCompact ? 'text-[9px] tracking-widest uppercase' : 'text-xs px-2 py-0.5 rounded-md bg-bg'}`}>
+                {tag}
+              </span>
+            </div>
           </div>
           
           <div className="flex justify-between items-end gap-2 mt-1">

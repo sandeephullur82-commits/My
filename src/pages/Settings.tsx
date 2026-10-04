@@ -8,7 +8,7 @@ import {
   Database, AlertCircle, Calendar, Hash, Scale, 
   RefreshCw, Files, FileSpreadsheet, FileJson, FileText,
   Bell, BellRing, Clock, Volume2, VolumeX, CheckCircle2,
-  Send, Zap, Check, Copy, History, Trash2, ChevronDown, ChevronUp, CheckCircle
+  Send, Zap, Check, Copy, History, Trash2, ChevronDown, ChevronUp, CheckCircle, RotateCcw
 } from 'lucide-react';
 import { useTheme } from '../components/ThemeProvider';
 import { useUI } from '../context/UIContext';
@@ -94,6 +94,28 @@ export function Settings() {
       }
     } finally {
       setIsTestingPush(false);
+    }
+  };
+
+  const [isTestingRenewal, setIsTestingRenewal] = useState(false);
+
+  const handleRunTestRenewal = async () => {
+    setIsTestingRenewal(true);
+    try {
+      await notificationService.notifyRenewalDue({
+        id: 'test-renewal-sample',
+        name: 'Suresh Kumar (Sample)',
+        phone: '9876543210',
+        pending: 4500,
+        endDate: Date.now() - 2 * 86400000,
+        daysOverdue: 2
+      });
+      setLogs(notificationService.getHistory());
+      toastSuccess('Test Renewal Alert Sent', 'Check your Android notification tray for the renewal prompt.');
+    } catch {
+      toastError('Error', 'Could not send test renewal alert.');
+    } finally {
+      setIsTestingRenewal(false);
     }
   };
 
@@ -287,14 +309,26 @@ export function Settings() {
                       Enable Push
                     </button>
                   ) : (
-                    <button
-                      onClick={handleRunTestPush}
-                      disabled={isTestingPush}
-                      className="h-8 px-3 rounded-xl bg-card border border-border/40 text-text-secondary hover:text-accent text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 active:scale-95 transition-all disabled:opacity-50"
-                    >
-                      <Send size={12} className={isTestingPush ? 'animate-spin' : ''} />
-                      <span>Send Test Push</span>
-                    </button>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        onClick={handleRunTestPush}
+                        disabled={isTestingPush}
+                        className="h-8 px-2.5 rounded-xl bg-card border border-border/40 text-text-secondary hover:text-accent text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 active:scale-95 transition-all disabled:opacity-50"
+                        title="Send general test alert"
+                      >
+                        <Send size={12} className={isTestingPush ? 'animate-spin' : ''} />
+                        <span>Test Push</span>
+                      </button>
+                      <button
+                        onClick={handleRunTestRenewal}
+                        disabled={isTestingRenewal}
+                        className="h-8 px-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 active:scale-95 transition-all disabled:opacity-50"
+                        title="Send sample Android notification for renewal"
+                      >
+                        <RotateCcw size={12} className={isTestingRenewal ? 'animate-spin' : ''} />
+                        <span>Test Renewal Alert</span>
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -464,6 +498,29 @@ export function Settings() {
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Matured Loan Renewals Alert */}
+              <div className="flex items-center justify-between pt-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <RotateCcw size={16} className="text-amber-500" />
+                    <h4 className="font-bold text-sm text-text-primary tracking-tight">Matured Loan Renewals Alert</h4>
+                  </div>
+                  <p className="text-[11px] text-text-secondary opacity-70 mt-0.5">
+                    Notify when loan tenure has ended with balance remaining to restructure or renew
+                  </p>
+                </div>
+                <button
+                  onClick={() => updatePreferences({ enableRenewalAlerts: !preferences.enableRenewalAlerts })}
+                  className="active:scale-95 transition-all cursor-pointer"
+                >
+                  {preferences.enableRenewalAlerts !== false ? (
+                    <ToggleRight size={28} className="text-amber-500" />
+                  ) : (
+                    <ToggleLeft size={28} className="text-text-secondary opacity-30" />
+                  )}
+                </button>
               </div>
             </div>
 

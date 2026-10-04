@@ -3,9 +3,48 @@ export { db, auth };
 import { toast } from 'sonner';
 import { 
   collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, 
-  writeBatch, query, orderBy, getDocs, runTransaction, serverTimestamp, where, collectionGroup 
+  writeBatch, query, orderBy, getDocs, runTransaction, serverTimestamp, where, collectionGroup,
+  deleteField
 } from 'firebase/firestore';
 import { v4 as uuidv4 } from 'uuid';
+
+export interface LoanCycle {
+  cycleNumber: number;          // 1, 2, 3...
+  loanAmount: number;           // Total loan for this cycle
+  paidAmount: number;           // Total repaid in this cycle
+  pendingAmount: number;        // Remaining balance at time of renewal (if rolled over)
+  interestAdded?: number;       // Interest added on renewal
+  interestType?: 'percentage' | 'flat';
+  interestRate?: number;        // Percentage rate if applicable
+  newTotalDebt?: number;        // pendingAmount + interestAdded
+  startDate: number;            // Cycle start timestamp
+  endDate: number;              // Cycle target completion date
+  completedAt: number;          // Actual date cycle was closed/renewed
+  durationDays: number;         // Term duration in days
+  status: 'completed' | 'matured_renewed' | 'rolled_over';
+  rolloverAction?: 'deducted_from_payout' | 'absorbed' | 'cleared' | 'none';
+  notes?: string;
+}
+
+export interface RenewalData {
+  newLoanAmount: number;
+  durationDays: number;
+  startDate: number;
+  endDate: number;
+  rolloverAction: 'deducted_from_payout' | 'absorbed' | 'cleared';
+  notes?: string;
+}
+
+export interface MaturedRenewalData {
+  interestAmount: number;
+  interestType: 'percentage' | 'flat';
+  interestRate?: number;
+  newTotalDebt: number;
+  durationDays: number;
+  startDate: number;
+  endDate: number;
+  notes?: string;
+}
 
 export interface Customer {
   id: string;
@@ -36,6 +75,11 @@ export interface Customer {
   lastPayment?: any;
   isDeleted?: boolean;
   isPinned?: boolean;
+  currentCycle?: number;
+  cycles?: LoanCycle[];
+  lastRenewalDate?: number;
+  renewalStatus?: 'pending_review' | 'rejected' | 'renewed' | null;
+  renewalRejectedAt?: number;
 }
 
 export const firestoreUtils = {
@@ -150,16 +194,32 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Helper to remove undefined values before sending to Firestore
-function cleanData<T extends object>(data: T): T {
-  const result: any = {};
-  Object.keys(data).forEach(key => {
-    const val = (data as any)[key];
-    if (val !== undefined) {
-      result[key] = val;
+function isPlainObject(value: any): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === null || proto === Object.prototype;
+}
+
+// Deeply removes undefined values before sending to Firestore
+function cleanData<T>(obj: T): T {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj
+      .filter(item => item !== undefined)
+      .map(item => cleanData(item)) as unknown as T;
+  }
+  if (isPlainObject(obj)) {
+    const result: any = {};
+    for (const [key, val] of Object.entries(obj)) {
+      if (val !== undefined) {
+        result[key] = cleanData(val);
+      }
     }
-  });
-  return result;
+    return result;
+  }
+  return obj;
 }
 
 export const firestoreService = {
@@ -338,11 +398,11 @@ export const firestoreService = {
         console.warn(`[Firestore Offline] Failed to get doc:`, err);
       }
 
-      const payload = {
+      const payload = cleanData({
         ...data,
         createdAt: snap?.exists() ? (snap.data()?.createdAt || now) : now,
         updatedAt: now
-      };
+      });
 
       await setDoc(rootCustomerRef, payload, { merge: true });
       if (customer.docPath && customer.docPath !== rootCustomerRef.path) {
@@ -362,6 +422,163 @@ export const firestoreService = {
     await setDoc(rootRef, data, { merge: true });
     if (docPath && docPath !== rootRef.path) {
       await setDoc(doc(db, docPath), data, { merge: true }).catch(() => {});
+    }
+  },
+
+  async renewCustomerLoan(
+    customer: Customer,
+    renewal: RenewalData
+  ): Promise<Customer> {
+    if (!customer?.id) throw new Error('Customer ID is required');
+
+    const rootCustomerRef = doc(db, 'customers', customer.id);
+    const currentCycleNum = customer.currentCycle || 1;
+    const oldPending = Math.max(0, customer.pending || 0);
+    const oldPaid = customer.paid || 0;
+    const oldLoan = customer.loanAmount || customer.loan || 0;
+
+    const completedCycle: LoanCycle = {
+      cycleNumber: currentCycleNum,
+      loanAmount: oldLoan,
+      paidAmount: oldPaid,
+      pendingAmount: oldPending,
+      startDate: customer.startDate || (Date.now() - (customer.durationDays || 100) * 86400000),
+      endDate: customer.endDate || Date.now(),
+      completedAt: Date.now(),
+      durationDays: customer.durationDays || 100,
+      status: oldPending <= 0 ? 'completed' : 'rolled_over',
+      rolloverAction: oldPending > 0 ? renewal.rolloverAction : 'none',
+      notes: customer.notes || ''
+    };
+
+    const existingCycles = Array.isArray(customer.cycles) ? customer.cycles : [];
+    const updatedCycles = [...existingCycles, completedCycle];
+    const newCycleNum = currentCycleNum + 1;
+    const now = serverTimestamp();
+
+    const updatedCustomerData: Partial<Customer> = {
+      loan: renewal.newLoanAmount,
+      loanAmount: renewal.newLoanAmount,
+      totalLoan: renewal.newLoanAmount,
+      paid: 0,
+      pending: renewal.newLoanAmount,
+      startDate: renewal.startDate,
+      endDate: renewal.endDate,
+      durationDays: renewal.durationDays,
+      currentCycle: newCycleNum,
+      cycles: updatedCycles,
+      lastRenewalDate: Date.now(),
+      notes: renewal.notes ? renewal.notes : `Cycle #${newCycleNum} Renewal`,
+      updatedAt: now
+    };
+
+    await setDoc(rootCustomerRef, cleanData(updatedCustomerData), { merge: true });
+    if (customer.docPath && customer.docPath !== rootCustomerRef.path) {
+      await setDoc(doc(db, customer.docPath), cleanData(updatedCustomerData), { merge: true }).catch(() => {});
+    }
+
+    return {
+      ...customer,
+      ...updatedCustomerData,
+      currentCycle: newCycleNum,
+      cycles: updatedCycles
+    } as Customer;
+  },
+
+  async renewMaturedLoan(
+    customer: Customer,
+    renewal: MaturedRenewalData
+  ): Promise<Customer> {
+    if (!customer?.id) throw new Error('Customer ID is required');
+
+    const rootCustomerRef = doc(db, 'customers', customer.id);
+    const currentCycleNum = customer.currentCycle || 1;
+    const oldPending = Math.max(0, customer.pending !== undefined ? customer.pending : ((customer.loanAmount || customer.loan || 0) - (customer.paid || 0)));
+    const oldPaid = customer.paid || 0;
+    const oldLoan = customer.loanAmount || customer.loan || 0;
+
+    const completedCycle: LoanCycle = {
+      cycleNumber: currentCycleNum,
+      loanAmount: oldLoan,
+      paidAmount: oldPaid,
+      pendingAmount: oldPending,
+      interestAdded: renewal.interestAmount ?? 0,
+      interestType: renewal.interestType || 'flat',
+      ...(renewal.interestRate !== undefined ? { interestRate: renewal.interestRate } : {}),
+      newTotalDebt: renewal.newTotalDebt,
+      startDate: customer.startDate || (Date.now() - (customer.durationDays || 100) * 86400000),
+      endDate: customer.endDate || Date.now(),
+      completedAt: Date.now(),
+      durationDays: customer.durationDays || 100,
+      status: 'matured_renewed',
+      notes: customer.notes || ''
+    };
+
+    const existingCycles = Array.isArray(customer.cycles) ? customer.cycles : [];
+    const updatedCycles = [...existingCycles, completedCycle];
+    const newCycleNum = currentCycleNum + 1;
+    const now = serverTimestamp();
+
+    const updatedCustomerData: any = {
+      loan: renewal.newTotalDebt,
+      loanAmount: renewal.newTotalDebt,
+      totalLoan: renewal.newTotalDebt,
+      paid: 0,
+      pending: renewal.newTotalDebt,
+      startDate: renewal.startDate,
+      endDate: renewal.endDate,
+      durationDays: renewal.durationDays,
+      currentCycle: newCycleNum,
+      cycles: cleanData(updatedCycles),
+      renewalStatus: deleteField(),
+      renewalRejectedAt: deleteField(),
+      lastRenewalDate: Date.now(),
+      notes: renewal.notes ? renewal.notes : `Cycle #${newCycleNum} Renewal (Restructured ₹${oldPending.toLocaleString('en-IN')} + ₹${renewal.interestAmount.toLocaleString('en-IN')} interest)`,
+      updatedAt: now
+    };
+
+    const payload = cleanData(updatedCustomerData);
+
+    await setDoc(rootCustomerRef, payload, { merge: true });
+    if (customer.docPath && customer.docPath !== rootCustomerRef.path) {
+      await setDoc(doc(db, customer.docPath), payload, { merge: true }).catch(() => {});
+    }
+
+    return {
+      ...customer,
+      ...updatedCustomerData,
+      renewalStatus: undefined,
+      renewalRejectedAt: undefined,
+      currentCycle: newCycleNum,
+      cycles: cleanData(updatedCycles)
+    } as Customer;
+  },
+
+  async rejectMaturedRenewal(customerId: string, docPath?: string): Promise<void> {
+    if (!customerId) throw new Error('Customer ID is required');
+    const rootRef = doc(db, 'customers', customerId);
+    const updateData = cleanData({
+      renewalStatus: 'rejected',
+      renewalRejectedAt: Date.now(),
+      updatedAt: serverTimestamp()
+    });
+    await setDoc(rootRef, updateData, { merge: true });
+    if (docPath && docPath !== rootRef.path) {
+      await setDoc(doc(db, docPath), updateData, { merge: true }).catch(() => {});
+    }
+  },
+
+  async reopenMaturedRenewal(customerId: string, docPath?: string): Promise<void> {
+    if (!customerId) throw new Error('Customer ID is required');
+    const rootRef = doc(db, 'customers', customerId);
+    const updateData = cleanData({
+      renewalStatus: deleteField(),
+      renewalRejectedAt: deleteField(),
+      updatedAt: serverTimestamp()
+    });
+    await setDoc(rootRef, updateData, { merge: true });
+    if (docPath && docPath !== rootRef.path) {
+      await setDoc(doc(db, docPath), updateData, { merge: true }).catch(() => {});
     }
   },
 

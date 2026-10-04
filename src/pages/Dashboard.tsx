@@ -3,6 +3,7 @@ import { useRealtimeData } from '../hooks/useRealtimeData';
 import { format } from 'date-fns';
 import { SyncStatus } from '../components/Dashboard/SyncStatus';
 import { StatsGrid } from '../components/Dashboard/StatsGrid';
+import { DashboardRenewalSection } from '../components/Dashboard/DashboardRenewalSection';
 import { firestoreService } from '../services/firestoreService';
 import { toast } from 'sonner';
 
@@ -159,6 +160,9 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
             onTotalClick={handleTotalClick}
           />
         </div>
+
+        {/* Matured Loan Renewals Section (Dashboard Only) - Located at bottom */}
+        <DashboardRenewalSection customers={customers} onNavigate={onNavigate} />
       </div>
     </PageContainer>
   );

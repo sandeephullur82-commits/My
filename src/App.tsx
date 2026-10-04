@@ -69,7 +69,7 @@ function AppContent() {
     }
 
     if (tab === 'customers') {
-      navigate('/customers');
+      navigate('/customers', { state: { filter: filter || 'all' } });
     }
 
     if (tab === 'dashboard') {

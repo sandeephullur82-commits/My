@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, User, ArrowDownAZ, ArrowUpZA, Edit2, Trash2, IndianRupee, Search, Pin, PinOff, Filter, ArrowUp, ArrowDown, History, X, ChevronDown, SlidersHorizontal, ArrowUpDown, Check } from 'lucide-react';
 import { firestoreService, Customer } from '../services/firestoreService';
@@ -12,13 +13,13 @@ import { PageContainer } from '../components/PageContainer';
 import { Skeleton } from '../components/Skeleton';
 import { useUI } from '../context/UIContext';
 import { useFeedback } from '../context/FeedbackContext';
-import { useMemo } from 'react';
 
 interface CustomersProps {
   onNavigate?: (tab: string, filter?: any, customerId?: string, entryTabVal?: any, dateFilterVal?: any) => void;
 }
 
 export function Customers({ onNavigate }: CustomersProps) {
+  const location = useLocation();
   const { customers, transactions, loading, error, refreshData } = useRealtimeData();
   const { searchTerm, setSearchTerm, setIsModalOpen, setIsCustomerDetailsOpen } = useUI();
   const [isReady, setIsReady] = useState(false);
@@ -40,10 +41,18 @@ export function Customers({ onNavigate }: CustomersProps) {
     }
   }, [loading]);
 
-  const [filter, setFilter] = useState<'all' | 'pending' | 'paid' | 'overdue' | 'high_amount'>('all');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'paid' | 'overdue' | 'high_amount'>(() => {
+    return (location.state?.filter as any) || 'all';
+  });
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'pending_desc' | 'last_payment' | 'name_asc' | 'name_desc'>('asc');
   const [showAdd, setShowAdd] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+
+  useEffect(() => {
+    if (location.state?.filter) {
+      setFilter(location.state.filter);
+    }
+  }, [location.state]);
 
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
   const [activeSwipeId, setActiveSwipeId] = useState<string | null>(null);
@@ -276,6 +285,69 @@ export function Customers({ onNavigate }: CustomersProps) {
                 </button>
               )}
             </div>
+          </div>
+
+          {/* Quick Filter Horizontal Scroll */}
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide py-0.5 -mx-1 px-1">
+            <button
+              type="button"
+              onClick={() => {
+                if ('vibrate' in navigator) navigator.vibrate(5);
+                setFilter('all');
+              }}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                filter === 'all'
+                  ? 'bg-accent text-white shadow-xs'
+                  : 'bg-card border border-border/60 text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              All
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if ('vibrate' in navigator) navigator.vibrate(5);
+                setFilter('pending');
+              }}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                filter === 'pending'
+                  ? 'bg-accent text-white shadow-xs'
+                  : 'bg-card border border-border/60 text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              Pending
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if ('vibrate' in navigator) navigator.vibrate(5);
+                setFilter('overdue');
+              }}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                filter === 'overdue'
+                  ? 'bg-danger text-white shadow-xs'
+                  : 'bg-card border border-border/60 text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              Overdue
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if ('vibrate' in navigator) navigator.vibrate(5);
+                setFilter('paid');
+              }}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                filter === 'paid'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-card border border-border/60 text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              Fully Paid
+            </button>
           </div>
 
           {/* Filter & Sort Controls - Bottom Sheet Selectors */}

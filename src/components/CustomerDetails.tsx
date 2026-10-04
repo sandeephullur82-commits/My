@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Customer, Transaction } from '../services/firestoreService';
-import { ArrowLeft, Phone, Calendar, IndianRupee, Plus, Edit2, AlertTriangle, Trash2, X, Lock, Pin, Search, MoreVertical, MessageCircle, Eye, Clock, Receipt, PlusCircle } from 'lucide-react';
+import { ArrowLeft, Phone, Calendar, IndianRupee, Plus, Edit2, AlertTriangle, Trash2, X, Lock, Pin, Search, MoreVertical, MessageCircle, Eye, Clock, Receipt, PlusCircle, RotateCcw, History, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { firestoreService, auth } from '../services/firestoreService';
 import { toast } from 'sonner';
 import { exportTransactionsPDF } from '../lib/pdfExport';
@@ -12,6 +12,7 @@ import { ReceiptSuccessModal, ReceiptData } from './ReceiptSuccessModal';
 import { safeFormat, safeDifferenceInDays } from '../lib/utils';
 import { triggerWhatsApp } from '../lib/whatsapp';
 import { QuickPaymentModal } from './Entry/QuickPaymentModal';
+import { MaturedRenewalModal } from './Dashboard/MaturedRenewalModal';
 import { useUI } from '../context/UIContext';
 
 interface CustomerDetailsProps {
@@ -25,8 +26,15 @@ interface CustomerDetailsProps {
   onTogglePin?: () => void;
 }
 
-export function CustomerDetails({ customer, transactions, onClose, onAddEntry, onEdit, onDelete, onTogglePin }: CustomerDetailsProps) {
+export function CustomerDetails({ customer: propCustomer, transactions, onClose, onAddEntry, onEdit, onDelete, onTogglePin }: CustomerDetailsProps) {
   const { setIsCustomerDetailsOpen, setIsModalOpen } = useUI();
+  const [activeCustomer, setActiveCustomer] = React.useState<Customer>(propCustomer);
+
+  useEffect(() => {
+    setActiveCustomer(propCustomer);
+  }, [propCustomer]);
+
+  const customer = activeCustomer;
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
 
   useEffect(() => {
@@ -43,6 +51,8 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
   const [showPreview, setShowPreview] = React.useState(false);
   const [selectedReceipt, setSelectedReceipt] = React.useState<ReceiptData | null>(null);
   const [showQuickPayment, setShowQuickPayment] = React.useState(false);
+  const [showRenewalModal, setShowRenewalModal] = React.useState(false);
+  const [showCyclesHistory, setShowCyclesHistory] = React.useState(false);
 
   const customerTransactions = transactions
     .filter(tx => tx.customerId === customer.id)
@@ -52,6 +62,11 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
   const loanAmount = customer.loanAmount || customer.loan || 0;
   const pendingAmount = customer.pending !== undefined ? customer.pending : (loanAmount - (customer.paid || 0));
   const paidAmount = customer.paid || 0;
+  const currentCycle = customer.currentCycle || 1;
+  const completedCycles = Array.isArray(customer.cycles) ? customer.cycles : [];
+  
+  const isMaturedWithPending = customer.endDate <= Date.now() && pendingAmount > 0;
+  const isRenewalRejected = customer.renewalStatus === 'rejected';
 
   const isOverdue = customer.endDate < Date.now() && pendingAmount > 0;
   const overdueDays = isOverdue ? safeDifferenceInDays(Date.now(), customer.endDate) : 0;
@@ -162,8 +177,13 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
         >
           <ArrowLeft size={24} />
         </button>
-        <div className="flex-1">
-          <h2 className="font-bold text-[18px] tracking-tight leading-none text-text-primary mb-1">{customer.name}</h2>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h2 className="font-bold text-[18px] tracking-tight leading-none text-text-primary mb-1 truncate">{customer.name}</h2>
+            <span className="text-[10px] font-mono font-bold bg-accent/10 text-accent px-2 py-0.5 rounded-full mb-1 shrink-0">
+              Cycle #{currentCycle}
+            </span>
+          </div>
           <p className="text-[11px] font-bold text-text-secondary uppercase tracking-widest opacity-40">ID: {displayId}</p>
         </div>
         <div className="flex items-center gap-1">
@@ -238,6 +258,17 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
                 </button>
               )}
 
+              {isMaturedWithPending && (
+                <button
+                  type="button"
+                  onClick={() => setShowRenewalModal(true)}
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-amber-600/20 active:scale-95 transition-all"
+                >
+                  <RotateCcw size={14} strokeWidth={2.5} />
+                  <span>Renew Loan</span>
+                </button>
+              )}
+
               {customer.phone && (
                 <>
                   <button
@@ -271,6 +302,43 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
             </div>
           </div>
         </div>
+
+        {/* Matured Loan Renewal Banner */}
+        {isMaturedWithPending && (
+          <div className="mx-4 mt-4 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-amber-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-amber-600/30 mt-0.5">
+                <RotateCcw size={20} strokeWidth={2.5} />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-black text-text-primary uppercase tracking-tight">
+                    {isRenewalRejected ? 'Renewal Dismissed' : 'Matured Loan • Restructure Available'}
+                  </h4>
+                  <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                    isRenewalRejected ? 'bg-red-500/20 text-red-600 dark:text-red-400' : 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                  }`}>
+                    {isRenewalRejected ? 'Overdue Collection' : 'Expired Term'}
+                  </span>
+                </div>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  {isRenewalRejected 
+                    ? `Borrower owes ₹${pendingAmount.toLocaleString('en-IN')}. Renewal was rejected and remains active in regular overdue collection.` 
+                    : `Term expired with ₹${pendingAmount.toLocaleString('en-IN')} remaining. Restructure with interest into Cycle #${currentCycle + 1}.`}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowRenewalModal(true)}
+              className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md shadow-amber-600/20 active:scale-95 transition-all shrink-0 cursor-pointer"
+            >
+              <RotateCcw size={14} strokeWidth={2.5} />
+              <span>{isRenewalRejected ? 'Reconsider Renewal' : `Renew Loan (Cycle #${currentCycle + 1})`}</span>
+            </button>
+          </div>
+        )}
 
         {/* Overdue Alert */}
         {isOverdue && (
@@ -356,6 +424,100 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
             </div>
           </div>
         </div>
+
+        {/* Loan Cycle History */}
+        {completedCycles.length > 0 && (
+          <div className="px-4 pb-4">
+            <div className="flex items-center justify-between mb-3 ml-1">
+              <div className="flex items-center gap-2">
+                <RotateCcw size={15} className="text-emerald-600 dark:text-emerald-400" />
+                <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">
+                  Loan Cycle History
+                </h3>
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                  {completedCycles.length} completed
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCyclesHistory(!showCyclesHistory)}
+                className="text-xs font-bold text-accent hover:underline flex items-center gap-1 active:scale-95 transition-transform"
+              >
+                <span>{showCyclesHistory ? 'Collapse' : 'View All'}</span>
+                {showCyclesHistory ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+            </div>
+
+            {showCyclesHistory && (
+              <div className="space-y-3">
+                {completedCycles.map((cycle, idx) => (
+                  <div key={idx} className="bg-card rounded-2xl border border-border p-4 shadow-sm">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black text-text-primary px-2.5 py-0.5 rounded-lg bg-muted">
+                          Cycle #{cycle.cycleNumber}
+                        </span>
+                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                          cycle.status === 'completed' 
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' 
+                            : cycle.status === 'matured_renewed'
+                            ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                            : 'bg-muted text-text-secondary'
+                        }`}>
+                          {cycle.status === 'completed' 
+                            ? 'Fully Repaid ✓' 
+                            : cycle.status === 'matured_renewed'
+                            ? 'Matured & Restructured'
+                            : 'Rolled Over'}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-text-secondary font-mono">
+                        {safeFormat(cycle.startDate, 'dd MMM yyyy')} - {safeFormat(cycle.completedAt || cycle.endDate, 'dd MMM yyyy')}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-border/50 text-center">
+                      <div>
+                        <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider block">Principal</span>
+                        <span className="text-xs font-black text-text-primary mt-0.5 block font-mono">
+                          ₹{cycle.loanAmount.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider block">Repaid</span>
+                        <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 mt-0.5 block font-mono">
+                          ₹{cycle.paidAmount.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider block">Unpaid at Maturity</span>
+                        <span className="text-xs font-black text-amber-600 dark:text-amber-400 mt-0.5 block font-mono">
+                          ₹{cycle.pendingAmount.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                    </div>
+
+                    {cycle.interestAdded !== undefined && cycle.interestAdded > 0 && (
+                      <div className="mt-2.5 p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-tight">
+                          Restructured with Interest ({cycle.interestType === 'percentage' ? `${cycle.interestRate}%` : 'Flat ₹'}):
+                        </span>
+                        <span className="font-mono font-bold text-text-primary">
+                          +₹{cycle.interestAdded.toLocaleString('en-IN')} = ₹{(cycle.newTotalDebt || (cycle.pendingAmount + cycle.interestAdded)).toLocaleString('en-IN')} new debt
+                        </span>
+                      </div>
+                    )}
+                    {cycle.notes && (
+                      <p className="text-[10px] text-text-secondary italic mt-1.5 opacity-70">
+                        Note: {cycle.notes}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Transaction History */}
         <div className="px-4 pb-4">
@@ -523,6 +685,15 @@ export function CustomerDetails({ customer, transactions, onClose, onAddEntry, o
         onClose={() => setShowQuickPayment(false)}
         onSuccess={(receipt) => {
           setSelectedReceipt(receipt);
+        }}
+      />
+
+      <MaturedRenewalModal
+        customer={customer}
+        isOpen={showRenewalModal}
+        onClose={() => setShowRenewalModal(false)}
+        onSuccess={(updated) => {
+          setActiveCustomer(updated);
         }}
       />
     </motion.div>
