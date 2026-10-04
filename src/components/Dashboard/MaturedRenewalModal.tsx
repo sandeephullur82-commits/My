@@ -9,7 +9,6 @@ import {
   Clock, 
   IndianRupee, 
   Loader2, 
-  MessageSquare,
   Percent,
   CheckCircle2
 } from 'lucide-react';
@@ -17,7 +16,6 @@ import { Customer, firestoreService, MaturedRenewalData } from '../../services/f
 import { notificationService } from '../../services/notificationService';
 import { format, addDays } from 'date-fns';
 import { toast } from 'sonner';
-import { triggerWhatsApp } from '../../lib/whatsapp';
 import { useUI } from '../../context/UIContext';
 
 interface MaturedRenewalModalProps {
@@ -35,7 +33,6 @@ export function MaturedRenewalModal({
 }: MaturedRenewalModalProps) {
   const { setIsModalOpen } = useUI();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [sendWhatsApp, setSendWhatsApp] = useState(true);
 
   // Sync modal state with UI context
   useEffect(() => {
@@ -145,11 +142,6 @@ export function MaturedRenewalModal({
         customer.id,
         customer.phone
       ).catch((e) => console.warn('Could not post renewal notification:', e));
-
-      if (sendWhatsApp && customer.phone) {
-        const msg = `📋 Dear ${customer.name}, your Pigmy Pro loan has been renewed for Cycle #${nextCycle} with updated terms:\n\nRemaining Balance: ₹${remainingDue.toLocaleString('en-IN')}\nRenewal Interest: ₹${calculatedInterestAmount.toLocaleString('en-IN')}\nNew Total Balance: ₹${newTotalDebt.toLocaleString('en-IN')}\nDuration: ${durationDays} days\nDaily Installment: ₹${dailyInstallment.toLocaleString('en-IN')}/day\n\nThank you for banking with us!`;
-        triggerWhatsApp(customer.phone, customer.name, msg, customer.id);
-      }
 
       toast.success(`Successfully renewed loan for ${customer.name} (Cycle #${nextCycle})!`);
       if (onSuccess) onSuccess(updatedCustomer);
@@ -452,21 +444,7 @@ export function MaturedRenewalModal({
               />
             </div>
 
-            {/* WhatsApp Checkbox */}
-            {customer.phone && (
-              <label className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-muted/40 transition-colors cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={sendWhatsApp}
-                  onChange={(e) => setSendWhatsApp(e.target.checked)}
-                  className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 accent-emerald-600 cursor-pointer"
-                />
-                <span className="text-xs text-text-primary font-medium flex items-center gap-1.5">
-                  <MessageSquare size={13} className="text-[#25D366]" />
-                  <span>Send WhatsApp renewal schedule to customer</span>
-                </span>
-              </label>
-            )}
+
 
             {/* Submit Action */}
             <div className="pt-2">

@@ -109,7 +109,7 @@ export type ForegroundNotificationCallback = (payload: {
   body: string;
   data?: Record<string, any>;
   deepLinkUrl?: string;
-  type?: 'payment' | 'np' | 'morning_route' | 'evening_summary' | 'test' | 'push' | 'sync';
+  type?: NotificationLog['type'];
 }) => void;
 
 const SETTINGS_KEY = 'pigmy_notification_settings_v1';
@@ -124,6 +124,7 @@ const DEFAULT_SETTINGS: NotificationSettings = {
   notifyNP: true,
   notifyMorningRoute: true,
   notifyEveningSummary: true,
+  notifyRenewals: true,
   soundEnabled: true,
   vibrationEnabled: true,
 };
@@ -174,7 +175,7 @@ export function markAlertDispatched(alertId: string): void {
   }
 }
 
-export function playNotificationChime(type: 'upcoming' | 'due_today' | 'overdue' | 'test' | 'push' = 'test'): void {
+export function playNotificationChime(type: 'upcoming' | 'due_today' | 'overdue' | 'renewal' | 'test' | 'push' = 'test'): void {
   try {
     if (typeof window === 'undefined') return;
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -357,6 +358,34 @@ export function evaluatePaymentAlerts(
           whatsappMessage,
         });
       }
+    }
+
+    // 4. MATURED LOAN RENEWALS
+    if (diffDays <= 0 && customer.renewalStatus !== 'rejected' && preferences.enableRenewalAlerts !== false) {
+      const daysOverdue = Math.abs(diffDays);
+      const title = `🔄 Matured Loan Renewal: ${customer.name}`;
+      const message = `Loan duration completed with ₹${pendingAmount.toLocaleString('en-IN')} remaining. Available for restructuring in Dashboard Renewal Section.`;
+      const whatsappMessage = `Hello ${customer.name}, your Pigmy loan duration has completed. Outstanding balance: ₹${pendingAmount.toLocaleString('en-IN')}. Please contact us to renew with revised terms.`;
+
+      alerts.push({
+        id: `renewal_${customer.id}_${daysOverdue}_${format(todayStart, 'yyyyMMdd')}`,
+        customerId: customer.id,
+        customerName: customer.name,
+        customerPhone: customer.phone,
+        loanAmount,
+        paidAmount,
+        pendingAmount,
+        endDate: customer.endDate,
+        startDate: customer.startDate,
+        diffDays,
+        alertType: 'renewal',
+        type: 'renewal',
+        title,
+        message,
+        urgency: 'high',
+        collectionUrl: '/',
+        whatsappMessage,
+      });
     }
   }
 

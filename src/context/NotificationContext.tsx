@@ -30,7 +30,8 @@ interface NotificationContextType {
   upcomingAlerts: PaymentAlert[];
   dueTodayAlerts: PaymentAlert[];
   overdueAlerts: PaymentAlert[];
-  triggerScanAndNotify: (manual?: boolean) => Promise<{ upcoming: number; dueToday: number; overdue: number }>;
+  renewalAlerts: PaymentAlert[];
+  triggerScanAndNotify: (manual?: boolean) => Promise<{ upcoming: number; dueToday: number; overdue: number; renewals?: number }>;
   sendTestNotification: () => Promise<boolean>;
 }
 
@@ -45,7 +46,8 @@ const NotificationContext = createContext<NotificationContextType>({
   upcomingAlerts: [],
   dueTodayAlerts: [],
   overdueAlerts: [],
-  triggerScanAndNotify: async () => ({ upcoming: 0, dueToday: 0, overdue: 0 }),
+  renewalAlerts: [],
+  triggerScanAndNotify: async () => ({ upcoming: 0, dueToday: 0, overdue: 0, renewals: 0 }),
   sendTestNotification: async () => false,
 });
 
@@ -210,16 +212,22 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     [allAlerts]
   );
 
+  const renewalAlerts = useMemo(
+    () => allAlerts.filter((a) => a.alertType === 'renewal'),
+    [allAlerts]
+  );
+
   // Trigger evaluation and dispatch alerts (automated or manual)
   const triggerScanAndNotify = useCallback(
-    async (manual = false): Promise<{ upcoming: number; dueToday: number; overdue: number }> => {
+    async (manual = false): Promise<{ upcoming: number; dueToday: number; overdue: number; renewals?: number }> => {
       const currentAlerts = evaluatePaymentAlerts(customers, preferences);
       const upcoming = currentAlerts.filter((a) => a.alertType === 'upcoming').length;
       const dueToday = currentAlerts.filter((a) => a.alertType === 'due_today').length;
       const overdue = currentAlerts.filter((a) => a.alertType === 'overdue').length;
+      const renewals = currentAlerts.filter((a) => a.alertType === 'renewal').length;
 
       if (!preferences.enabled) {
-        return { upcoming: 0, dueToday: 0, overdue: 0 };
+        return { upcoming: 0, dueToday: 0, overdue: 0, renewals: 0 };
       }
 
       let soundPlayed = false;
@@ -381,6 +389,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         upcomingAlerts,
         dueTodayAlerts,
         overdueAlerts,
+        renewalAlerts,
         triggerScanAndNotify,
         sendTestNotification,
       }}
