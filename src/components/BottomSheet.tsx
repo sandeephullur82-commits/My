@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { X } from 'lucide-react';
 import { useUI } from '../context/UIContext';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface BottomSheetProps {
   isOpen: boolean;
@@ -26,6 +27,7 @@ export function BottomSheet({
   maxWidth = 'max-w-xl'
 }: BottomSheetProps) {
   const { setIsModalOpen } = useUI();
+  const containerRef = useFocusTrap(isOpen);
 
   useEffect(() => {
     if (isOpen) {
@@ -40,6 +42,7 @@ export function BottomSheet({
       };
     }
   }, [isOpen, setIsModalOpen, onClose]);
+
 
   const content = (
     <AnimatePresence>
@@ -63,6 +66,8 @@ export function BottomSheet({
           className="fixed inset-0 z-[99995] flex items-end justify-center pointer-events-none"
         >
           <motion.div
+            ref={containerRef as any}
+            tabIndex={-1}
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
@@ -73,7 +78,7 @@ export function BottomSheet({
             onDragEnd={(_, info) => {
               if (info.offset.y > 100 || info.velocity.y > 500) onClose();
             }}
-            className={`w-full ${maxWidth} bg-card rounded-t-[32px] shadow-2xl flex flex-col pointer-events-auto max-h-[90vh] border-t border-border/50 relative overflow-hidden`}
+            className={`w-full ${maxWidth} bg-card rounded-t-[32px] shadow-2xl flex flex-col pointer-events-auto max-h-[90vh] border-t border-border/50 relative overflow-hidden outline-none`}
           >
             {/* Handle */}
             <div className="flex flex-col items-center pt-3 pb-2 shrink-0">

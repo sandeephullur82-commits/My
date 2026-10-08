@@ -597,7 +597,7 @@ class NotificationService {
     }
   }
 
-  public async initialize(): Promise<void> {
+  public async initialize(userId: string = 'admin_user'): Promise<void> {
     if (this.initialized) return;
 
     if (Capacitor.isNativePlatform()) {
@@ -756,7 +756,7 @@ class NotificationService {
         }
 
         await PushNotifications.addListener('registration', (token: Token) => {
-          const currentUid = auth.currentUser?.uid || 'anonymous';
+          const currentUid = auth.currentUser?.uid || userId || 'admin_user';
           this.registerDeviceToken(currentUid, token.value, Capacitor.getPlatform() as 'android' | 'ios');
         });
 

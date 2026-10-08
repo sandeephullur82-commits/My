@@ -105,14 +105,6 @@ export function TransactionsList() {
       setSearchTerm('');
     }
 
-    // Auto-scroll to Today if it exists on load
-    setTimeout(() => {
-      const el = document.getElementById(`section-${todayKey}`);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }, 800);
-
     // CLEANUP: Clear state to prevent sticky behavior on refresh/back
     // Using window.history instead of navigate to avoid triggering this effect again
     window.history.replaceState({}, document.title);
@@ -215,16 +207,6 @@ export function TransactionsList() {
       ...prev,
       [dateStr]: newVal
     }));
-    
-    // Smooth scroll into view when expanding
-    if (newVal) {
-      setTimeout(() => {
-        const el = document.getElementById(`section-${dateStr}`);
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      }, 300);
-    }
   };
 
   const getDateHeader = (dateStr: string) => {

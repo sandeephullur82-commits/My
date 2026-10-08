@@ -17,6 +17,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { playSuccessSound } from '../../lib/sound';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 
 interface QuickPaymentModalProps {
   customer: Customer | null;
@@ -30,6 +31,8 @@ export function QuickPaymentModal({ customer, isOpen, onClose, onSuccess }: Quic
   const [note, setNote] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingType, setProcessingType] = useState<'cash' | 'phonepe' | null>(null);
+  const containerRef = useFocusTrap(isOpen);
+
 
   const loan = customer ? (customer.loanAmount || customer.loan || 0) : 0;
   const paid = customer ? (customer.paid || 0) : 0;
@@ -144,6 +147,8 @@ export function QuickPaymentModal({ customer, isOpen, onClose, onSuccess }: Quic
 
         {/* Modal Card */}
         <motion.div
+          ref={containerRef as any}
+          tabIndex={-1}
           role="dialog"
           aria-modal="true"
           aria-labelledby="quick-payment-title"
@@ -151,7 +156,7 @@ export function QuickPaymentModal({ customer, isOpen, onClose, onSuccess }: Quic
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.94, opacity: 0, y: 14 }}
           transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-          className="relative w-full max-w-[390px] bg-card text-text-primary rounded-[30px] p-6 shadow-2xl border border-border flex flex-col z-10 select-none overflow-hidden"
+          className="relative w-full max-w-[390px] bg-card text-text-primary rounded-[30px] p-6 shadow-2xl border border-border flex flex-col z-10 select-none overflow-hidden outline-none"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}

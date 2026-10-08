@@ -1360,102 +1360,23 @@ export const firestoreService = {
     param2?: any
   ) {
     const callback: (data: NotificationRecord[]) => void = typeof param1 === 'function' ? param1 : (typeof param2 === 'function' ? param2 : () => {});
-    
-    const q = query(
-      collection(db, 'notifications'), 
-      orderBy('timestamp', 'desc')
-    );
-
-    return onSnapshot(q, (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as NotificationRecord));
-      callback(data.slice(0, 50));
-    }, (error: any) => {
-      console.warn("Notification Sync (using offline/local):", error?.message || error);
-      callback([]);
-    });
+    setTimeout(() => callback([]), 0);
+    return () => {};
   },
 
   async addNotification(notificationOrUserId: any, maybeNotification?: any) {
-    const notification = maybeNotification || notificationOrUserId;
-    try {
-      const id = uuidv4();
-      const notificationRef = doc(db, 'notifications', id);
-      const data = cleanData({
-        ...notification,
-        id,
-        isRead: false,
-        createdAt: serverTimestamp(),
-        timestamp: notification.timestamp || Date.now()
-      });
-      await setDoc(notificationRef, data);
-      return id;
-    } catch (error) {
-      console.warn("Failed to add notification to Firestore:", error);
-      return null;
-    }
+    return null;
   },
 
-  async markNotificationRead(notificationIdOrUserId: string, maybeNotificationId?: string) {
-    const notificationId = maybeNotificationId || notificationIdOrUserId;
-    try {
-      const ref = doc(db, 'notifications', notificationId);
-      await setDoc(ref, { isRead: true, updatedAt: serverTimestamp() }, { merge: true });
-    } catch (error) {
-      console.warn("Failed to mark notification read:", error);
-    }
-  },
+  async markNotificationRead(notificationIdOrUserId: string, maybeNotificationId?: string) {},
 
-  async deleteNotification(notificationIdOrUserId: string, maybeNotificationId?: string) {
-    const notificationId = maybeNotificationId || notificationIdOrUserId;
-    try {
-      const ref = doc(db, 'notifications', notificationId);
-      await deleteDoc(ref);
-    } catch (error) {
-      console.warn("Failed to delete notification:", error);
-    }
-  },
+  async deleteNotification(notificationIdOrUserId: string, maybeNotificationId?: string) {},
 
-  async clearNotifications() {
-    try {
-      const q = query(collection(db, 'notifications'));
-      const snap = await getDocs(q);
-      const batch = writeBatch(db);
-      snap.forEach(d => batch.delete(d.ref));
-      await batch.commit();
-    } catch (error) {
-      console.warn("Failed to clear notifications:", error);
-    }
-  },
+  async clearNotifications() {},
 
   async getNotificationPreferences(userId?: string) {
-    try {
-      const docRef = userId 
-        ? doc(db, 'users', userId, 'settings', 'notifications')
-        : doc(db, 'settings', 'notifications');
-      let snap = await getDoc(docRef);
-      if (!snap.exists() && userId) {
-        snap = await getDoc(doc(db, 'settings', 'notifications'));
-      }
-      if (snap.exists()) {
-        return snap.data();
-      }
-      return null;
-    } catch (error) {
-      console.warn("Could not read notification preferences from Firestore, using local:", error);
-      return null;
-    }
+    return null;
   },
 
-  async saveNotificationPreferences(preferencesOrUserId: any, maybePreferences?: any) {
-    const preferences = maybePreferences || preferencesOrUserId;
-    try {
-      const docRef = doc(db, 'settings', 'notifications');
-      await setDoc(docRef, cleanData({
-        ...preferences,
-        updatedAt: serverTimestamp()
-      }), { merge: true });
-    } catch (error) {
-      console.warn("Could not save notification preferences to Firestore:", error);
-    }
-  }
+  async saveNotificationPreferences(preferencesOrUserId: any, maybePreferences?: any) {}
 };

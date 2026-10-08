@@ -15,6 +15,7 @@ import { Customer, firestoreService } from '../services/firestoreService';
 import { ReceiptData } from './ReceiptSuccessModal';
 import { playSuccessSound } from '../lib/sound';
 import { toast } from 'sonner';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface WithdrawDepositModalProps {
   isOpen: boolean;
@@ -33,6 +34,8 @@ export function WithdrawDepositModal({
   const [payoutType, setPayoutType] = useState<'cash' | 'phonepe'>('cash');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const containerRef = useFocusTrap(isOpen);
+
 
   const availableBalance = customer?.advanceBalance || 0;
 
@@ -132,6 +135,8 @@ export function WithdrawDepositModal({
         onClick={onClose}
       >
         <motion.div
+          ref={containerRef as any}
+          tabIndex={-1}
           role="dialog"
           aria-modal="true"
           aria-labelledby="withdraw-deposit-title"
@@ -139,7 +144,7 @@ export function WithdrawDepositModal({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 30, scale: 0.98 }}
           transition={{ duration: 0.2, ease: 'easeOut' }}
-          className="w-full sm:max-w-md bg-card border border-border/80 rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[92vh] select-none"
+          className="w-full sm:max-w-md bg-card border border-border/80 rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[92vh] select-none outline-none"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header Banner */}

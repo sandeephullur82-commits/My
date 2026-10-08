@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { MessageSquare, Phone, Copy, Check, ShieldCheck, X } from 'lucide-react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 export interface ContactPermissionModalProps {
   isOpen: boolean;
@@ -24,10 +25,12 @@ export function ContactPermissionModal({
 }: ContactPermissionModalProps) {
   const [mounted, setMounted] = useState(false);
   const [copied, setCopied] = useState(false);
+  const containerRef = useFocusTrap(isOpen);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
 
   // Lock body scrolling when modal is open to keep it fixed in the center without page scrolling
   useEffect(() => {
@@ -84,11 +87,16 @@ export function ContactPermissionModal({
           {/* Centered Permission Box (No internal scrolling, fixed in screen center) */}
           <motion.div
             key="modal-card"
+            ref={containerRef as any}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="contact-permission-title"
             initial={{ scale: 0.92, opacity: 0, y: 12 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.92, opacity: 0, y: 12 }}
             transition={{ type: 'spring', damping: 25, stiffness: 360 }}
-            className="relative w-full max-w-[360px] bg-card text-text-primary rounded-[28px] p-6 shadow-2xl border border-border flex flex-col items-center text-center z-10 select-none overflow-hidden"
+            className="relative w-full max-w-[360px] bg-card text-text-primary rounded-[28px] p-6 shadow-2xl border border-border flex flex-col items-center text-center z-10 select-none overflow-hidden outline-none"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Top Close Button */}
@@ -123,7 +131,7 @@ export function ContactPermissionModal({
             </div>
 
             {/* Title */}
-            <h3 className="text-xl font-black text-text-primary tracking-tight mb-2 whitespace-normal break-normal">
+            <h3 id="contact-permission-title" className="text-xl font-black text-text-primary tracking-tight mb-2 whitespace-normal break-normal">
               {type === 'whatsapp' ? 'Open WhatsApp?' : 'Call Customer?'}
             </h3>
 

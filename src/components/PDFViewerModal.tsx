@@ -11,6 +11,7 @@ import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { sharePDF } from '../lib/pdfExport';
 import { toast } from 'sonner';
 import { useUI } from '../context/UIContext';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 // Configure worker for pdfjs-dist
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
@@ -43,7 +44,9 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
   const [zoomLevel, setZoomLevel] = useState<number>(1.0);
   const [renderedPages, setRenderedPages] = useState<RenderedPage[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
+  const focusTrapRef = useFocusTrap(isOpen);
   const touchStartXRef = useRef<number | null>(null);
+
 
   // Sync isModalOpen and handle Escape key for accessibility
   useEffect(() => {
@@ -237,10 +240,14 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
       {isOpen && (
         <motion.div
           key="pdf-viewer-modal"
+          ref={focusTrapRef as any}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[9999] flex flex-col bg-zinc-950 text-white overflow-hidden select-none"
+          className="fixed inset-0 z-[9999] flex flex-col bg-zinc-950 text-white overflow-hidden select-none outline-none"
         >
           {/* Header */}
           <div className="px-3 sm:px-6 py-3 flex items-center justify-between bg-zinc-900 border-b border-zinc-800 shrink-0 z-20">

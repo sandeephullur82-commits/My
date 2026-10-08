@@ -16,15 +16,11 @@ import { Dashboard } from './pages/Dashboard';
 import { Customers } from './pages/Customers';
 import { Entry } from './pages/Entry';
 import { TransactionsList } from './pages/TransactionsList';
-import { Notifications } from './pages/Notifications';
 import { Settings } from './pages/Settings';
 import { WhatsAppCallback } from './pages/WhatsAppCallback';
-import { NotificationProvider } from './context/NotificationContext';
 import { FeedbackProvider } from './context/FeedbackContext';
-import { useWhatsAppReportScheduler } from './hooks/useWhatsAppReportScheduler';
 
 function AppContent() {
-  useWhatsAppReportScheduler();
   const { setEntryTab, setPaymentFilter, setDateFilter, resetEntryFilters, setSearchTerm } = useUI();
   const navigate = useNavigate();
   const location = useLocation();
@@ -83,35 +79,32 @@ function AppContent() {
   return (
     <SyncProvider>
       <DataProvider>
-        <NotificationProvider>
-          <Layout currentTab={currentTab} setCurrentTab={handleTabChange}>
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={location.pathname}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="h-full"
-              >
-                <Routes location={location}>
-                  <Route path="/" element={<Dashboard onNavigate={handleNavigate} />} />
-                  <Route path="/customers" element={<Customers onNavigate={handleNavigate} />} />
-                  <Route path="/entry" element={<Entry />} />
-                  <Route path="/transactions" element={<TransactionsList />} />
-                  <Route path="/notifications" element={<Notifications />} />
-                  <Route path="/settings" element={<Settings />} />
-                  <Route path="/whatsapp/callback" element={<WhatsAppCallback onNavigate={handleNavigate} />} />
-                  <Route path="/whatsapp-callback" element={<WhatsAppCallback onNavigate={handleNavigate} />} />
-                  <Route path="/whatsapp" element={<WhatsAppCallback onNavigate={handleNavigate} />} />
-                  <Route path="/callback" element={<WhatsAppCallback onNavigate={handleNavigate} />} />
-                  <Route path="/api/whatsapp/callback" element={<WhatsAppCallback onNavigate={handleNavigate} />} />
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-              </motion.div>
-            </AnimatePresence>
-          </Layout>
-        </NotificationProvider>
+        <Layout currentTab={currentTab} setCurrentTab={handleTabChange}>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="h-full"
+            >
+              <Routes location={location}>
+                <Route path="/" element={<Dashboard onNavigate={handleNavigate} />} />
+                <Route path="/customers" element={<Customers onNavigate={handleNavigate} />} />
+                <Route path="/entry" element={<Entry />} />
+                <Route path="/transactions" element={<TransactionsList />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/whatsapp/callback" element={<WhatsAppCallback onNavigate={handleNavigate} />} />
+                <Route path="/whatsapp-callback" element={<WhatsAppCallback onNavigate={handleNavigate} />} />
+                <Route path="/whatsapp" element={<WhatsAppCallback onNavigate={handleNavigate} />} />
+                <Route path="/callback" element={<WhatsAppCallback onNavigate={handleNavigate} />} />
+                <Route path="/api/whatsapp/callback" element={<WhatsAppCallback onNavigate={handleNavigate} />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </motion.div>
+          </AnimatePresence>
+        </Layout>
       </DataProvider>
     </SyncProvider>
   );

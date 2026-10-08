@@ -6,16 +6,14 @@ import { StatsGrid } from '../components/Dashboard/StatsGrid';
 import { DashboardRenewalSection } from '../components/Dashboard/DashboardRenewalSection';
 import { StatsSkeleton, Skeleton } from '../components/Skeleton';
 import { PageContainer } from '../components/PageContainer';
-import { notificationService } from '../services/notificationService';
+
 import { CheckCircle2, Clock, Users, ArrowRight } from 'lucide-react';
 
 export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: any, customerId?: string, entryTabVal?: any, dateFilterVal?: any, urlFilter?: string) => void }) {
   const { transactions, customers, loading } = useRealtimeData();
   const [isReady, setIsReady] = useState(false);
 
-  useEffect(() => {
-    notificationService.initialize();
-  }, []);
+
 
   useEffect(() => {
     if (!loading) {

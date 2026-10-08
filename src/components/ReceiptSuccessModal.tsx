@@ -27,6 +27,7 @@ import {
 import { Customer } from '../services/firestoreService';
 import { PIGMY_LOGO_BASE64 } from '../assets/logoBase64';
 import { toast } from 'sonner';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 export type { ReceiptData };
 
@@ -39,8 +40,10 @@ interface ReceiptSuccessModalProps {
 export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: ReceiptSuccessModalProps) {
   const [isSharingImage, setIsSharingImage] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
+  const containerRef = useFocusTrap(Boolean(receipt));
 
   if (!receipt) return null;
+
 
   const { transaction, customer, previousBalance, newBalance } = receipt;
   const isUpi = transaction.type === 'phonepe';
@@ -130,6 +133,8 @@ export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: Receip
         onClick={onClose}
       >
         <motion.div
+          ref={containerRef as any}
+          tabIndex={-1}
           role="dialog"
           aria-modal="true"
           aria-labelledby="receipt-success-title"
@@ -138,7 +143,7 @@ export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: Receip
           exit={{ opacity: 0, scale: 0.95, y: 12 }}
           transition={{ duration: 0.2, ease: 'easeOut' }}
           style={{ width: 'min(92vw, 390px)', minWidth: '280px' }}
-          className="bg-card border border-border/80 rounded-[32px] shadow-2xl overflow-hidden flex flex-col shrink-0 relative z-10 select-none max-h-[92vh] overflow-y-auto"
+          className="bg-card border border-border/80 rounded-[32px] shadow-2xl overflow-hidden flex flex-col shrink-0 relative z-10 select-none max-h-[92vh] overflow-y-auto outline-none"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header Banner */}

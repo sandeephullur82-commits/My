@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Home, Users, PlusCircle, Settings as SettingsIcon, Activity, Bell, X, Plus, UserPlus, Sun, Moon } from 'lucide-react';
+import { Home, Users, PlusCircle, Settings as SettingsIcon, Activity, X, Plus, UserPlus, Sun, Moon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSync } from '../context/SyncContext';
 import { useUI } from '../context/UIContext';
@@ -44,8 +44,6 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
       toast.error('Failed to register borrower');
     }
   };
-
-  const unreadCount = history.filter(n => !n.isRead).length;
 
   // Scroll to top implementation for tab clicks
   const handleTabClick = (tabId: string) => {
@@ -149,25 +147,6 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
             >
               <Plus size={15} strokeWidth={2.5} aria-hidden="true" />
               <span className="hidden sm:inline">Add Customer</span>
-            </button>
-
-            {/* Notification Center Bell */}
-            <button
-              type="button"
-              onClick={() => {
-                if (navigator.vibrate) navigator.vibrate(5);
-                setCurrentTab('notifications');
-              }}
-              className="w-9 h-9 rounded-xl bg-card hover:bg-muted border border-border/80 text-text-secondary hover:text-text-primary flex items-center justify-center relative active:scale-95 transition-all cursor-pointer"
-              title="Notifications & Alerts"
-              aria-label={unreadCount > 0 ? `Notifications & Alerts, ${unreadCount} unread` : "Notifications & Alerts"}
-            >
-              <Bell size={17} aria-hidden="true" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-danger text-white rounded-full text-[9px] font-bold flex items-center justify-center shadow-xs animate-in zoom-in-50" aria-hidden="true">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
-              )}
             </button>
 
             {/* Theme Toggle Button */}
