@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, User, ArrowDownAZ, ArrowUpZA, Edit2, Trash2, IndianRupee, Search, Pin, PinOff, Filter, ArrowUp, ArrowDown, History, X, ChevronDown, SlidersHorizontal, ArrowUpDown, Check } from 'lucide-react';
-import { firestoreService, Customer } from '../services/firestoreService';
+import { firestoreService, Customer, Transaction } from '../services/firestoreService';
 import { useRealtimeData } from '../hooks/useRealtimeData';
 import { toast } from 'sonner';
 import { CustomerCard } from '../components/CustomerCard';
@@ -12,6 +12,8 @@ import { BottomSheet } from '../components/BottomSheet';
 import { PageContainer } from '../components/PageContainer';
 import { Skeleton } from '../components/Skeleton';
 import { useUI } from '../context/UIContext';
+import { WithdrawDepositModal } from '../components/WithdrawDepositModal';
+import { ReceiptSuccessModal, ReceiptData } from '../components/ReceiptSuccessModal';
 import { useFeedback } from '../context/FeedbackContext';
 
 interface CustomersProps {
@@ -47,6 +49,9 @@ export function Customers({ onNavigate }: CustomersProps) {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'pending_desc' | 'last_payment' | 'name_asc' | 'name_desc'>('asc');
   const [showAdd, setShowAdd] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [newLoanCustomer, setNewLoanCustomer] = useState<Customer | null>(null);
+  const [withdrawCustomer, setWithdrawCustomer] = useState<Customer | null>(null);
+  const [selectedReceipt, setSelectedReceipt] = useState<ReceiptData | null>(null);
 
   useEffect(() => {
     if (location.state?.filter) {
@@ -64,12 +69,12 @@ export function Customers({ onNavigate }: CustomersProps) {
   // Sync modal & customer details state with UI context
   useEffect(() => {
     setIsCustomerDetailsOpen(!!selectedCustomer);
-    setIsModalOpen(!!selectedCustomer || !!editCustomer || showAdd);
+    setIsModalOpen(!!selectedCustomer || !!editCustomer || showAdd || !!newLoanCustomer || !!withdrawCustomer || !!selectedReceipt);
     return () => {
-      setIsCustomerDetailsOpen(false);
-      setIsModalOpen(false);
+       setIsCustomerDetailsOpen(false);
+       setIsModalOpen(false);
     };
-  }, [selectedCustomer, editCustomer, showAdd, setIsModalOpen, setIsCustomerDetailsOpen]);
+  }, [selectedCustomer, editCustomer, showAdd, newLoanCustomer, withdrawCustomer, selectedReceipt, setIsModalOpen, setIsCustomerDetailsOpen]);
 
   const filterOptions = [
     { value: 'all', label: 'All Accounts' },
@@ -88,13 +93,18 @@ export function Customers({ onNavigate }: CustomersProps) {
     { value: 'last_payment', label: 'Recent activity' }
   ];
 
-  // Auto-scroll and Highlight logic
+  // Auto-scroll and Highlight logic & Auto-open details overlay
   useEffect(() => {
     if (isReady && !loading && customers.length > 0) {
       const params = new URLSearchParams(window.location.search);
       const targetId = params.get('customerId') || params.get('id');
       
       if (targetId) {
+        const found = customers.find(c => c.id === targetId);
+        if (found) {
+          setSelectedCustomer(found);
+        }
+
         // Clean URL
         const newUrl = window.location.pathname;
         window.history.replaceState({}, '', newUrl);
@@ -113,14 +123,61 @@ export function Customers({ onNavigate }: CustomersProps) {
 
   const { toastAction, toastError, toastSuccess } = useFeedback();
 
+  const counts = useMemo(() => {
+    let pending = 0;
+    let overdue = 0;
+    let paid = 0;
+    const now = Date.now();
+    customers.forEach(c => {
+      if (c.isDeleted || localDeletedIds.includes(c.id)) return;
+      const loanAmount = c.loanAmount || c.loan || 0;
+      const paidAmount = c.paid || 0;
+      const pendingAmount = c.pending !== undefined ? c.pending : (loanAmount - paidAmount);
+      if (pendingAmount <= 0) paid++;
+      else if (c.endDate < now) overdue++;
+      else pending++;
+    });
+    return {
+      all: customers.filter(c => !c.isDeleted && !localDeletedIds.includes(c.id)).length,
+      pending,
+      overdue,
+      paid
+    };
+  }, [customers, localDeletedIds]);
+
+  // Single O(T) pass to index transactions for all customers
+  const { customerActivityMap, paidTodaySet, lastPaymentTimeMap } = useMemo(() => {
+    const actMap = new Map<string, Transaction>();
+    const paidSet = new Set<string>();
+    const lastTimeMap = new Map<string, number>();
+    const today = new Date().toISOString().slice(0, 10);
+
+    for (let i = 0; i < transactions.length; i++) {
+      const tx = transactions[i];
+      if (tx.isDeleted) continue;
+      if (tx.status === 'paid') {
+        const existing = actMap.get(tx.customerId);
+        if (!existing || tx.timestamp > existing.timestamp) {
+          actMap.set(tx.customerId, tx);
+          lastTimeMap.set(tx.customerId, tx.timestamp);
+        }
+        if (tx.date === today) {
+          paidSet.add(tx.customerId);
+        }
+      }
+    }
+    return { customerActivityMap: actMap, paidTodaySet: paidSet, lastPaymentTimeMap: lastTimeMap };
+  }, [transactions]);
+
   const filteredAndSorted = useMemo(() => {
+    const now = Date.now();
     let result = customers.filter(c => {
       if (c.isDeleted || localDeletedIds.includes(c.id)) return false;
 
       const loanAmount = c.loanAmount || c.loan || 0;
       const paidAmount = c.paid || 0;
       const pendingAmount = c.pending !== undefined ? c.pending : (loanAmount - paidAmount);
-      const isOverdue = c.endDate < Date.now() && pendingAmount > 0;
+      const isOverdue = c.endDate < now && pendingAmount > 0;
       const isFullyPaid = pendingAmount <= 0;
 
       // Filter chips
@@ -147,9 +204,8 @@ export function Customers({ onNavigate }: CustomersProps) {
       return true;
     });
 
-    // Sort Logic
+    // Fast O(N log N) Sort using pre-computed O(1) lookups
     return result.sort((a, b) => {
-      // Pinned customers stay top
       if (a.isPinned && !b.isPinned) return -1;
       if (!a.isPinned && b.isPinned) return 1;
 
@@ -163,8 +219,8 @@ export function Customers({ onNavigate }: CustomersProps) {
       }
 
       if (sortOrder === 'last_payment') {
-        const lastA = transactions.filter(tx => tx.customerId === a.id && !tx.isDeleted && tx.status === 'paid').sort((x, y) => y.timestamp - x.timestamp)[0]?.timestamp || 0;
-        const lastB = transactions.filter(tx => tx.customerId === b.id && !tx.isDeleted && tx.status === 'paid').sort((x, y) => y.timestamp - x.timestamp)[0]?.timestamp || 0;
+        const lastA = lastPaymentTimeMap.get(a.id) || 0;
+        const lastB = lastPaymentTimeMap.get(b.id) || 0;
         return lastB - lastA;
       }
 
@@ -178,7 +234,17 @@ export function Customers({ onNavigate }: CustomersProps) {
       }
       return sortOrder === 'asc' ? idA.localeCompare(idB) : idB.localeCompare(idA);
     });
-  }, [customers, filter, sortOrder, debouncedQuery, transactions]);
+  }, [customers, filter, sortOrder, debouncedQuery, localDeletedIds, lastPaymentTimeMap]);
+
+  // Progressive batching for super-smooth 60fps scrolling
+  const [displayLimit, setDisplayLimit] = useState(40);
+  useEffect(() => {
+    setDisplayLimit(40);
+  }, [filter, debouncedQuery, sortOrder]);
+
+  const visibleCustomers = useMemo(() => {
+    return filteredAndSorted.slice(0, displayLimit);
+  }, [filteredAndSorted, displayLimit]);
 
   const handleTogglePin = async (customer: Customer) => {
     try {
@@ -191,7 +257,31 @@ export function Customers({ onNavigate }: CustomersProps) {
   };
 
   const handleSaveCustomer = async (newCustomer: Partial<Customer> & { id: string }) => {
-    // 1. Check ID uniqueness (usually handled by getNextCustomerId but good for manual types)
+    const isUpdating = customers.some(c => c.id === newCustomer.id);
+
+    if (isUpdating) {
+      // Check if duplicate on a DIFFERENT customer
+      const isDuplicate = customers.some(c => 
+        c.id !== newCustomer.id &&
+        c.name.trim().toLowerCase() === String(newCustomer.name || '').trim().toLowerCase() && 
+        c.phone.trim() === String(newCustomer.phone || '').trim()
+      );
+      if (isDuplicate) {
+        toastError('Duplicate Found', 'Another customer already exists with this name and phone');
+        return;
+      }
+
+      try {
+        await firestoreService.saveCustomer(newCustomer);
+        toastSuccess('Customer Updated', `${newCustomer.name} has been updated.`);
+        setEditCustomer(null);
+      } catch (error) {
+        toastError('Update Failed', 'Failed to update customer record');
+      }
+      return;
+    }
+
+    // 1. Check ID uniqueness for new customer
     const idExists = customers.some(c => c.id === newCustomer.id);
     if (idExists) {
       toastError('ID Conflict', `ID ${newCustomer.id} is already in use`);
@@ -208,7 +298,7 @@ export function Customers({ onNavigate }: CustomersProps) {
       return;
     }
 
-    // 3. Check Phone warning (optional but helpful)
+    // 3. Check Phone warning
     const phoneInUse = customers.find(c => c.phone.trim() === newCustomer.phone?.trim());
     if (phoneInUse) {
       toastAction({
@@ -263,166 +353,128 @@ export function Customers({ onNavigate }: CustomersProps) {
         }}
       >
         
-        {/* Minimal Search-First Header */}
-        <div className="flex flex-col gap-4 sticky top-0 z-50 bg-bg/80 backdrop-blur-md pt-3 pb-1 -mx-2 px-2" onClick={e => e.stopPropagation()}>
-          <div className="flex items-center gap-3">
+        {/* Clean Search & Filter Header */}
+        <div className="flex flex-col gap-3 sticky top-0 z-40 bg-bg/95 backdrop-blur-md pt-2 pb-2 -mx-2 px-2 border-b border-border/40" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center gap-2">
+            {/* Search Bar */}
             <div className="flex-1 relative group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary opacity-30 group-focus-within:opacity-100 group-focus-within:text-accent transition-all" size={18} />
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-secondary opacity-50 group-focus-within:opacity-100 group-focus-within:text-accent transition-all" size={17} />
               <input
                 id="customers-search-input"
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search name, ID (003), or phone"
-                className="w-full pl-11 pr-10 py-4 bg-card border border-border/10 rounded-[24px] text-[15px] font-medium outline-none focus:border-accent/40 focus:ring-4 focus:ring-accent/5 transition-all shadow-sm"
+                placeholder="Search by name, phone or ID..."
+                className="w-full pl-10 pr-9 py-2.5 bg-card border border-border/80 rounded-xl text-sm font-medium outline-none focus:border-accent focus:ring-2 focus:ring-accent/10 transition-all shadow-xs"
               />
               {searchTerm && (
                 <button 
                   onClick={() => setSearchTerm('')}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center bg-muted text-text-secondary rounded-full opacity-40 hover:opacity-100 transition-opacity"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center bg-muted text-text-secondary rounded-full hover:text-text-primary transition-colors"
+                  title="Clear search"
                 >
-                  <X size={14} />
+                  <X size={13} />
                 </button>
               )}
             </div>
+
+            {/* Sort Selector Trigger */}
+            <button
+              type="button"
+              onClick={() => setShowSortSheet(true)}
+              className="h-10 px-3 bg-card border border-border/80 hover:border-accent/40 rounded-xl flex items-center gap-1.5 text-xs font-bold text-text-secondary hover:text-text-primary transition-all active:scale-95 shadow-xs shrink-0"
+              title="Change sort order"
+            >
+              <ArrowUpDown size={14} className="text-accent" />
+              <span className="hidden xs:inline">
+                {sortOptions.find(o => o.value === sortOrder)?.label.replace(' ', ': ')}
+              </span>
+            </button>
           </div>
 
-          {/* Quick Filter Horizontal Scroll */}
-          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide py-0.5 -mx-1 px-1">
+          {/* Segmented Filter Control with Active Badges */}
+          <div className="flex items-center gap-1.5 p-1 bg-muted/70 rounded-xl border border-border/50 overflow-x-auto scrollbar-hide">
             <button
               type="button"
               onClick={() => {
-                if ('vibrate' in navigator) navigator.vibrate(5);
+                if (navigator.vibrate) navigator.vibrate(5);
                 setFilter('all');
               }}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+              className={`flex-1 min-w-[70px] py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                 filter === 'all'
-                  ? 'bg-accent text-white shadow-xs'
-                  : 'bg-card border border-border/60 text-text-secondary hover:text-text-primary'
+                  ? 'bg-card text-text-primary shadow-xs border border-border/80 font-black'
+                  : 'text-text-secondary hover:text-text-primary'
               }`}
             >
-              All
+              <span>All</span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md ${
+                filter === 'all' ? 'bg-accent/15 text-accent font-bold' : 'bg-card/50 text-text-secondary'
+              }`}>
+                {counts.all}
+              </span>
             </button>
 
             <button
               type="button"
               onClick={() => {
-                if ('vibrate' in navigator) navigator.vibrate(5);
+                if (navigator.vibrate) navigator.vibrate(5);
                 setFilter('pending');
               }}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+              className={`flex-1 min-w-[80px] py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                 filter === 'pending'
-                  ? 'bg-accent text-white shadow-xs'
-                  : 'bg-card border border-border/60 text-text-secondary hover:text-text-primary'
+                  ? 'bg-card text-text-primary shadow-xs border border-border/80 font-black'
+                  : 'text-text-secondary hover:text-text-primary'
               }`}
             >
-              Pending
+              <span>Pending</span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md ${
+                filter === 'pending' ? 'bg-warning/20 text-warning font-bold' : 'bg-card/50 text-text-secondary'
+              }`}>
+                {counts.pending}
+              </span>
             </button>
 
             <button
               type="button"
               onClick={() => {
-                if ('vibrate' in navigator) navigator.vibrate(5);
+                if (navigator.vibrate) navigator.vibrate(5);
                 setFilter('overdue');
               }}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+              className={`flex-1 min-w-[80px] py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                 filter === 'overdue'
-                  ? 'bg-danger text-white shadow-xs'
-                  : 'bg-card border border-border/60 text-text-secondary hover:text-text-primary'
+                  ? 'bg-card text-danger shadow-xs border border-danger/30 font-black'
+                  : 'text-text-secondary hover:text-text-primary'
               }`}
             >
-              Overdue
+              <span>Overdue</span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md ${
+                filter === 'overdue' ? 'bg-danger/20 text-danger font-bold' : 'bg-card/50 text-text-secondary'
+              }`}>
+                {counts.overdue}
+              </span>
             </button>
 
             <button
               type="button"
               onClick={() => {
-                if ('vibrate' in navigator) navigator.vibrate(5);
+                if (navigator.vibrate) navigator.vibrate(5);
                 setFilter('paid');
               }}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+              className={`flex-1 min-w-[80px] py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                 filter === 'paid'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'bg-card border border-border/60 text-text-secondary hover:text-text-primary'
+                  ? 'bg-card text-success shadow-xs border border-success/30 font-black'
+                  : 'text-text-secondary hover:text-text-primary'
               }`}
             >
-              Fully Paid
+              <span>Settled</span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md ${
+                filter === 'paid' ? 'bg-success/20 text-success font-bold' : 'bg-card/50 text-text-secondary'
+              }`}>
+                {counts.paid}
+              </span>
             </button>
           </div>
-
-          {/* Filter & Sort Controls - Bottom Sheet Selectors */}
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowFilterSheet(true);
-                }}
-                className={`w-full flex items-center justify-between bg-card border border-border/10 rounded-2xl px-4 py-3.5 text-[10px] font-black uppercase tracking-widest outline-none transition-all active:scale-[0.98] active:bg-accent/5`}
-              >
-                <div className="flex items-center gap-2">
-                  <Filter size={14} className={filter === 'all' ? 'opacity-40' : 'text-accent'} />
-                  <span className={filter === 'all' ? 'text-text-secondary opacity-40' : 'text-text-primary'}>
-                    {filterOptions.find(o => o.value === filter)?.label}
-                  </span>
-                </div>
-                <ChevronDown size={14} className="opacity-40" />
-              </button>
-            </div>
-
-            <div className="relative flex-1">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowSortSheet(true);
-                }}
-                className={`w-full flex items-center justify-between bg-card border border-border/10 rounded-2xl px-4 py-3.5 text-[10px] font-black uppercase tracking-widest outline-none transition-all active:scale-[0.98] active:bg-accent/5`}
-              >
-                <div className="flex items-center gap-2">
-                  <ArrowUpDown size={14} className="opacity-40" />
-                  <span className="text-text-secondary opacity-40">
-                    {sortOptions.find(o => o.value === sortOrder)?.label}
-                  </span>
-                </div>
-                <ChevronDown size={14} className="opacity-40" />
-              </button>
-            </div>
-          </div>
         </div>
-
-        <BottomSheet
-          isOpen={showFilterSheet}
-          onClose={() => setShowFilterSheet(false)}
-          title="Filter Customers"
-          subtitle="Refine your loan list"
-        >
-          <div className="flex flex-col gap-2 pb-6">
-            {filterOptions.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => {
-                  if ('vibrate' in navigator) navigator.vibrate(5);
-                  setFilter(opt.value as any);
-                  setShowFilterSheet(false);
-                }}
-                className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all ${
-                  filter === opt.value 
-                    ? 'bg-accent/10 border border-accent/20' 
-                    : 'bg-card border border-border/5'
-                }`}
-              >
-                <span className={`text-sm font-black uppercase tracking-widest ${filter === opt.value ? 'text-accent' : 'text-text-secondary opacity-60'}`}>
-                  {opt.label}
-                </span>
-                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
-                  filter === opt.value ? 'border-accent bg-accent' : 'border-border opacity-20'
-                }`}>
-                  {filter === opt.value && <div className="w-2.5 h-2.5 bg-white rounded-full shadow-sm" />}
-                </div>
-              </button>
-            ))}
-          </div>
-        </BottomSheet>
 
         <BottomSheet
           isOpen={showSortSheet}
@@ -538,26 +590,41 @@ export function Customers({ onNavigate }: CustomersProps) {
               </motion.button>
             </div>
           ) : (
-            filteredAndSorted.map((customer) => (
-              <div 
-                key={customer.id} 
-                id={`customer-item-${customer.id}`}
-                onClick={e => e.stopPropagation()}
-                className={`transition-all duration-1000 rounded-2xl ${highlightedId === customer.id ? 'ring-2 ring-accent ring-offset-4 ring-offset-bg bg-accent/5' : ''}`}
-              >
-                <CustomerCard
-                  customer={customer}
-                  transactions={transactions}
-                  onClick={() => setSelectedCustomer(customer)}
-                  onAddEntry={() => onNavigate?.('entry', undefined, customer.id)}
-                  onEdit={() => setEditCustomer(customer)}
-                  onDelete={() => handleDelete(customer.id, customer.name)}
-                  onTogglePin={() => handleTogglePin(customer)}
-                  activeSwipeId={activeSwipeId}
-                  setActiveSwipeId={setActiveSwipeId}
-                />
-              </div>
-            ))
+            <>
+              {visibleCustomers.map((customer) => (
+                <div 
+                  key={customer.id} 
+                  id={`customer-item-${customer.id}`}
+                  onClick={e => e.stopPropagation()}
+                  className={`transition-all duration-300 rounded-2xl ${highlightedId === customer.id ? 'ring-2 ring-accent ring-offset-4 ring-offset-bg bg-accent/5' : ''}`}
+                >
+                  <CustomerCard
+                    customer={customer}
+                    lastActivity={customerActivityMap.get(customer.id)}
+                    isPaidToday={paidTodaySet.has(customer.id)}
+                    onClick={() => setSelectedCustomer(customer)}
+                    onAddEntry={() => onNavigate?.('entry', undefined, customer.id)}
+                    onEdit={() => setEditCustomer(customer)}
+                    onDelete={() => handleDelete(customer.id, customer.name)}
+                    onTogglePin={() => handleTogglePin(customer)}
+                    onStartNewLoan={() => setNewLoanCustomer(customer)}
+                    onWithdraw={(cust) => setWithdrawCustomer(cust)}
+                    activeSwipeId={activeSwipeId}
+                    setActiveSwipeId={setActiveSwipeId}
+                  />
+                </div>
+              ))}
+
+              {filteredAndSorted.length > displayLimit && (
+                <button
+                  type="button"
+                  onClick={() => setDisplayLimit(prev => prev + 40)}
+                  className="w-full py-3 my-2 rounded-xl bg-card border border-border/80 text-xs font-bold text-accent hover:bg-accent/5 transition-all active:scale-[0.98] shadow-xs cursor-pointer"
+                >
+                  Load More Borrowers ({filteredAndSorted.length - displayLimit} remaining)
+                </button>
+              )}
+            </>
           )}
         </div>
 
@@ -567,7 +634,22 @@ export function Customers({ onNavigate }: CustomersProps) {
               key={`customer-details-${selectedCustomer.id}`}
               customer={selectedCustomer}
               transactions={transactions}
-              onClose={() => setSelectedCustomer(null)}
+              onClose={() => {
+                try {
+                  const url = new URL(window.location.href);
+                  if (url.searchParams.has('customerId') || url.searchParams.has('id')) {
+                    url.searchParams.delete('customerId');
+                    url.searchParams.delete('id');
+                    window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+                  }
+                } catch {}
+
+                if (location.state?.from === 'dashboard') {
+                  onNavigate?.('dashboard');
+                } else {
+                  setSelectedCustomer(null);
+                }
+              }}
               onAddEntry={() => {
                 onNavigate?.('entry', undefined, selectedCustomer.id);
                 setSelectedCustomer(null);
@@ -594,6 +676,46 @@ export function Customers({ onNavigate }: CustomersProps) {
             />
           )}
         </BottomSheet>
+
+        {/* New Loan via CustomerForm for Completed / Returning Customers */}
+        <BottomSheet
+          isOpen={!!newLoanCustomer}
+          onClose={() => setNewLoanCustomer(null)}
+          title={`New Loan • Cycle #${(newLoanCustomer?.currentCycle || 1) + 1}`}
+          subtitle={`Issue new loan cycle for ${newLoanCustomer?.name || ''}`}
+        >
+          {newLoanCustomer && (
+            <CustomerForm
+              customer={newLoanCustomer}
+              mode="new_loan"
+              onCancel={() => setNewLoanCustomer(null)}
+              onSuccess={() => {
+                setNewLoanCustomer(null);
+                refreshData();
+              }}
+            />
+          )}
+        </BottomSheet>
+
+        {/* WITHDRAW DEPOSIT MODAL */}
+        <WithdrawDepositModal
+          isOpen={!!withdrawCustomer}
+          onClose={() => setWithdrawCustomer(null)}
+          customer={withdrawCustomer}
+          onSuccess={(receipt) => {
+            setSelectedReceipt(receipt);
+            refreshData();
+          }}
+        />
+
+        {/* DIGITAL RECEIPT MODAL */}
+        {selectedReceipt && (
+          <ReceiptSuccessModal
+            receipt={selectedReceipt}
+            onClose={() => setSelectedReceipt(null)}
+            onStartNewLoan={() => setNewLoanCustomer(selectedReceipt.customer)}
+          />
+        )}
       </div>
     </PageContainer>
   );

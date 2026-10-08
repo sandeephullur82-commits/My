@@ -1,56 +1,45 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { motion, animate, PanInfo, useMotionValue, useTransform, AnimatePresence } from 'motion/react';
+import React, { useRef, useMemo } from 'react';
+import { motion, PanInfo } from 'motion/react';
 import { Customer, Transaction } from '../services/firestoreService';
 import { safeDistanceToNow, safeDifferenceInDays } from '../lib/utils';
-import { Plus, Phone, X, IndianRupee, Clock, Pin, MessageCircle, CheckCircle2, RotateCcw } from 'lucide-react';
+import { Plus, CheckCircle2, RotateCcw, ArrowUpRight } from 'lucide-react';
 import { format } from 'date-fns';
-import { toast } from 'sonner';
 import { useUI } from '../context/UIContext';
 import { useSwipeActions } from '../hooks/useSwipeActions';
 import { SwipeActionBackground } from './SwipeActionBackground';
 import { ContactPermissionModal } from './ContactPermissionModal';
+import { Highlight } from './Highlight';
 
 interface CustomerCardProps {
   customer: Customer;
-  transactions: Transaction[];
+  transactions?: Transaction[];
+  lastActivity?: Transaction;
+  isPaidToday?: boolean;
   onClick: () => void;
   onAddEntry: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
   onTogglePin?: () => void;
+  onStartNewLoan?: () => void;
+  onWithdraw?: (customer: Customer) => void;
   activeSwipeId: string | null;
   setActiveSwipeId: (id: string | null) => void;
 }
 
-const Highlight = ({ text, highlight }: { text: string, highlight?: string }) => {
-  if (!highlight || typeof highlight !== 'string' || !highlight.trim()) return <>{text}</>;
-  
-  const regex = new RegExp(`(${String(highlight).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-  const parts = String(text || '').split(regex);
-  
-  return (
-    <>
-      {parts.map((part, i) => (
-        regex.test(part) ? (
-          <span key={i} className="bg-accent/20 text-accent rounded-sm px-0.5">{part}</span>
-        ) : (
-          <span key={i}>{part}</span>
-        )
-      ))}
-    </>
-  );
-};
-
-export function CustomerCard({ 
+export const CustomerCard = React.memo(function CustomerCard({ 
   customer, 
-  transactions, 
+  transactions = [], 
+  lastActivity: propLastActivity,
+  isPaidToday: propIsPaidToday,
   onClick, 
   onAddEntry, 
   onEdit, 
-  onDelete,
-  onTogglePin,
-  activeSwipeId,
-  setActiveSwipeId
+  onDelete, 
+  onTogglePin, 
+  onStartNewLoan, 
+  onWithdraw, 
+  activeSwipeId, 
+  setActiveSwipeId 
 }: CustomerCardProps) {
   const { isCompact, searchTerm } = useUI();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -74,17 +63,15 @@ export function CustomerCard({
   });
 
   const isOpen = activeSwipeId === customer.id;
-
   const prevIsOpen = useRef(isOpen);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (prevIsOpen.current && !isOpen) {
       resetSwipe();
     }
     prevIsOpen.current = isOpen;
   }, [isOpen, resetSwipe]);
 
-  // Hooking the drag end to setActiveSwipeId to maintain parent tracking
   const wrappedDragEnd = (event: any, info: PanInfo) => {
     const threshold = 55;
     handleDragEnd(event, info);
@@ -100,11 +87,15 @@ export function CustomerCard({
     setActiveSwipeId(customer.id);
   };
 
-  const customerTransactions = transactions
-    .filter(tx => tx.customerId === customer.id && tx.status === 'paid')
-    .sort((a, b) => b.timestamp - a.timestamp);
-  
-  const lastActivity = customerTransactions[0];
+  // High-performance memoized last activity calculation
+  const lastActivity = useMemo(() => {
+    if (propLastActivity !== undefined) return propLastActivity;
+    if (!transactions || transactions.length === 0) return undefined;
+    const paid = transactions
+      .filter(tx => tx.customerId === customer.id && tx.status === 'paid')
+      .sort((a, b) => b.timestamp - a.timestamp);
+    return paid[0];
+  }, [propLastActivity, transactions, customer.id]);
 
   const displayId = String(customer.displayId || customer.id);
   const loanAmount = customer.loanAmount || customer.loan || 0;
@@ -113,7 +104,6 @@ export function CustomerCard({
 
   const isOverdue = customer.endDate < Date.now() && pendingAmount > 0;
   const isFullyPaid = pendingAmount <= 0;
-  const isTopUpEligible = !isFullyPaid && loanAmount > 0 && pendingAmount <= loanAmount * 0.2;
   const currentCycle = customer.currentCycle || 1;
 
   let statusColor = 'bg-warning';
@@ -126,15 +116,20 @@ export function CustomerCard({
     statusText = 'text-danger';
   }
 
-  const todayStr = format(new Date(), 'yyyy-MM-dd');
-  const isPaidToday = transactions.some(
-    tx => tx.customerId === customer.id && tx.status === 'paid' && tx.date === todayStr && !tx.isDeleted
-  );
-  const isEntryDisabled = isPaidToday || isFullyPaid;
+  // High-performance isPaidToday check
+  const isPaidToday = useMemo(() => {
+    if (propIsPaidToday !== undefined) return propIsPaidToday;
+    if (!transactions || transactions.length === 0) return false;
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    return transactions.some(
+      tx => tx.customerId === customer.id && tx.status === 'paid' && tx.date === todayStr && !tx.isDeleted
+    );
+  }, [propIsPaidToday, transactions, customer.id]);
 
+  const isEntryDisabled = isPaidToday || isFullyPaid;
   const progress = loanAmount > 0 ? Math.min(100, Math.max(0, (paidAmount / loanAmount) * 100)) : 0;
 
-  const getTag = () => {
+  const tag = useMemo(() => {
     if (customer.frequency === 'daily' || customer.frequencyDays === 1) return 'Daily (1d)';
     if (customer.frequency === 'weekly' || customer.frequencyDays === 7) return 'Weekly (7d)';
     if (customer.frequency === 'monthly' || customer.frequencyDays === 30) return 'Monthly (30d)';
@@ -147,11 +142,10 @@ export function CustomerCard({
     if (dur > 100) return 'Monthly';
     if (dur > 40) return 'Weekly';
     return 'Daily';
-  };
-  const tag = getTag();
+  }, [customer.frequency, customer.frequencyDays, customer.endDate, customer.startDate]);
 
   return (
-    <div className="relative w-full overflow-hidden rounded-2xl mb-3" ref={containerRef}>
+    <div className="relative w-full overflow-hidden rounded-2xl mb-2.5" ref={containerRef}>
       {/* Background Actions */}
       <SwipeActionBackground
         leftActionOpacity={leftActionOpacity}
@@ -171,7 +165,7 @@ export function CustomerCard({
         onDragStart={wrappedDragStart}
         onDragEnd={wrappedDragEnd}
         style={{ x }}
-        className={`relative bg-card w-full flex items-center gap-3 cursor-pointer z-10 border border-border/80 rounded-2xl shadow-sm transition-all ${isCompact ? 'py-2.5 px-3' : 'p-4'}`}
+        className={`relative bg-card w-full flex items-center gap-3 cursor-pointer z-10 border border-border/80 rounded-2xl shadow-xs transition-colors hover:border-accent/40 ${isCompact ? 'py-2.5 px-3' : 'p-3.5 sm:p-4'}`}
         onClick={(e) => {
           if (swipedAction !== null) {
             e.stopPropagation();
@@ -186,16 +180,16 @@ export function CustomerCard({
 
         {/* Avatar & Status */}
         <div className="relative ml-2">
-          <div className={`${isCompact ? 'w-10 h-10 text-base' : 'w-12 h-12 text-lg'} rounded-full bg-accent/10 text-accent flex items-center justify-center font-black uppercase tracking-tighter`}>
+          <div className={`${isCompact ? 'w-9 h-9 text-sm' : 'w-11 h-11 text-base'} rounded-full bg-accent/10 text-accent flex items-center justify-center font-black uppercase tracking-tight`}>
             {customer.name ? customer.name.charAt(0) : '👤'}
           </div>
-          <div className={`absolute -bottom-0.5 -right-0.5 ${isCompact ? 'w-3 h-3 border' : 'w-4 h-4 border-2'} rounded-full border-card ${statusColor}`} />
+          <div className={`absolute -bottom-0.5 -right-0.5 ${isCompact ? 'w-2.5 h-2.5 border' : 'w-3.5 h-3.5 border-2'} rounded-full border-card ${statusColor}`} />
         </div>
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <div className={`flex justify-between items-center ${isCompact ? 'mb-0' : 'mb-1'}`}>
-            <h3 className={`font-black tracking-tight text-text-primary truncate pr-2 ${isCompact ? 'text-[15px]' : 'text-base'}`}>
+          <div className={`flex justify-between items-center ${isCompact ? 'mb-0' : 'mb-0.5'}`}>
+            <h3 className={`font-black tracking-tight text-text-primary truncate pr-2 ${isCompact ? 'text-[14px]' : 'text-base'}`}>
               <Highlight text={String(customer.name)} highlight={searchTerm} />
             </h3>
             <div className="flex items-center gap-1.5 shrink-0">
@@ -209,7 +203,7 @@ export function CustomerCard({
                   Overdue
                 </span>
               )}
-              <span className={`font-black text-text-secondary whitespace-nowrap opacity-40 ${isCompact ? 'text-[9px] tracking-widest uppercase' : 'text-xs px-2 py-0.5 rounded-md bg-bg'}`}>
+              <span className="text-[10px] font-semibold text-text-secondary whitespace-nowrap bg-muted/60 px-2 py-0.5 rounded-md">
                 {tag}
               </span>
             </div>
@@ -218,14 +212,14 @@ export function CustomerCard({
           <div className="flex justify-between items-end gap-2 mt-1">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
-                <p className={`${isCompact ? 'text-[10px]' : 'text-xs'} font-bold text-text-secondary opacity-50`}>
+                <p className={`${isCompact ? 'text-[10px]' : 'text-xs'} font-bold text-text-secondary`}>
                   ID: <Highlight text={displayId} highlight={searchTerm} />
                 </p>
-                {isCompact && (
+                {isCompact && lastActivity && (
                   <>
                     <div className="w-1 h-1 rounded-full bg-border" />
-                    <p className="text-[10px] font-bold text-text-secondary opacity-50 truncate">
-                       {lastActivity ? `Last: ₹${lastActivity.amount}` : 'New'}
+                    <p className="text-[10px] font-medium text-text-secondary truncate">
+                      Last: ₹{lastActivity.amount}
                     </p>
                   </>
                 )}
@@ -241,57 +235,111 @@ export function CustomerCard({
 
             <div className="flex items-center gap-2.5 shrink-0">
               <div className="text-right">
-                {!isCompact && <p className="text-[10px] font-bold text-text-secondary uppercase tracking-widest opacity-40 mb-0.5">Pending</p>}
-                <p className={`font-black tracking-tighter leading-none ${statusText} ${isCompact ? 'text-lg' : 'text-xl'}`}>
-                  <span className={`${isCompact ? 'text-[10px]' : 'text-xs'} mr-0.5 opacity-40 font-bold`}>₹</span>
-                  {pendingAmount.toLocaleString()}
+                {!isCompact && (
+                  <p className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${
+                    isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'text-sky-600 dark:text-sky-400' : 'text-text-secondary'
+                  }`}>
+                    {isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'Advance' : 'Pending'}
+                  </p>
+                )}
+                <p className={`font-black tracking-tight leading-none ${
+                  isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'text-sky-600 dark:text-sky-400' : statusText
+                } ${isCompact ? 'text-base' : 'text-lg'}`}>
+                  <span className="text-xs mr-0.5 opacity-60 font-bold">₹</span>
+                  {isFullyPaid && (customer.advanceBalance || 0) > 0 
+                    ? (customer.advanceBalance || 0).toLocaleString('en-IN')
+                    : pendingAmount.toLocaleString('en-IN')}
                 </p>
               </div>
 
-              {/* (+) Entry Button - Disabled if already in Paid section for today or fully paid */}
-              <button
-                id={`customer-add-entry-btn-${customer.id}`}
-                type="button"
-                disabled={isEntryDisabled}
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (isEntryDisabled) return;
-                  if (navigator.vibrate) navigator.vibrate(12);
-                  onAddEntry();
-                }}
-                title={
-                  isPaidToday
-                    ? `Already collected today in Paid section`
-                    : isFullyPaid
-                    ? `Account fully settled`
-                    : `Add collection entry for ${customer.name}`
-                }
-                aria-label={`Add entry for ${customer.name}`}
-                className={`flex items-center justify-center transition-all z-20 ${
-                  isEntryDisabled
-                    ? 'bg-muted/70 text-text-secondary/40 border border-border/40 cursor-not-allowed shadow-none'
-                    : 'bg-accent text-white shadow-sm hover:bg-accent/90 active:scale-95 cursor-pointer'
-                } ${
-                  isCompact 
-                    ? 'w-7 h-7 rounded-lg' 
-                    : 'w-8 h-8 rounded-xl shadow-accent/20 shadow-sm'
-                }`}
-              >
-                {isPaidToday ? (
-                  <CheckCircle2 size={isCompact ? 13 : 15} className="text-emerald-500" strokeWidth={2.5} />
-                ) : (
-                  <Plus size={isCompact ? 15 : 18} strokeWidth={2.5} />
-                )}
-              </button>
+              {/* Action Button: "New Loan" / "Withdraw" if fully paid, or (+) Entry Button if active */}
+              {isFullyPaid ? (
+                <div className="flex items-center gap-1.5">
+                  {(customer.advanceBalance || 0) > 0 && onWithdraw && (
+                    <button
+                      id={`customer-withdraw-btn-${customer.id}`}
+                      type="button"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (navigator.vibrate) navigator.vibrate(15);
+                        onWithdraw(customer);
+                      }}
+                      title={`Withdraw advance deposit of ₹${(customer.advanceBalance || 0).toLocaleString('en-IN')} for ${customer.name}`}
+                      aria-label={`Withdraw advance deposit for ${customer.name}`}
+                      className={`flex items-center gap-1 transition-all z-20 bg-amber-600 hover:bg-amber-700 text-white font-black uppercase tracking-wider shadow-xs active:scale-95 cursor-pointer ${
+                        isCompact ? 'px-2 py-1 text-[10px] rounded-lg' : 'px-2.5 py-1.5 text-xs rounded-xl'
+                      }`}
+                    >
+                      <ArrowUpRight size={isCompact ? 11 : 13} strokeWidth={2.5} />
+                      <span>Withdraw</span>
+                    </button>
+                  )}
+
+                  <button
+                    id={`customer-new-loan-btn-${customer.id}`}
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (navigator.vibrate) navigator.vibrate(15);
+                      if (onStartNewLoan) {
+                        onStartNewLoan();
+                      } else {
+                        onClick();
+                      }
+                    }}
+                    title={`Start Cycle #${currentCycle + 1} New Loan for ${customer.name}`}
+                    aria-label={`Start New Loan for ${customer.name}`}
+                    className={`flex items-center gap-1.5 transition-all z-20 bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-wider shadow-xs active:scale-95 cursor-pointer ${
+                      isCompact ? 'px-2 py-1 text-[10px] rounded-lg' : 'px-2.5 py-1.5 text-xs rounded-xl'
+                    }`}
+                  >
+                    <RotateCcw size={isCompact ? 11 : 13} strokeWidth={2.5} />
+                    <span>New Loan</span>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  id={`customer-add-entry-btn-${customer.id}`}
+                  type="button"
+                  disabled={isEntryDisabled}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isEntryDisabled) return;
+                    if (navigator.vibrate) navigator.vibrate(12);
+                    onAddEntry();
+                  }}
+                  title={
+                    isPaidToday
+                      ? `Already collected today in Paid section`
+                      : `Add collection entry for ${customer.name}`
+                  }
+                  aria-label={`Add entry for ${customer.name}`}
+                  className={`flex items-center justify-center transition-all z-20 ${
+                    isEntryDisabled
+                      ? 'bg-muted/70 text-text-secondary/40 border border-border/40 cursor-not-allowed shadow-none'
+                      : 'bg-accent text-white shadow-xs hover:bg-accent/90 active:scale-95 cursor-pointer'
+                  } ${
+                    isCompact ? 'w-7 h-7 rounded-lg' : 'w-8 h-8 rounded-xl shadow-accent/20'
+                  }`}
+                >
+                  {isPaidToday ? (
+                    <CheckCircle2 size={isCompact ? 13 : 15} className="text-emerald-500" strokeWidth={2.5} />
+                  ) : (
+                    <Plus size={isCompact ? 15 : 18} strokeWidth={2.5} />
+                  )}
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Mini Progress Bar (Show only in Normal mode or very subtle in Compact) */}
+          {/* Mini Progress Bar */}
           {!isCompact && (
-            <div className="w-full h-1.5 bg-bg rounded-full mt-3 overflow-hidden">
+            <div className="w-full h-1.5 bg-muted rounded-full mt-2.5 overflow-hidden">
               <div 
-                className={`h-full rounded-full ${statusColor}`}
+                className={`h-full rounded-full transition-all duration-300 ${statusColor}`}
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -310,4 +358,4 @@ export function CustomerCard({
       />
     </div>
   );
-}
+});

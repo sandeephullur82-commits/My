@@ -9,10 +9,13 @@ import {
   Printer, 
   X, 
   ArrowRight,
+  ArrowUpRight,
   ShieldCheck,
   Loader2,
   Bluetooth,
-  Receipt
+  Receipt,
+  Sparkles,
+  PiggyBank
 } from 'lucide-react';
 import { safeFormat } from '../lib/utils';
 import { 
@@ -21,6 +24,7 @@ import {
   printReceipt,
   isBluetoothPrintSupported
 } from '../services/receiptImageService';
+import { Customer } from '../services/firestoreService';
 import { PIGMY_LOGO_BASE64 } from '../assets/logoBase64';
 import { toast } from 'sonner';
 
@@ -29,9 +33,10 @@ export type { ReceiptData };
 interface ReceiptSuccessModalProps {
   receipt: ReceiptData | null;
   onClose: () => void;
+  onStartNewLoan?: (customer: Customer) => void;
 }
 
-export function ReceiptSuccessModal({ receipt, onClose }: ReceiptSuccessModalProps) {
+export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: ReceiptSuccessModalProps) {
   const [isSharingImage, setIsSharingImage] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
 
@@ -39,7 +44,19 @@ export function ReceiptSuccessModal({ receipt, onClose }: ReceiptSuccessModalPro
 
   const { transaction, customer, previousBalance, newBalance } = receipt;
   const isUpi = transaction.type === 'phonepe';
+  const isWithdrawal = Boolean(transaction.isWithdrawal);
   const isNP = transaction.type === 'NP' || transaction.type === 'unsettled' || transaction.status === 'unsettled';
+  const isAdvance = Boolean(
+    !isWithdrawal && (
+      transaction.isAdvance || 
+      (previousBalance <= 0 && !isNP) ||
+      (transaction.notes && transaction.notes.toLowerCase().includes('advance'))
+    )
+  );
+  const isLoanCompleted = !isNP && !isWithdrawal && newBalance <= 0 && !isAdvance;
+  const currentAdvanceBalance = (customer.advanceBalance !== undefined && customer.advanceBalance > 0)
+    ? customer.advanceBalance
+    : (isAdvance ? (newBalance > 0 ? newBalance : transaction.amount) : 0);
   
   // Track if this receipt was converted / settled from a previous NP record
   const wasNP = Boolean(
@@ -97,6 +114,15 @@ export function ReceiptSuccessModal({ receipt, onClose }: ReceiptSuccessModalPro
     }
   };
 
+  React.useEffect(() => {
+    if (!receipt) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [receipt, onClose]);
+
   return (
     <AnimatePresence>
       <div 
@@ -104,6 +130,9 @@ export function ReceiptSuccessModal({ receipt, onClose }: ReceiptSuccessModalPro
         onClick={onClose}
       >
         <motion.div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="receipt-success-title"
           initial={{ opacity: 0, scale: 0.95, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 12 }}
@@ -113,16 +142,26 @@ export function ReceiptSuccessModal({ receipt, onClose }: ReceiptSuccessModalPro
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header Banner */}
-          <div className={`relative ${isNP ? 'bg-gradient-to-br from-amber-700 via-amber-600 to-amber-800' : 'bg-gradient-to-br from-emerald-800 via-emerald-700 to-teal-800'} p-5 text-white text-center flex flex-col items-center shadow-inner`}>
-            {/* Top gold/emerald trim line */}
-            <div className={`absolute top-0 inset-x-0 h-1 ${isNP ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+          <div className={`relative ${
+            isWithdrawal
+              ? 'bg-gradient-to-br from-amber-700 via-orange-600 to-rose-700'
+              : isNP 
+                ? 'bg-gradient-to-br from-amber-700 via-amber-600 to-amber-800' 
+                : isAdvance
+                  ? 'bg-gradient-to-br from-sky-800 via-sky-700 to-indigo-900'
+                  : 'bg-gradient-to-br from-emerald-800 via-emerald-700 to-teal-800'
+          } p-5 text-white text-center flex flex-col items-center shadow-inner`}>
+            {/* Top gold/sky/emerald trim line */}
+            <div className={`absolute top-0 inset-x-0 h-1 ${isWithdrawal ? 'bg-amber-300' : isNP ? 'bg-amber-400' : isAdvance ? 'bg-sky-400' : 'bg-emerald-400'}`} />
 
             <button
+              type="button"
               onClick={onClose}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition-all active:scale-90 cursor-pointer"
+              className="absolute top-4 right-4 min-w-[44px] min-h-[44px] rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition-all active:scale-90 cursor-pointer"
               title="Close"
+              aria-label="Close receipt dialog"
             >
-              <X size={16} />
+              <X size={16} aria-hidden="true" />
             </button>
 
             {/* Brand Logo & Name */}
@@ -137,20 +176,50 @@ export function ReceiptSuccessModal({ receipt, onClose }: ReceiptSuccessModalPro
               </span>
             </div>
 
-            <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center mb-2 shadow-inner border border-white/10">
-              <CheckCircle2 size={26} className="text-white" strokeWidth={2.5} />
+            <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center mb-2 shadow-inner border border-white/10" aria-hidden="true">
+              {isWithdrawal ? (
+                <ArrowUpRight size={26} className="text-white" strokeWidth={2.5} />
+              ) : isAdvance ? (
+                <PiggyBank size={26} className="text-white" strokeWidth={2.3} />
+              ) : (
+                <CheckCircle2 size={26} className="text-white" strokeWidth={2.5} />
+              )}
             </div>
 
-            <p className="text-[10px] font-black uppercase tracking-widest opacity-85 mb-0.5">
-              {isNP ? 'Debt / Missed Due Recorded' : 'Payment Recorded Successfully'}
+            <p id="receipt-success-title" className="text-[10px] font-black uppercase tracking-widest opacity-85 mb-0.5">
+              {isWithdrawal 
+                ? 'Advance Deposit Payout Successful' 
+                : isNP 
+                  ? 'Debt / Missed Due Recorded' 
+                  : isAdvance 
+                    ? 'Advance Savings Deposit Recorded' 
+                    : 'Payment Recorded Successfully'}
             </p>
             <h2 className="text-3xl font-black tracking-tight drop-shadow-xs">
               ₹{transaction.amount.toLocaleString('en-IN')}
             </h2>
 
             <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-white/15 text-[10px] font-black uppercase tracking-wider backdrop-blur-xs border border-white/10">
-              {isUpi ? <Smartphone size={12} /> : isNP ? <Clock size={12} /> : <Banknote size={12} />}
-              <span>{isUpi ? 'UPI / PhonePe' : isNP ? 'NP (Debt Recorded)' : 'Cash Deposit'}</span>
+              {isWithdrawal ? (
+                isUpi ? <Smartphone size={12} /> : <Banknote size={12} />
+              ) : isUpi ? (
+                <Smartphone size={12} />
+              ) : isNP ? (
+                <Clock size={12} />
+              ) : isAdvance ? (
+                <PiggyBank size={12} />
+              ) : (
+                <Banknote size={12} />
+              )}
+              <span>
+                {isWithdrawal
+                  ? isUpi ? 'PhonePe UPI Payout' : 'Cash Payout'
+                  : isUpi 
+                    ? (isAdvance ? 'UPI Advance Deposit' : 'UPI / PhonePe') 
+                    : isNP 
+                      ? 'NP (Debt Recorded)' 
+                      : (isAdvance ? 'Cash Advance Deposit' : 'Cash Deposit')}
+              </span>
             </div>
           </div>
 
@@ -192,18 +261,18 @@ export function ReceiptSuccessModal({ receipt, onClose }: ReceiptSuccessModalPro
             <div className="grid grid-cols-2 gap-3 p-3.5 rounded-2xl bg-muted/40 border border-border/50">
               <div>
                 <span className="text-[9px] font-black uppercase tracking-wider text-text-secondary opacity-60 block">
-                  {isNP ? 'Recorded Debt' : 'Previous Balance'}
+                  {isWithdrawal ? 'Previous Deposit' : isNP ? 'Recorded Debt' : isAdvance ? 'Previous Advance' : 'Previous Balance'}
                 </span>
                 <span className={`text-xs font-black ${isNP ? 'text-amber-600 dark:text-amber-400' : 'text-text-secondary line-through'}`}>
-                  ₹{isNP ? transaction.amount.toLocaleString('en-IN') : previousBalance.toLocaleString('en-IN')}
+                  ₹{isWithdrawal ? previousBalance.toLocaleString('en-IN') : isNP ? transaction.amount.toLocaleString('en-IN') : isAdvance ? Math.max(0, currentAdvanceBalance - transaction.amount).toLocaleString('en-IN') : previousBalance.toLocaleString('en-IN')}
                 </span>
               </div>
               <div className="text-right">
-                <span className="text-[9px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block">
-                  {isNP ? 'Remaining Balance' : 'Updated Balance'}
+                <span className={`text-[9px] font-black uppercase tracking-wider block ${isWithdrawal ? 'text-amber-600 dark:text-amber-400' : isAdvance ? 'text-sky-600 dark:text-sky-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                  {isWithdrawal ? 'Remaining Deposit Held' : isNP ? 'Remaining Balance' : isAdvance ? 'Total Advance Savings' : 'Updated Balance'}
                 </span>
                 <span className="text-base font-black text-text-primary">
-                  ₹{newBalance.toLocaleString('en-IN')}
+                  ₹{(isWithdrawal ? newBalance : isAdvance ? currentAdvanceBalance : newBalance).toLocaleString('en-IN')}
                 </span>
               </div>
             </div>
@@ -249,10 +318,79 @@ export function ReceiptSuccessModal({ receipt, onClose }: ReceiptSuccessModalPro
                 </span>
               </div>
             </div>
+
+            {/* Withdrawal Payout Info Banner */}
+            {isWithdrawal && (
+              <div className="flex items-center justify-between p-3 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-800 dark:text-amber-300">
+                <div className="flex items-center gap-2">
+                  <ArrowUpRight size={18} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                  <div>
+                    <p className="font-bold text-xs leading-none">Advance Savings Payout Released</p>
+                    <p className="text-[10px] text-text-secondary mt-0.5">
+                      Paid out via {isUpi ? 'PhonePe UPI' : 'Cash'} • Remaining deposit: ₹{newBalance.toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono font-black uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
+                  Paid Out
+                </span>
+              </div>
+            )}
+
+            {/* Celebratory Advance Savings Banner */}
+            {isAdvance && (
+              <div className="flex items-center justify-between p-3 rounded-2xl bg-sky-500/15 border border-sky-500/30 text-sky-700 dark:text-sky-300">
+                <div className="flex items-center gap-2">
+                  <PiggyBank size={18} className="text-sky-500 shrink-0" />
+                  <div>
+                    <p className="font-bold text-xs leading-none">Advance Savings Credit Held</p>
+                    <p className="text-[10px] text-text-secondary mt-0.5">₹{currentAdvanceBalance.toLocaleString('en-IN')} ready to offset Cycle #{(customer.currentCycle || 1) + 1} New Loan</p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono font-black uppercase px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-600 dark:text-sky-400 shrink-0">
+                  Advance Credit
+                </span>
+              </div>
+            )}
+
+            {/* Celebratory Completed Loan Banner */}
+            {isLoanCompleted && (
+              <div className="flex items-center justify-between p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={16} className="text-emerald-500 shrink-0" />
+                  <div>
+                    <p className="font-bold text-xs leading-none">Loan Completed & Settled</p>
+                    <p className="text-[10px] text-text-secondary mt-0.5">Eligible for instant Cycle #{(customer.currentCycle || 1) + 1} repeat credit</p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 shrink-0">
+                  Fully Paid
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Action Footer */}
           <div className="p-4 pt-1 flex flex-col gap-2.5">
+            {/* If Loan is Completed or has Advance: Direct New Loan issuance button */}
+            {(isLoanCompleted || (isAdvance && currentAdvanceBalance > 0)) && onStartNewLoan && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onStartNewLoan(customer);
+                }}
+                className="w-full py-3.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/30 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Sparkles size={16} strokeWidth={2.5} />
+                <span>
+                  {isAdvance && currentAdvanceBalance > 0 
+                    ? `Issue New Loan • Apply ₹${currentAdvanceBalance.toLocaleString('en-IN')} Advance` 
+                    : `Issue New Loan • Cycle #${(customer.currentCycle || 1) + 1}`}
+                </span>
+              </button>
+            )}
+
             {/* Primary Action: Share Image (for WhatsApp / Messaging) */}
             <button
               type="button"

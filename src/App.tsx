@@ -21,8 +21,10 @@ import { Settings } from './pages/Settings';
 import { WhatsAppCallback } from './pages/WhatsAppCallback';
 import { NotificationProvider } from './context/NotificationContext';
 import { FeedbackProvider } from './context/FeedbackContext';
+import { useWhatsAppReportScheduler } from './hooks/useWhatsAppReportScheduler';
 
 function AppContent() {
+  useWhatsAppReportScheduler();
   const { setEntryTab, setPaymentFilter, setDateFilter, resetEntryFilters, setSearchTerm } = useUI();
   const navigate = useNavigate();
   const location = useLocation();
@@ -69,7 +71,8 @@ function AppContent() {
     }
 
     if (tab === 'customers') {
-      navigate('/customers', { state: { filter: filter || 'all' } });
+      const search = customerId ? `?customerId=${customerId}` : '';
+      navigate(`/customers${search}`, { state: { filter: filter || 'all', from: 'dashboard' } });
     }
 
     if (tab === 'dashboard') {

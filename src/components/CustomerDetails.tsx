@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Customer, Transaction } from '../services/firestoreService';
-import { ArrowLeft, Phone, Calendar, IndianRupee, Plus, Edit2, AlertTriangle, Trash2, X, Lock, Pin, Search, MoreVertical, MessageCircle, Eye, Clock, Receipt, PlusCircle, RotateCcw, History, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { ArrowLeft, Phone, Calendar, IndianRupee, Plus, Edit2, AlertTriangle, Trash2, X, Lock, Pin, Search, MoreVertical, MessageCircle, Eye, Clock, Receipt, PlusCircle, RotateCcw, History, ChevronDown, ChevronUp, Sparkles, ArrowUpRight } from 'lucide-react';
 import { firestoreService, auth } from '../services/firestoreService';
 import { toast } from 'sonner';
 import { exportTransactionsPDF } from '../lib/pdfExport';
@@ -12,8 +12,11 @@ import { ReceiptSuccessModal, ReceiptData } from './ReceiptSuccessModal';
 import { safeFormat, safeDifferenceInDays } from '../lib/utils';
 import { triggerWhatsApp } from '../lib/whatsapp';
 import { QuickPaymentModal } from './Entry/QuickPaymentModal';
-import { MaturedRenewalModal } from './Dashboard/MaturedRenewalModal';
+import { WithdrawDepositModal } from './WithdrawDepositModal';
+import { CustomerForm } from './CustomerForm';
+import { BottomSheet } from './BottomSheet';
 import { useUI } from '../context/UIContext';
+import { useLocation } from 'react-router-dom';
 
 interface CustomerDetailsProps {
   key?: string;
@@ -28,6 +31,7 @@ interface CustomerDetailsProps {
 
 export function CustomerDetails({ customer: propCustomer, transactions, onClose, onAddEntry, onEdit, onDelete, onTogglePin }: CustomerDetailsProps) {
   const { setIsCustomerDetailsOpen, setIsModalOpen } = useUI();
+  const location = useLocation();
   const [activeCustomer, setActiveCustomer] = React.useState<Customer>(propCustomer);
 
   useEffect(() => {
@@ -40,18 +44,25 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
   useEffect(() => {
     setIsCustomerDetailsOpen(true);
     setIsModalOpen(true);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
     return () => {
       setIsCustomerDetailsOpen(false);
       setIsModalOpen(false);
+      window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [setIsCustomerDetailsOpen, setIsModalOpen]);
+  }, [setIsCustomerDetailsOpen, setIsModalOpen, onClose]);
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [pendingAction, setPendingAction] = React.useState<'call' | 'whatsapp' | null>(null);
   const [previewReport, setPreviewReport] = React.useState<{ blob: Blob, fileName: string, title: string } | null>(null);
   const [showPreview, setShowPreview] = React.useState(false);
   const [selectedReceipt, setSelectedReceipt] = React.useState<ReceiptData | null>(null);
   const [showQuickPayment, setShowQuickPayment] = React.useState(false);
+  const [showNewLoanModal, setShowNewLoanModal] = React.useState(false);
   const [showRenewalModal, setShowRenewalModal] = React.useState(false);
+  const [showWithdrawModal, setShowWithdrawModal] = React.useState(false);
   const [showCyclesHistory, setShowCyclesHistory] = React.useState(false);
 
   const customerTransactions = transactions
@@ -67,6 +78,7 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
   
   const isMaturedWithPending = customer.endDate <= Date.now() && pendingAmount > 0;
   const isRenewalRejected = customer.renewalStatus === 'rejected';
+  const isFullyPaid = pendingAmount <= 0;
 
   const isOverdue = customer.endDate < Date.now() && pendingAmount > 0;
   const overdueDays = isOverdue ? safeDifferenceInDays(Date.now(), customer.endDate) : 0;
@@ -166,52 +178,76 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
       transition={{ type: 'spring', damping: 20, stiffness: 260 }}
       className="fixed inset-0 z-[9999] bg-bg flex flex-col"
     >
-      {/* Header */}
-      <div className="flex items-center gap-3 p-4 pt-safe-top bg-card border-b border-border sticky top-0 z-10">
-        <button 
-          onClick={() => {
-            console.log("CustomerDetails Close clicked");
-            onClose();
-          }} 
-          className="p-2 -ml-2 rounded-full hover:bg-bg text-text-primary"
-        >
-          <ArrowLeft size={24} />
-        </button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <h2 className="font-bold text-[18px] tracking-tight leading-none text-text-primary mb-1 truncate">{customer.name}</h2>
-            <span className="text-[10px] font-mono font-bold bg-accent/10 text-accent px-2 py-0.5 rounded-full mb-1 shrink-0">
-              Cycle #{currentCycle}
+      {/* Standardized Header */}
+      <div className="flex items-center justify-between gap-3 p-3.5 sm:p-4 pt-[max(0.875rem,env(safe-area-inset-top))] bg-card border-b border-border sticky top-0 z-20 shadow-xs">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <button 
+            type="button"
+            onClick={onClose} 
+            className="py-1.5 px-2.5 rounded-xl bg-muted hover:bg-muted/80 text-text-primary flex items-center gap-1.5 transition-all duration-150 active:scale-95 shrink-0"
+            aria-label={location.state?.from === 'dashboard' ? 'Back to Dashboard' : 'Back'}
+          >
+            <ArrowLeft size={18} strokeWidth={2.5} />
+            <span className="text-xs font-bold">
+              {location.state?.from === 'dashboard' ? 'Dashboard' : 'Back'}
             </span>
+          </button>
+
+          <div className="flex flex-col min-w-0">
+            <div className="flex items-center gap-2">
+              <h2 className="font-black text-base sm:text-lg tracking-tight text-text-primary truncate">{customer.name}</h2>
+              <span className="text-[10px] font-mono font-bold bg-accent/15 text-accent px-2 py-0.5 rounded-md shrink-0">
+                Cycle #{currentCycle}
+              </span>
+            </div>
+            <p className="text-[11px] font-semibold text-text-secondary tracking-tight">ID: {displayId}</p>
           </div>
-          <p className="text-[11px] font-bold text-text-secondary uppercase tracking-widest opacity-40">ID: {displayId}</p>
         </div>
-        <div className="flex items-center gap-1">
+
+        <div className="flex items-center gap-1 shrink-0">
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onTogglePin?.();
             }}
-            className={`p-2 rounded-full transition-all ${customer.isPinned ? 'text-accent ring-1 ring-accent/20 bg-accent/5' : 'text-text-secondary opacity-40 hover:opacity-100'}`}
+            className={`p-2 rounded-xl transition-all ${customer.isPinned ? 'text-accent bg-accent/10' : 'text-text-secondary hover:text-text-primary hover:bg-muted'}`}
+            title={customer.isPinned ? 'Unpin' : 'Pin borrower'}
           >
-            <Pin size={20} className={customer.isPinned ? 'fill-accent' : ''} />
+            <Pin size={17} className={customer.isPinned ? 'fill-accent' : ''} />
           </button>
           
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onEdit?.();
             }}
-            className="p-2 rounded-full text-text-secondary opacity-40 hover:opacity-100 transition-all"
+            className="p-2 rounded-xl text-text-secondary hover:text-text-primary hover:bg-muted transition-all"
+            title="Edit borrower details"
           >
-            <Edit2 size={20} />
+            <Edit2 size={17} />
           </button>
 
           <button
+            type="button"
             onClick={() => setShowDeleteConfirm(true)}
-            className="p-2 rounded-full text-danger opacity-40 hover:opacity-100 transition-all"
+            className="p-2 rounded-xl text-danger/80 hover:text-danger hover:bg-danger/10 transition-all"
+            title="Delete borrower account"
           >
-            <Trash2 size={20} />
+            <Trash2 size={17} />
+          </button>
+
+          <div className="w-px h-5 bg-border mx-1" />
+
+          {/* Explicit Close Button */}
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-xl text-text-secondary hover:text-text-primary hover:bg-muted transition-all active:scale-95"
+            title="Close Drawer"
+          >
+            <X size={18} />
           </button>
         </div>
       </div>
@@ -237,9 +273,15 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
           </div>
           
           <div className="text-center w-full">
-            <p className="text-sm text-text-secondary mb-1">Pending Amount</p>
-            <p className={`text-4xl font-bold ${isOverdue ? 'text-danger' : 'text-warning'}`}>
-              ₹{pendingAmount.toLocaleString()}
+            <p className="text-sm text-text-secondary mb-1">
+              {isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'Advance Savings Held' : 'Pending Amount'}
+            </p>
+            <p className={`text-4xl font-bold font-mono ${
+              isFullyPaid && (customer.advanceBalance || 0) > 0 
+                ? 'text-sky-500' 
+                : isOverdue ? 'text-danger' : isFullyPaid ? 'text-success' : 'text-warning'
+            }`}>
+              ₹{(isFullyPaid && (customer.advanceBalance || 0) > 0 ? (customer.advanceBalance || 0) : pendingAmount).toLocaleString()}
             </p>
             <p className="text-sm text-success font-medium mt-2">
               Total Paid: ₹{paidAmount.toLocaleString()}
@@ -256,6 +298,39 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
                   <PlusCircle size={15} strokeWidth={2.5} />
                   <span>Add Payment</span>
                 </button>
+              )}
+
+              {isFullyPaid && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowQuickPayment(true)}
+                    className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-sky-600/20 active:scale-95 transition-all cursor-pointer"
+                  >
+                    <PlusCircle size={15} strokeWidth={2.5} />
+                    <span>Deposit Advance</span>
+                  </button>
+
+                  {(customer.advanceBalance || 0) > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowWithdrawModal(true)}
+                      className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-amber-600/20 active:scale-95 transition-all cursor-pointer"
+                    >
+                      <ArrowUpRight size={15} strokeWidth={2.5} />
+                      <span>Withdraw Deposit</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setShowNewLoanModal(true)}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-95 transition-all cursor-pointer"
+                  >
+                    <Sparkles size={14} strokeWidth={2.5} />
+                    <span>Issue New Loan</span>
+                  </button>
+                </>
               )}
 
               {isMaturedWithPending && (
@@ -302,6 +377,62 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
             </div>
           </div>
         </div>
+
+        {/* Completed Loan Banner */}
+        {isFullyPaid && (
+          <div className="mx-4 mt-4 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-emerald-600/30 mt-0.5">
+                <Sparkles size={20} strokeWidth={2.5} />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="text-sm font-black text-text-primary uppercase tracking-tight">
+                    Loan Completed • Cycle #{currentCycle} Settled
+                  </h4>
+                  <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                    100% Repaid
+                  </span>
+                  {(customer.advanceBalance || 0) > 0 && (
+                    <span className="text-[9px] font-black font-mono uppercase px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-600 dark:text-sky-400">
+                      +₹{(customer.advanceBalance || 0).toLocaleString('en-IN')} Advance
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-text-secondary mt-1">
+                  {(customer.advanceBalance || 0) > 0
+                    ? `Borrower is actively contributing daily advance savings (₹${(customer.advanceBalance || 0).toLocaleString('en-IN')} held). Can be credited directly to Cycle #${currentCycle + 1}.`
+                    : `Borrower has cleared all balance and is eligible for Cycle #${currentCycle + 1} fresh repeat loan.`}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0 w-full sm:w-auto">
+              {(customer.advanceBalance || 0) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowWithdrawModal(true)}
+                  className="w-full sm:w-auto px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer"
+                >
+                  <ArrowUpRight size={14} strokeWidth={2.5} />
+                  <span>Withdraw Deposit</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowNewLoanModal(true)}
+                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm shadow-emerald-600/30 active:scale-95 transition-all cursor-pointer"
+              >
+                <Sparkles size={14} strokeWidth={2.5} />
+                <span>
+                  {(customer.advanceBalance || 0) > 0 
+                    ? `New Loan (Apply ₹${(customer.advanceBalance || 0).toLocaleString('en-IN')})` 
+                    : `New Loan • Cycle #${currentCycle + 1}`}
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Matured Loan Renewal Banner */}
         {isMaturedWithPending && (
@@ -531,71 +662,84 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
             <div className="flex flex-col gap-6">
               {(() => {
                 const groups: Record<string, Transaction[]> = {};
-                customerTransactions.forEach(tx => {
+                const visibleTxs = customerTransactions.slice(0, 40);
+                visibleTxs.forEach(tx => {
                   const dateKey = tx.date; // Use YYYY-MM-DD from transaction
                   if (!groups[dateKey]) groups[dateKey] = [];
                   groups[dateKey].push(tx);
                 });
 
-                return Object.entries(groups)
-                  .sort(([a], [b]) => b.localeCompare(a))
-                  .map(([dateKey, txs]) => {
-                    const dateObj = new Date(dateKey);
-                    const isToday = dateKey === safeFormat(Date.now(), 'yyyy-MM-dd');
-                    const isYesterday = dateKey === safeFormat(Date.now() - 86400000, 'yyyy-MM-dd');
-                    
-                    let displayDate = safeFormat(dateObj, 'dd MMM yyyy', dateKey);
-                    if (isToday) displayDate = 'Today';
-                    if (isYesterday) displayDate = 'Yesterday';
+                return (
+                  <>
+                    {Object.entries(groups)
+                      .sort(([a], [b]) => b.localeCompare(a))
+                      .map(([dateKey, txs]) => {
+                        const dateObj = new Date(dateKey);
+                        const isToday = dateKey === safeFormat(Date.now(), 'yyyy-MM-dd');
+                        const isYesterday = dateKey === safeFormat(Date.now() - 86400000, 'yyyy-MM-dd');
+                        
+                        let displayDate = safeFormat(dateObj, 'dd MMM yyyy', dateKey);
+                        if (isToday) displayDate = 'Today';
+                        if (isYesterday) displayDate = 'Yesterday';
 
-                    return (
-                      <div key={dateKey}>
-                        <h4 className="text-[10px] font-black text-text-secondary uppercase tracking-widest mb-2 ml-1 opacity-50">
-                          {displayDate}
-                        </h4>
-                        <div className="bg-card rounded-2xl border border-border overflow-hidden divide-y divide-border shadow-sm">
-                          {txs.map((tx, idx) => (
-                            <div key={`${tx.id}-${idx}`} className="p-4 flex items-center justify-between transition-colors hover:bg-bg/40">
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <div className={`w-2 h-2 rounded-full ${tx.type === 'cash' ? 'bg-success' : tx.type === 'phonepe' ? 'bg-accent' : 'bg-warning'}`} />
-                                  <p className="text-[11px] font-black text-text-primary uppercase tracking-wider">{String(tx.type).replace('_', ' ')}</p>
+                        return (
+                          <div key={dateKey}>
+                            <h4 className="text-[10px] font-black text-text-secondary uppercase tracking-widest mb-2 ml-1 opacity-50">
+                              {displayDate}
+                            </h4>
+                            <div className="bg-card rounded-2xl border border-border overflow-hidden divide-y divide-border shadow-sm">
+                              {txs.map((tx, idx) => (
+                                <div key={`${tx.id}-${idx}`} className="p-4 flex items-center justify-between transition-colors hover:bg-bg/40">
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <div className={`w-2 h-2 rounded-full ${tx.type === 'cash' ? 'bg-success' : tx.type === 'phonepe' ? 'bg-accent' : 'bg-warning'}`} />
+                                      <p className="text-[11px] font-black text-text-primary uppercase tracking-wider">{String(tx.type).replace('_', ' ')}</p>
+                                    </div>
+                                    <p className="text-[10px] font-bold text-text-secondary opacity-50 mt-1 uppercase">Ref: {tx.id.slice(0, 8)}</p>
+                                  </div>
+                                  <div className="flex items-center gap-3">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedReceipt({
+                                          transaction: tx,
+                                          customer,
+                                          previousBalance: pendingAmount + tx.amount,
+                                          newBalance: pendingAmount
+                                        });
+                                      }}
+                                      className="p-1.5 px-2 rounded-xl bg-accent/10 hover:bg-accent hover:text-white text-accent transition-all flex items-center gap-1 text-[9px] font-black uppercase tracking-wider active:scale-95 cursor-pointer shadow-xs border border-accent/20"
+                                      title="View & Print Receipt"
+                                    >
+                                      <Receipt size={12} />
+                                      <span>Receipt</span>
+                                    </button>
+                                    <div className="text-right">
+                                      <p className="font-black text-sm text-text-primary tracking-tight">
+                                        ₹{tx.amount.toLocaleString()}
+                                      </p>
+                                      <p className="text-[9px] font-bold text-text-secondary opacity-40 uppercase tracking-tighter">
+                                         {safeFormat(tx.timestamp, 'hh:mm a')}
+                                      </p>
+                                    </div>
+                                  </div>
                                 </div>
-                                <p className="text-[10px] font-bold text-text-secondary opacity-50 mt-1 uppercase">Ref: {tx.id.slice(0, 8)}</p>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedReceipt({
-                                      transaction: tx,
-                                      customer,
-                                      previousBalance: pendingAmount + tx.amount,
-                                      newBalance: pendingAmount
-                                    });
-                                  }}
-                                  className="p-1.5 px-2 rounded-xl bg-accent/10 hover:bg-accent hover:text-white text-accent transition-all flex items-center gap-1 text-[9px] font-black uppercase tracking-wider active:scale-95 cursor-pointer shadow-xs border border-accent/20"
-                                  title="View & Print Receipt"
-                                >
-                                  <Receipt size={12} />
-                                  <span>Receipt</span>
-                                </button>
-                                <div className="text-right">
-                                  <p className="font-black text-sm text-text-primary tracking-tight">
-                                    ₹{tx.amount.toLocaleString()}
-                                  </p>
-                                  <p className="text-[9px] font-bold text-text-secondary opacity-40 uppercase tracking-tighter">
-                                     {safeFormat(tx.timestamp, 'hh:mm a')}
-                                  </p>
-                                </div>
-                              </div>
+                              ))}
                             </div>
-                          ))}
-                        </div>
+                          </div>
+                        );
+                      })}
+
+                    {customerTransactions.length > 40 && (
+                      <div className="text-center py-2">
+                        <span className="text-xs text-text-secondary font-medium">
+                          Showing recent 40 of {customerTransactions.length} transactions.
+                        </span>
                       </div>
-                    );
-                  });
+                    )}
+                  </>
+                );
               })()}
             </div>
           )}
@@ -676,6 +820,7 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
         <ReceiptSuccessModal
           receipt={selectedReceipt}
           onClose={() => setSelectedReceipt(null)}
+          onStartNewLoan={() => setShowNewLoanModal(true)}
         />
       )}
 
@@ -688,14 +833,49 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
         }}
       />
 
-      <MaturedRenewalModal
+      <WithdrawDepositModal
+        isOpen={showWithdrawModal}
+        onClose={() => setShowWithdrawModal(false)}
         customer={customer}
-        isOpen={showRenewalModal}
-        onClose={() => setShowRenewalModal(false)}
-        onSuccess={(updated) => {
-          setActiveCustomer(updated);
+        onSuccess={(receipt) => {
+          setActiveCustomer(receipt.customer);
+          setSelectedReceipt(receipt);
         }}
       />
+
+      <BottomSheet
+        isOpen={showNewLoanModal}
+        onClose={() => setShowNewLoanModal(false)}
+        title={`New Loan • Cycle #${(customer?.currentCycle || 1) + 1}`}
+        subtitle={`Issue new loan cycle for ${customer?.name || ''}`}
+      >
+        <CustomerForm
+          customer={customer}
+          mode="new_loan"
+          onCancel={() => setShowNewLoanModal(false)}
+          onSuccess={(updated) => {
+            setActiveCustomer(updated);
+            setShowNewLoanModal(false);
+          }}
+        />
+      </BottomSheet>
+
+      <BottomSheet
+        isOpen={showRenewalModal}
+        onClose={() => setShowRenewalModal(false)}
+        title={`Loan Renewal • Cycle #${(customer?.currentCycle || 1) + 1}`}
+        subtitle={`Renew and restructure loan for ${customer?.name || ''}`}
+      >
+        <CustomerForm
+          customer={customer}
+          mode="renewal"
+          onCancel={() => setShowRenewalModal(false)}
+          onSuccess={(updated) => {
+            setActiveCustomer(updated);
+            setShowRenewalModal(false);
+          }}
+        />
+      </BottomSheet>
     </motion.div>
   );
 

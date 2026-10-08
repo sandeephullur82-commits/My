@@ -33,6 +33,15 @@ export function AuditNPModal({
   onSettleNP,
   isSettlingNPId
 }: AuditNPModalProps) {
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen || !customer) return null;
 
   // Filter all NP transactions for this specific customer
@@ -49,6 +58,9 @@ export function AuditNPModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
       <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="audit-np-title"
         initial={{ opacity: 0, scale: 0.95, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 15 }}
@@ -57,12 +69,12 @@ export function AuditNPModal({
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-border/50 flex items-center justify-between bg-card">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-purple-500/15 text-purple-400 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-2xl bg-purple-500/15 text-purple-400 flex items-center justify-center" aria-hidden="true">
               <History size={20} />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-sm sm:text-base font-bold text-text-primary tracking-tight">{customer.name}</h3>
+                <h3 id="audit-np-title" className="text-sm sm:text-base font-bold text-text-primary tracking-tight">{customer.name}</h3>
                 <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/30">
                   {customerNPs.length} Unsettled
                 </span>
@@ -73,10 +85,12 @@ export function AuditNPModal({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-xl bg-muted hover:bg-border/60 text-text-secondary hover:text-text-primary flex items-center justify-center transition-colors"
+            aria-label="Close unsettled entries modal"
+            className="min-w-[44px] min-h-[44px] rounded-xl bg-muted hover:bg-border/60 text-text-secondary hover:text-text-primary flex items-center justify-center transition-colors cursor-pointer"
           >
-            <X size={16} />
+            <X size={16} aria-hidden="true" />
           </button>
         </div>
 
@@ -84,7 +98,7 @@ export function AuditNPModal({
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3">
           {customerNPs.length === 0 ? (
             <div className="p-8 text-center bg-emerald-500/10 rounded-2xl border border-emerald-500/20 text-emerald-400 space-y-2">
-              <CheckCircle2 size={32} className="mx-auto" />
+              <CheckCircle2 size={32} className="mx-auto" aria-hidden="true" />
               <p className="text-xs font-bold">All missed installments cleared!</p>
               <p className="text-[11px] opacity-75">No outstanding NP entries found for this customer.</p>
             </div>
@@ -99,12 +113,12 @@ export function AuditNPModal({
                   className="p-3.5 rounded-2xl bg-muted/30 border border-border/60 hover:border-purple-500/40 transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-purple-500/15 text-purple-400 font-bold text-xs flex items-center justify-center shrink-0">
+                    <div className="w-8 h-8 rounded-xl bg-purple-500/15 text-purple-400 font-bold text-xs flex items-center justify-center shrink-0" aria-hidden="true">
                       #{index + 1}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <Calendar size={13} className="text-purple-400" />
+                        <Calendar size={13} className="text-purple-400" aria-hidden="true" />
                         <span className="text-xs font-bold text-text-primary">{formattedDate}</span>
                         <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-rose-500/15 text-rose-400">
                           Missed
@@ -121,20 +135,22 @@ export function AuditNPModal({
                     <button
                       type="button"
                       disabled={isSettling}
+                      aria-label={`Settle missed payment of ₹${np.amount || 0} on ${formattedDate} via Cash`}
                       onClick={() => onSettleNP(np, customer, 'cash')}
-                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center gap-1.5 shadow-sm active:scale-95 transition-all disabled:opacity-50"
+                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center gap-1.5 shadow-sm active:scale-95 transition-all disabled:opacity-50 cursor-pointer min-h-[36px]"
                     >
-                      <Banknote size={13} />
+                      <Banknote size={13} aria-hidden="true" />
                       <span>{isSettling ? '...' : 'Cash'}</span>
                     </button>
 
                     <button
                       type="button"
                       disabled={isSettling}
+                      aria-label={`Settle missed payment of ₹${np.amount || 0} on ${formattedDate} via UPI`}
                       onClick={() => onSettleNP(np, customer, 'phonepe')}
-                      className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold flex items-center gap-1.5 shadow-sm active:scale-95 transition-all disabled:opacity-50"
+                      className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold flex items-center gap-1.5 shadow-sm active:scale-95 transition-all disabled:opacity-50 cursor-pointer min-h-[36px]"
                     >
-                      <Smartphone size={13} />
+                      <Smartphone size={13} aria-hidden="true" />
                       <span>{isSettling ? '...' : 'UPI'}</span>
                     </button>
                   </div>

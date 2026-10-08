@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { firestoreService, Customer, Transaction } from '../services/firestoreService';
+import { cacheStorage } from '../lib/storage';
 
 interface DataContextType {
   customers: Customer[];
@@ -18,7 +19,7 @@ const DataContext = createContext<DataContextType>({
 });
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
-  // Load initial data from cache for instant offline render
+  // Load initial data from fast synchronous fallback or empty
   const [customers, setCustomers] = useState<Customer[]>(() => {
     try {
       const cached = localStorage.getItem('cache_customers');
@@ -41,6 +42,30 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Async IndexedDB hydration on mount
+  useEffect(() => {
+    let isMounted = true;
+    async function hydrateFromIndexedDB() {
+      try {
+        const [cachedCust, cachedTx] = await Promise.all([
+          cacheStorage.getCustomers(),
+          cacheStorage.getTransactions()
+        ]);
+        if (isMounted) {
+          if (cachedCust.length > 0) setCustomers(cachedCust);
+          if (cachedTx.length > 0) setTransactions(cachedTx);
+          if (cachedCust.length > 0 && cachedTx.length > 0) {
+            setLoading(false);
+          }
+        }
+      } catch (err) {
+        console.warn('[DataProvider] IndexedDB hydration note:', err);
+      }
+    }
+    hydrateFromIndexedDB();
+    return () => { isMounted = false; };
+  }, []);
+
   useEffect(() => {
     let custLoaded = false;
     let txLoaded = false;
@@ -53,13 +78,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     const unsubCust = firestoreService.subscribeCustomers(
       (data) => {
-        console.log(`[DataProvider] realtime sync customers active. Received count: ${data.length}`);
+        console.log(`[DataProvider] realtime sync customers active. Count: ${data.length}`);
         setCustomers(data);
-        try {
-          localStorage.setItem('cache_customers', JSON.stringify(data));
-        } catch {
-          // ignore cache overflow
-        }
+        cacheStorage.setCustomers(data).catch(() => {});
         custLoaded = true;
         setError(null);
         checkDone();
@@ -73,13 +94,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     const unsubTx = firestoreService.subscribeTransactions(
       (data) => {
-        console.log(`[DataProvider] realtime sync transactions active. Received count: ${data.length}`);
+        console.log(`[DataProvider] realtime sync transactions active. Count: ${data.length}`);
         setTransactions(data);
-        try {
-          localStorage.setItem('cache_transactions', JSON.stringify(data));
-        } catch {
-          // ignore cache overflow
-        }
+        cacheStorage.setTransactions(data).catch(() => {});
         txLoaded = true;
         setError(null);
         checkDone();

@@ -8,7 +8,8 @@ import {
   Database, AlertCircle, Calendar, Hash, Scale, 
   RefreshCw, Files, FileSpreadsheet, FileJson, FileText,
   Bell, BellRing, Clock, Volume2, VolumeX, CheckCircle2,
-  Send, Zap, Check, Copy, History, Trash2, ChevronDown, ChevronUp, CheckCircle, RotateCcw
+  Send, Zap, Check, Copy, History, Trash2, ChevronDown, ChevronUp, CheckCircle, RotateCcw,
+  MessageCircle
 } from 'lucide-react';
 import { useTheme } from '../components/ThemeProvider';
 import { useUI } from '../context/UIContext';
@@ -18,6 +19,7 @@ import { firestoreService } from '../services/firestoreService';
 import { useFeedback } from '../context/FeedbackContext';
 import { BottomSheet } from '../components/BottomSheet';
 import { notificationService, NotificationLog, REMINDER_TIMING_OPTIONS } from '../services/notificationService';
+import { whatsappReportService, WhatsAppReportSettings } from '../services/whatsappReportService';
 
 export function Settings() {
   const { theme, toggleTheme } = useTheme();
@@ -37,6 +39,34 @@ export function Settings() {
   } = useNotificationCenter();
   const { toastSuccess, toastError, toastAction } = useFeedback();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { customers, transactions } = useRealtimeData();
+
+  const [whatsappSettings, setWhatsappSettings] = useState<WhatsAppReportSettings>(() => whatsappReportService.getSettings());
+  const [isSendingWhatsAppReport, setIsSendingWhatsAppReport] = useState(false);
+
+  const handleUpdateWhatsApp = (patch: Partial<WhatsAppReportSettings>) => {
+    const updated = whatsappReportService.saveSettings(patch);
+    setWhatsappSettings(updated);
+    toastSuccess('Settings Saved', 'WhatsApp report configuration updated.');
+  };
+
+  const handleSendWhatsAppNow = async () => {
+    setIsSendingWhatsAppReport(true);
+    try {
+      const res = await whatsappReportService.sendReportToWhatsApp(
+        customers,
+        transactions,
+        whatsappSettings.phoneNumber
+      );
+      if (res.success) {
+        toastSuccess('WhatsApp Statement Ready', 'Master report generated and sent to WhatsApp.');
+      }
+    } catch {
+      toastError('Error', 'Could not dispatch WhatsApp report.');
+    } finally {
+      setIsSendingWhatsAppReport(false);
+    }
+  };
 
   const [isScanning, setIsScanning] = useState(false);
   const [isTestingPush, setIsTestingPush] = useState(false);
@@ -521,6 +551,83 @@ export function Settings() {
                     <ToggleLeft size={28} className="text-text-secondary opacity-30" />
                   )}
                 </button>
+              </div>
+
+              {/* Daily Automated WhatsApp PDF Report */}
+              <div className="space-y-3 pt-3 border-t border-border/30">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <MessageCircle size={16} className="text-emerald-600 dark:text-emerald-400" />
+                      <h4 className="font-bold text-sm text-text-primary tracking-tight">Daily WhatsApp PDF Statement</h4>
+                      <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-md">
+                        Free Channel
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-text-secondary opacity-70 mt-0.5">
+                      Automated morning dispatch of complete Firestore ledger in structured PDF format
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleUpdateWhatsApp({ enabled: !whatsappSettings.enabled })}
+                    className="active:scale-95 transition-all cursor-pointer"
+                  >
+                    {whatsappSettings.enabled ? (
+                      <ToggleRight size={28} className="text-emerald-600 dark:text-emerald-400" />
+                    ) : (
+                      <ToggleLeft size={28} className="text-text-secondary opacity-30" />
+                    )}
+                  </button>
+                </div>
+
+                {whatsappSettings.enabled && (
+                  <div className="p-3.5 rounded-2xl bg-bg border border-border/40 space-y-3">
+                    <div className="flex flex-col sm:flex-row gap-2.5">
+                      <div className="flex-1 space-y-1">
+                        <label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">
+                          Target WhatsApp Phone Number
+                        </label>
+                        <input
+                          type="tel"
+                          value={whatsappSettings.phoneNumber}
+                          onChange={(e) => setWhatsappSettings(prev => ({ ...prev, phoneNumber: e.target.value }))}
+                          onBlur={() => handleUpdateWhatsApp({ phoneNumber: whatsappSettings.phoneNumber })}
+                          placeholder="e.g. 919876543210 (Country code + number)"
+                          className="w-full h-9 px-3 rounded-xl bg-card border border-border/60 text-xs font-semibold focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+
+                      <div className="w-full sm:w-36 space-y-1">
+                        <label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">
+                          Dispatch Time
+                        </label>
+                        <input
+                          type="time"
+                          value={whatsappSettings.dispatchTime}
+                          onChange={(e) => handleUpdateWhatsApp({ dispatchTime: e.target.value })}
+                          className="w-full h-9 px-3 rounded-xl bg-card border border-border/60 text-xs font-bold text-text-primary focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <div className="flex items-center gap-1.5 text-[10px] text-text-secondary opacity-70">
+                        <Clock size={12} className="text-emerald-500" />
+                        <span>Daily trigger: <strong className="text-text-primary">{whatsappSettings.dispatchTime} AM</strong> • Free delivery</span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleSendWhatsAppNow}
+                        disabled={isSendingWhatsAppReport}
+                        className="h-8 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 active:scale-95 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                      >
+                        <Send size={12} />
+                        <span>{isSendingWhatsAppReport ? 'Dispatching...' : 'Send Today’s PDF Now'}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

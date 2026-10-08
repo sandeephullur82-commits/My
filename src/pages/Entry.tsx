@@ -25,7 +25,11 @@ import {
   MessageSquare,
   PlusCircle,
   History,
-  Bell
+  Bell,
+  PiggyBank,
+  Sparkles,
+  Plus,
+  RotateCcw
 } from 'lucide-react';
 import { CustomerCardSkeleton } from '../components/Skeleton';
 import { toast } from 'sonner';
@@ -36,13 +40,17 @@ import { ReceiptSuccessModal, ReceiptData } from '../components/ReceiptSuccessMo
 import { triggerWhatsApp } from '../lib/whatsapp';
 import { QuickPaymentModal } from '../components/Entry/QuickPaymentModal';
 import { AuditNPModal } from '../components/Entry/AuditNPModal';
+import { CustomerForm } from '../components/CustomerForm';
+import { BottomSheet } from '../components/BottomSheet';
+import { WithdrawDepositModal } from '../components/WithdrawDepositModal';
 import { notificationService } from '../services/notificationService';
+import { playSuccessSound } from '../lib/sound';
 
 export function Entry() {
   const { transactions, customers, loading } = useRealtimeData();
   const { entryTab, setEntryTab, paymentFilter, searchTerm: globalSearch, setSearchTerm: setGlobalSearch } = useUI();
   const [localSearch, setLocalSearch] = useState(globalSearch);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -53,7 +61,7 @@ export function Entry() {
     const filterLower = urlFilter?.toLowerCase();
     if (filterLower === 'paid') return 'PAID';
     if (filterLower === 'unpaid' || filterLower === 'np' || filterLower === 'not_paid') return 'UNPAID';
-    if (filterLower === 'pending') return 'PENDING';
+    if (filterLower === 'pending' || filterLower === 'advance' || filterLower === 'savings') return 'PENDING';
     if (entryTab === 'PAID') return 'PAID';
     if (entryTab === 'UNPAID' || entryTab === 'NOT_PAID') return 'UNPAID';
     return 'PENDING';
@@ -73,6 +81,12 @@ export function Entry() {
   
   // Quick payment modal state for multiple payments on same day
   const [quickPaymentCustomer, setQuickPaymentCustomer] = useState<Customer | null>(null);
+  
+  // New loan modal state for fully settled loans
+  const [newLoanCustomer, setNewLoanCustomer] = useState<Customer | null>(null);
+
+  // Withdraw Deposit modal state
+  const [withdrawCustomer, setWithdrawCustomer] = useState<Customer | null>(null);
 
   // NP Historical Audit modal state
   const [auditCustomer, setAuditCustomer] = useState<Customer | null>(null);
@@ -95,7 +109,7 @@ export function Entry() {
     if (urlFilter) {
       const lower = urlFilter.toLowerCase();
       if (lower === 'paid') setActiveTab('PAID');
-      else if (lower === 'pending') setActiveTab('PENDING');
+      else if (lower === 'pending' || lower === 'advance' || lower === 'savings') setActiveTab('PENDING');
       else if (lower === 'unpaid' || lower === 'np' || lower === 'not_paid') setActiveTab('UNPAID');
     } else if (entryTab && (entryTab === 'PAID' || entryTab === 'PENDING' || entryTab === 'UNPAID' || entryTab === 'NOT_PAID')) {
       setActiveTab(entryTab === 'NOT_PAID' ? 'UNPAID' : (entryTab as 'PENDING' | 'PAID' | 'UNPAID'));
@@ -104,7 +118,13 @@ export function Entry() {
 
   const handleTabChange = (tab: 'PENDING' | 'PAID' | 'UNPAID') => {
     setActiveTab(tab);
-    setEntryTab(tab);
+    if (tab === 'PENDING' || tab === 'PAID') {
+      setEntryTab(tab);
+    }
+    setSearchParams(prev => {
+      prev.set('tab', tab.toLowerCase());
+      return prev;
+    }, { replace: true });
   };
 
   // Sync local search with global if changed externally or from URL params
@@ -164,21 +184,15 @@ export function Entry() {
     return set;
   }, [transactions, todayStr]);
 
-  // PENDING SECTION: All cards start in pending, and move once entered today!
+  // PENDING SECTION: All customers (both active loans & advance savings) needing entry today
   const pendingCustomers = useMemo(() => {
     let list = customers.filter(c => {
       if (c.isDeleted) return false;
-      
-      // If customer has already had an entry entered today, they move to paid or unpaid!
+      // If customer has already logged an entry today, they move to paid/unpaid
       if (todayLoggedCustomerIds.has(c.id)) {
         return false;
       }
-
-      // Customer must have pending balance or active loan
-      const loan = c.loanAmount || c.loan || 0;
-      const paid = c.paid || 0;
-      const balance = c.pending !== undefined ? c.pending : (loan - paid);
-      return balance > 0;
+      return true;
     });
 
     if (debouncedQuery) {
@@ -193,7 +207,7 @@ export function Entry() {
         return nameMatch || phoneMatch || idMatch;
       });
     }
-    
+
     return list.sort((a, b) => {
       const aSkipped = skippedIds.includes(a.id);
       const bSkipped = skippedIds.includes(b.id);
@@ -203,19 +217,30 @@ export function Entry() {
     });
   }, [customers, todayLoggedCustomerIds, debouncedQuery, skippedIds]);
 
-  // Helper filter function for search matching
-  const matchesSearch = (customerId: string) => {
-    if (!debouncedQuery) return true;
-    const customer = customers.find(c => c.id === customerId);
-    if (!customer) return false;
+  // Helper set for O(1) instant search matching
+  const matchingCustomerIds = useMemo(() => {
+    if (!debouncedQuery) return null;
     const cleanQuery = debouncedQuery.trim();
     const queryDigits = cleanQuery.replace(/\D/g, '');
-    const nameMatch = customer.name.toLowerCase().includes(cleanQuery);
-    const phone = (customer.phone || '').replace(/\D/g, '');
-    const phoneMatch = queryDigits.length > 0 && phone.includes(queryDigits);
-    const idPart = String(customer.displayId || customer.id).toLowerCase();
-    const idMatch = idPart.includes(cleanQuery);
-    return nameMatch || phoneMatch || idMatch;
+    const matched = new Set<string>();
+
+    for (let i = 0; i < customers.length; i++) {
+      const customer = customers[i];
+      const nameMatch = customer.name.toLowerCase().includes(cleanQuery);
+      const phone = (customer.phone || '').replace(/\D/g, '');
+      const phoneMatch = queryDigits.length > 0 && phone.includes(queryDigits);
+      const idPart = String(customer.displayId || customer.id).toLowerCase();
+      const idMatch = idPart.includes(cleanQuery);
+      if (nameMatch || phoneMatch || idMatch) {
+        matched.add(customer.id);
+      }
+    }
+    return matched;
+  }, [customers, debouncedQuery]);
+
+  const matchesSearch = (customerId: string) => {
+    if (!matchingCustomerIds) return true;
+    return matchingCustomerIds.has(customerId);
   };
 
   // PAID SECTION: Today's actual paid collections (Cash & UPI)
@@ -313,6 +338,10 @@ export function Entry() {
       return sum + Math.max(0, (c.pending !== undefined ? c.pending : (loan - paid)));
     }, 0);
   }, [pendingCustomers]);
+
+  const totalAdvanceSavingsHeld = useMemo(() => {
+    return customers.reduce((sum, c) => sum + (c.advanceBalance || 0), 0);
+  }, [customers]);
 
   // Handle URL Redirect & Highlight
   useEffect(() => {
@@ -470,22 +499,85 @@ export function Entry() {
     }
   };
 
-  // Prepare data for CustomerCard in a stable way
+  // Fast O(1) customer lookup map across all render passes
+  const customerMap = useMemo(() => {
+    const map = new Map<string, Customer>();
+    for (let i = 0; i < customers.length; i++) {
+      map.set(customers[i].id, customers[i]);
+    }
+    return map;
+  }, [customers]);
+
+  // Progressive batching for super-smooth 60fps rendering of pending borrower cards
+  const [displayLimit, setDisplayLimit] = useState(30);
+  useEffect(() => {
+    setDisplayLimit(30);
+  }, [debouncedQuery, activeTab]);
+
+  const visiblePendingCustomers = useMemo(() => {
+    return pendingCustomers.slice(0, displayLimit);
+  }, [pendingCustomers, displayLimit]);
+
+  // Prepare data for CustomerCard in a stable, ultra-fast O(T + C) single pass
   const customerDataMap = useMemo(() => {
+    // 1. Single O(T) indexing pass
+    const txByCust = new Map<string, Transaction[]>();
+    const npByCust = new Map<string, Transaction[]>();
+    const todayEntryByCust = new Map<string, Transaction>();
+
+    for (let i = 0; i < transactions.length; i++) {
+      const tx = transactions[i];
+      if (tx.isDeleted) continue;
+      
+      let list = txByCust.get(tx.customerId);
+      if (!list) {
+        list = [];
+        txByCust.set(tx.customerId, list);
+      }
+      list.push(tx);
+
+      if (tx.type === 'NP' || tx.type === 'unsettled' || tx.status === 'unsettled') {
+        let npList = npByCust.get(tx.customerId);
+        if (!npList) {
+          npList = [];
+          npByCust.set(tx.customerId, npList);
+        }
+        npList.push(tx);
+      }
+
+      if (tx.date === todayStr && !todayEntryByCust.has(tx.customerId)) {
+        todayEntryByCust.set(tx.customerId, tx);
+      }
+    }
+
+    // 2. Single O(C) map build
     const map = new Map();
-    pendingCustomers.forEach(c => {
+    for (let i = 0; i < customers.length; i++) {
+      const c = customers[i];
       const loan = c.loanAmount || c.loan || 0;
       const paid = c.paid || 0;
-      const balance = loan - paid;
+      const balance = c.pending !== undefined ? c.pending : (loan - paid);
       const overdueInfo = firestoreUtils.calculateOverdue(c);
       
-      const lastEntry = transactions.find(t => t.customerId === c.id && t.date === todayStr && !t.isDeleted);
-      const recentTransactions = transactions.filter(t => t.customerId === c.id && !t.isDeleted).sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
+      const lastEntry = todayEntryByCust.get(c.id);
+      const custTxs = txByCust.get(c.id);
+      const recentTransactions = custTxs
+        ? custTxs.sort((a, b) => b.timestamp - a.timestamp).slice(0, 5)
+        : [];
 
-      map.set(c.id, { balance, overdueInfo, lastEntry, recentTransactions });
-    });
+      const custNps = npByCust.get(c.id);
+      const pendingNPEntries = custNps
+        ? custNps.sort((a, b) => {
+            const dateComp = (a.date || '').localeCompare(b.date || '');
+            if (dateComp !== 0) return dateComp;
+            return (a.timestamp || 0) - (b.timestamp || 0);
+          })
+        : [];
+
+      map.set(c.id, { balance, overdueInfo, lastEntry, recentTransactions, pendingNPEntries });
+    }
     return map;
-  }, [pendingCustomers, transactions, todayStr]);
+  }, [customers, transactions, todayStr]);
 
   if (!isReady) {
     return (
@@ -508,10 +600,10 @@ export function Entry() {
     <PageContainer ref={containerRef}>
       <div className="flex flex-col gap-5 animate-in fade-in duration-300 pb-safe-bottom relative">
         
-        {/* THREE SECTION TABS (Pending, Paid & Unpaid) */}
+        {/* THREE UNIFIED SECTION TABS (Pending, Paid & Unpaid) */}
         <div className="sticky top-0 z-[40] bg-bg/90 backdrop-blur-md pt-2 pb-3 -mx-1 px-1 flex flex-col gap-3 border-b border-border/40">
           <div className="flex items-center gap-1.5 p-1 bg-muted/70 rounded-2xl border border-border/50">
-            {/* Tab 1: Pending */}
+            {/* Tab 1: Pending (Includes Active Loans + Advance Savings) */}
             <button
               id="entry-tab-pending"
               type="button"
@@ -583,7 +675,7 @@ export function Entry() {
                 type="text"
                 value={localSearch}
                 onChange={(e) => setLocalSearch(e.target.value)}
-                placeholder="Search Name, ID (003), or Phone..."
+                placeholder="Search name, ID, or phone..."
                 className="w-full pl-10 pr-10 py-3 bg-card border border-border/60 rounded-xl text-xs sm:text-sm font-medium focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/10 transition-all shadow-sm"
               />
               <AnimatePresence>
@@ -604,18 +696,19 @@ export function Entry() {
           </div>
         </div>
 
-        {/* SECTION 1: PENDING COLLECTION */}
+        {/* SECTION 1: PENDING COLLECTION (UNIFIED LOANS & ADVANCE SAVINGS CARDS) */}
         {activeTab === 'PENDING' && (
-          <div className="flex flex-col gap-3.5">
+          <div className="flex flex-col gap-4">
+            {/* Header & Metrics Bar */}
             <div className="flex items-center justify-between px-1">
               <div className="flex flex-col gap-0.5">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-xs font-black text-text-primary uppercase tracking-widest flex items-center gap-2">
                     <Clock size={14} className="text-accent" />
                     <span>Pending Section</span>
                   </h2>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-accent/10 text-accent border border-accent/20">
-                    {pendingCustomers.length} Cards
+                    {pendingCustomers.length} Pending
                   </span>
                   {todayPaidEntries.length > 0 && (
                     <button
@@ -643,24 +736,30 @@ export function Entry() {
                     </button>
                   )}
                 </div>
-                {pendingCustomers.length > 0 && (
-                  <p className="text-[9px] font-bold text-accent/70 uppercase tracking-widest flex items-center gap-1.5 mt-0.5">
-                    <ZapIcon size={10} className="text-accent animate-pulse" />
-                    <span>Swipe card left to call • right for WhatsApp</span>
-                  </p>
-                )}
               </div>
 
-              {pendingCustomers.length > 0 && (
-                <div className="text-right">
-                  <span className="text-[9px] font-bold text-text-secondary opacity-60 uppercase block tracking-wider">To Collect</span>
-                  <span className="text-xs font-black text-text-primary tracking-tight">
-                    ₹{totalPendingBalance.toLocaleString('en-IN')}
-                  </span>
-                </div>
-              )}
+              {/* Balances Summary */}
+              <div className="flex items-center gap-2">
+                {totalPendingBalance > 0 && (
+                  <div className="text-right">
+                    <span className="text-[9px] font-bold text-text-secondary opacity-60 uppercase block tracking-wider">To Collect</span>
+                    <span className="text-xs font-black text-text-primary tracking-tight">
+                      ₹{totalPendingBalance.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                )}
+                {totalAdvanceSavingsHeld > 0 && (
+                  <div className="text-right pl-2 border-l border-border/60">
+                    <span className="text-[9px] font-bold text-sky-600 dark:text-sky-400 opacity-90 uppercase block tracking-wider">Advance Held</span>
+                    <span className="text-xs font-black text-sky-600 dark:text-sky-400 tracking-tight font-mono">
+                      ₹{totalAdvanceSavingsHeld.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
 
+            {/* Empty State when zero pending */}
             {pendingCustomers.length === 0 ? (
               <motion.div 
                 initial={{ opacity: 0, scale: 0.98 }}
@@ -699,13 +798,14 @@ export function Entry() {
               </motion.div>
             ) : (
               <div className="flex flex-col gap-3">
-                {pendingCustomers.map((customer) => {
+                {visiblePendingCustomers.map((customer) => {
                   const data = customerDataMap.get(customer.id);
                   return (
                     <div id={`customer-${customer.id}`} key={customer.id}>
                       <CustomerCard 
                         customer={customer} 
                         allTransactions={transactions}
+                        pendingNPEntries={data?.pendingNPEntries}
                         lastEntry={data?.lastEntry}
                         recentTransactions={data?.recentTransactions || []}
                         balance={data?.balance || 0}
@@ -714,6 +814,8 @@ export function Entry() {
                         todayStr={todayStr}
                         searchTerm={debouncedQuery}
                         onSkip={() => handleSkip(customer.id)}
+                        onStartNewLoan={(cust) => setNewLoanCustomer(cust)}
+                        onWithdrawDeposit={(cust) => setWithdrawCustomer(cust)}
                         onSuccess={(tx, prevBal, newBal) => {
                           setActiveReceipt({
                             transaction: tx,
@@ -721,7 +823,7 @@ export function Entry() {
                             previousBalance: prevBal,
                             newBalance: newBal
                           });
-                          toast.success(`₹${tx.amount.toLocaleString('en-IN')} collected for ${customer.name}`);
+                          toast.success(`₹${tx.amount.toLocaleString('en-IN')} recorded for ${customer.name}`);
                         }}
                         onViewReceipt={(tx) => {
                           const loan = customer.loanAmount || customer.loan || 0;
@@ -738,6 +840,16 @@ export function Entry() {
                     </div>
                   );
                 })}
+
+                {pendingCustomers.length > displayLimit && (
+                  <button
+                    type="button"
+                    onClick={() => setDisplayLimit(prev => prev + 30)}
+                    className="w-full py-3.5 my-2 rounded-2xl bg-card border border-border/80 text-xs font-bold text-accent hover:bg-accent/5 transition-all active:scale-[0.98] shadow-xs cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <span>Load More Borrowers ({pendingCustomers.length - displayLimit} remaining)</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -846,7 +958,7 @@ export function Entry() {
             ) : (
               <div className="flex flex-col gap-2.5">
                 {todayPaidEntries.map((tx) => {
-                  const customer = customers.find(c => c.id === tx.customerId);
+                  const customer = customerMap.get(tx.customerId);
                   const isUpi = tx.type === 'phonepe';
                   const customerLoan = customer ? (customer.loanAmount || customer.loan || 0) : 0;
                   const customerPaid = customer ? (customer.paid || 0) : 0;
@@ -1072,7 +1184,7 @@ export function Entry() {
             ) : (
               <div className="flex flex-col gap-2.5">
                 {displayedUnpaidEntries.map((tx) => {
-                  const customer = customers.find(c => String(c.id) === String(tx.customerId)) || {
+                  const customer = customerMap.get(tx.customerId) || {
                     id: tx.customerId,
                     name: (tx as any).customerName || 'Customer',
                     phone: (tx as any).customerPhone || '',
@@ -1471,6 +1583,7 @@ export function Entry() {
         <ReceiptSuccessModal
           receipt={activeReceipt}
           onClose={() => setActiveReceipt(null)}
+          onStartNewLoan={(customer) => setNewLoanCustomer(customer)}
         />,
         document.body
       )}
@@ -1493,6 +1606,33 @@ export function Entry() {
         transactions={transactions}
         onSettleNP={handleSettleNP}
         isSettlingNPId={isSettlingNPId}
+      />
+
+      {/* NEW LOAN BOTTOMSHEET (For issuing repeat loans to fully settled customers) */}
+      <BottomSheet
+        isOpen={!!newLoanCustomer}
+        onClose={() => setNewLoanCustomer(null)}
+        title={`New Loan • Cycle #${(newLoanCustomer?.currentCycle || 1) + 1}`}
+        subtitle={`Issue new loan cycle for ${newLoanCustomer?.name || ''}`}
+      >
+        {newLoanCustomer && (
+          <CustomerForm
+            customer={newLoanCustomer}
+            mode="new_loan"
+            onCancel={() => setNewLoanCustomer(null)}
+            onSuccess={() => setNewLoanCustomer(null)}
+          />
+        )}
+      </BottomSheet>
+
+      {/* WITHDRAW DEPOSIT MODAL */}
+      <WithdrawDepositModal
+        isOpen={!!withdrawCustomer}
+        onClose={() => setWithdrawCustomer(null)}
+        customer={withdrawCustomer}
+        onSuccess={(receipt) => {
+          setActiveReceipt(receipt);
+        }}
       />
 
     </PageContainer>

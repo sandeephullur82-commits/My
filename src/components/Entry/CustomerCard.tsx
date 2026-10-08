@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Customer, Transaction, firestoreService, firestoreUtils } from '../../services/firestoreService';
-import { Smartphone, Clock, Loader2, Banknote, CheckCircle2, AlertTriangle, RotateCcw, MessageSquare, Phone, X, ExternalLink, Receipt, Lock, ShieldCheck, ArrowRight, Calendar } from 'lucide-react';
+import { Smartphone, Clock, Loader2, Banknote, CheckCircle2, AlertTriangle, RotateCcw, MessageSquare, Phone, X, ExternalLink, Receipt, Lock, ShieldCheck, ArrowRight, ArrowUpRight, Calendar, PiggyBank, Sparkles } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { format, subDays, parseISO, isYesterday } from 'date-fns';
 import { toast } from 'sonner';
@@ -21,6 +21,8 @@ interface CustomerCardProps {
   onSkip?: () => void;
   onSuccess?: (tx: Transaction, previousBalance: number, newBalance: number) => void;
   onViewReceipt?: (tx: Transaction) => void;
+  onStartNewLoan?: (customer: Customer) => void;
+  onWithdrawDeposit?: (customer: Customer) => void;
 }
 
 const Highlight = ({ text, highlight }: { text: string, highlight?: string }) => {
@@ -49,17 +51,21 @@ export const CustomerCard = React.memo(function CustomerCard({
   recentTransactions, // Only a few recent ones for suggestions, or pre-computed suggestions
   balance,
   overdueInfo,
+  pendingNPEntries: propPendingNPEntries,
   isHighlighted,
   todayStr,
   searchTerm,
   onSkip,
   onSuccess,
-  onViewReceipt
+  onViewReceipt,
+  onStartNewLoan,
+  onWithdrawDeposit
 }: CustomerCardProps & { 
   lastEntry?: Transaction, 
   recentTransactions: Transaction[],
   balance: number,
-  overdueInfo: { isOverdue: boolean, amount: number }
+  overdueInfo: { isOverdue: boolean, amount: number },
+  pendingNPEntries?: Transaction[]
 }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingType, setProcessingType] = useState<string | null>(null);
@@ -78,6 +84,9 @@ export const CustomerCard = React.memo(function CustomerCard({
 
   // Identify all explicitly recorded unsettled NP transactions across ANY past day
   const pendingNPEntries = useMemo(() => {
+    if (propPendingNPEntries !== undefined) {
+      return propPendingNPEntries;
+    }
     return (allTransactions || [])
       .filter(t => 
         t.customerId === customer.id && 
@@ -90,7 +99,7 @@ export const CustomerCard = React.memo(function CustomerCard({
         if (dateComp !== 0) return dateComp;
         return (a.timestamp || 0) - (b.timestamp || 0);
       });
-  }, [allTransactions, customer.id]);
+  }, [propPendingNPEntries, allTransactions, customer.id]);
 
   // Active pending NP entries that have not been settled yet
   const activePendingNPEntries = useMemo(() => {
@@ -227,6 +236,7 @@ export const CustomerCard = React.memo(function CustomerCard({
     const isNP = type === 'NP' || type === 'unsettled';
     const actualType: Transaction['type'] = isNP ? 'NP' : type;
     const statusValue: Transaction['status'] = isNP ? 'unsettled' : 'paid';
+    const isAdvanceDeposit = (balance <= 0 || (customer.advanceBalance || 0) > 0 && balance <= 0) && !isNP;
     
     localStorage.removeItem(`draft_${customer.id}_${todayStr}`);
 
@@ -239,7 +249,9 @@ export const CustomerCard = React.memo(function CustomerCard({
       date: todayStr,
       timestamp: Date.now(),
       paidAt: isNP ? null : Date.now(),
-      unsettledAt: isNP ? Date.now() : null
+      unsettledAt: isNP ? Date.now() : null,
+      isAdvance: isAdvanceDeposit,
+      notes: isAdvanceDeposit ? `Advance Savings Deposit via ${actualType.toUpperCase()}` : undefined
     };
 
     const previousBal = balance;
@@ -256,6 +268,13 @@ export const CustomerCard = React.memo(function CustomerCard({
       // Dispatch to Android Notification Center
       if (isNP) {
         notificationService.notifyNPLogged(customer.name, targetAmount, todayStr);
+      } else if (balance <= 0) {
+        notificationService.notifyAdvanceSavingsDeposit(
+          customer.name,
+          targetAmount,
+          actualType as 'cash' | 'phonepe',
+          (customer.advanceBalance || 0) + targetAmount
+        );
       } else {
         notificationService.notifyPaymentReceived(customer.name, targetAmount, actualType as 'cash' | 'phonepe', newBal);
       }
@@ -379,11 +398,13 @@ export const CustomerCard = React.memo(function CustomerCard({
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black relative ${
-                overdueInfo.isOverdue 
-                  ? 'bg-danger/10 text-danger' 
-                  : 'bg-accent/10 text-accent'
+                balance <= 0
+                  ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/25'
+                  : overdueInfo.isOverdue 
+                    ? 'bg-danger/10 text-danger' 
+                    : 'bg-accent/10 text-accent'
               }`}>
-                {customer.name ? customer.name.charAt(0) : '👤'}
+                {balance <= 0 ? <PiggyBank size={18} /> : (customer.name ? customer.name.charAt(0) : '👤')}
                 {lastEntry?.status === 'paid' && !isNPMode && (
                   <div className="absolute -top-1 -right-1 w-4 h-4 bg-success rounded-full border-2 border-card flex items-center justify-center">
                     <CheckCircle2 size={8} className="text-white" />
@@ -395,11 +416,15 @@ export const CustomerCard = React.memo(function CustomerCard({
                   <h3 className="font-black text-text-primary uppercase tracking-tight">
                     <Highlight text={String(customer.name)} highlight={searchTerm} />
                   </h3>
-                  {overdueInfo.isOverdue && (
+                  {balance <= 0 ? (
+                    <span className="text-[8px] font-black bg-sky-500/15 text-sky-600 dark:text-sky-400 px-2 py-0.5 rounded-full uppercase tracking-widest border border-sky-500/20 flex items-center gap-1">
+                      <PiggyBank size={8} /> ADVANCE SAVINGS
+                    </span>
+                  ) : overdueInfo.isOverdue ? (
                     <span className="text-[8px] font-black bg-danger/10 text-danger px-2 py-0.5 rounded-full uppercase tracking-widest border border-danger/20 flex items-center gap-1">
                       <AlertTriangle size={8} /> OVERDUE
                     </span>
-                  )}
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
                   <p className="text-[9px] font-black text-text-secondary opacity-30 uppercase tracking-widest bg-muted px-1.5 py-0.5 rounded-md">
@@ -438,12 +463,30 @@ export const CustomerCard = React.memo(function CustomerCard({
                   </button>
                 )}
               </div>
-              {overdueInfo.isOverdue && (
-                <p className="text-[9px] font-black text-danger uppercase tracking-tighter opacity-80 mt-1">Missing ₹{overdueInfo.amount}</p>
+              {balance <= 0 ? (
+                <div className="flex items-center gap-1.5">
+                  <p className="text-[10px] font-bold text-text-secondary opacity-70 uppercase tracking-widest leading-none">
+                    Advance: <span className="text-sky-600 dark:text-sky-400 font-mono font-black">₹{(customer.advanceBalance || 0).toLocaleString('en-IN')}</span>
+                  </p>
+                  {(customer.advanceBalance || 0) > 0 && onWithdrawDeposit && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onWithdrawDeposit(customer);
+                      }}
+                      className="px-2 py-0.5 rounded-md bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400 text-[9px] font-black uppercase tracking-wider flex items-center gap-0.5 transition-all active:scale-95 cursor-pointer"
+                    >
+                      <ArrowUpRight size={10} strokeWidth={2.5} />
+                      <span>Withdraw</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p className="text-[10px] font-bold text-text-secondary opacity-40 uppercase tracking-widest leading-none">
+                  Bal: <span className="text-accent underline font-black">₹{balance.toLocaleString()}</span>
+                </p>
               )}
-              <p className="text-[10px] font-bold text-text-secondary opacity-40 uppercase tracking-widest leading-none">
-                Bal: <span className="text-accent underline font-black">₹{balance.toLocaleString()}</span>
-              </p>
             </div>
           </div>
 
@@ -467,9 +510,6 @@ export const CustomerCard = React.memo(function CustomerCard({
                     <span className="text-2xl font-black text-text-primary tracking-tight">
                       ₹{currentNPAmount.toLocaleString('en-IN')}
                     </span>
-                    <span className="text-[10px] font-bold text-text-secondary opacity-60 uppercase">
-                      (Oldest Due First)
-                    </span>
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
@@ -491,29 +531,19 @@ export const CustomerCard = React.memo(function CustomerCard({
                   type="button"
                   onClick={() => handleClearPendingNP('cash')}
                   disabled={isProcessing}
-                  className="flex-1 flex flex-col items-center py-3.5 rounded-2xl bg-success text-white shadow-lg shadow-success/20 hover:bg-success/90 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                  className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-success text-white shadow-lg shadow-success/20 hover:bg-success/90 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                 >
-                  <div className="flex items-center gap-2 mb-0.5">
-                    {processingType === 'cash' ? <Loader2 className="animate-spin" size={16} /> : <Banknote size={18} />}
-                    <span className="text-xs font-black uppercase tracking-widest">PAY CASH</span>
-                  </div>
-                  <span className="text-[10px] font-bold text-white/80">
-                    Settle NP ₹{currentNPAmount.toLocaleString('en-IN')} ({pendingNPDateLabel})
-                  </span>
+                  {processingType === 'cash' ? <Loader2 className="animate-spin" size={16} /> : <Banknote size={18} />}
+                  <span className="text-xs font-black uppercase tracking-widest">PAY CASH</span>
                 </button>
                 <button 
                   type="button"
                   onClick={() => handleClearPendingNP('phonepe')}
                   disabled={isProcessing}
-                  className="flex-1 flex flex-col items-center py-3.5 rounded-2xl bg-accent text-white shadow-lg shadow-accent/20 hover:bg-accent/90 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                  className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-accent text-white shadow-lg shadow-accent/20 hover:bg-accent/90 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                 >
-                  <div className="flex items-center gap-2 mb-0.5">
-                    {processingType === 'phonepe' ? <Loader2 className="animate-spin" size={16} /> : <Smartphone size={18} />}
-                    <span className="text-xs font-black uppercase tracking-widest">PHONEPE / UPI</span>
-                  </div>
-                  <span className="text-[10px] font-bold text-white/80">
-                    Settle NP ₹{currentNPAmount.toLocaleString('en-IN')} ({pendingNPDateLabel})
-                  </span>
+                  {processingType === 'phonepe' ? <Loader2 className="animate-spin" size={16} /> : <Smartphone size={18} />}
+                  <span className="text-xs font-black uppercase tracking-widest">PHONEPE / UPI</span>
                 </button>
               </div>
             </div>
@@ -591,36 +621,65 @@ export const CustomerCard = React.memo(function CustomerCard({
                 <button 
                   onClick={() => handleAction('cash')}
                   disabled={isProcessing}
-                  className="flex-1 flex flex-col items-center py-3 rounded-2xl bg-success/10 text-success border border-success/20 hover:bg-success hover:text-white transition-all active:scale-95 disabled:opacity-50"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl bg-success/10 text-success border border-success/20 hover:bg-success hover:text-white transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                 >
-                  <div className="flex items-center gap-2 mb-1">
-                    {processingType === 'cash' ? <Loader2 className="animate-spin" size={14} /> : <Banknote size={16} />}
-                    <span className="text-[10px] font-black uppercase tracking-widest">CASH</span>
-                  </div>
-                  <span className="text-[10px] font-bold opacity-60">Collect</span>
+                  {processingType === 'cash' ? <Loader2 className="animate-spin" size={15} /> : <Banknote size={16} />}
+                  <span className="text-[11px] font-black uppercase tracking-wider">CASH</span>
                 </button>
                 <button 
                   onClick={() => handleAction('phonepe')}
                   disabled={isProcessing}
-                  className="flex-1 flex flex-col items-center py-3 rounded-2xl bg-accent/10 text-accent border border-accent/20 hover:bg-accent hover:text-white transition-all active:scale-95 disabled:opacity-50"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl bg-accent/10 text-accent border border-accent/20 hover:bg-accent hover:text-white transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                 >
-                  <div className="flex items-center gap-2 mb-1">
-                    {processingType === 'phonepe' ? <Loader2 className="animate-spin" size={14} /> : <Smartphone size={16} />}
-                    <span className="text-[10px] font-black uppercase tracking-widest text-[#00aaff] dark:text-[#55ccff]">PHONEPE</span>
-                  </div>
-                  <span className="text-[10px] font-bold opacity-60">Collect</span>
+                  {processingType === 'phonepe' ? <Loader2 className="animate-spin" size={15} /> : <Smartphone size={16} />}
+                  <span className="text-[11px] font-black uppercase tracking-wider text-[#00aaff] dark:text-[#55ccff]">PHONEPE</span>
                 </button>
-                <button 
-                  onClick={() => handleAction('NP')}
-                  disabled={isProcessing}
-                  className="flex-1 flex flex-col items-center py-3 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500 hover:text-white transition-all active:scale-95 disabled:opacity-50"
-                >
-                  <div className="flex items-center gap-1.5 mb-1">
-                    {processingType === 'NP' || processingType === 'unsettled' ? <Loader2 className="animate-spin" size={14} /> : <Clock size={16} />}
-                    <span className="text-[10px] font-black uppercase tracking-widest">NOT PAID (NP)</span>
-                  </div>
-                  <span className="text-[10px] font-bold opacity-60">Record Debt</span>
-                </button>
+
+                {balance <= 0 ? (
+                  <>
+                    {(customer.advanceBalance || 0) > 0 && onWithdrawDeposit && (
+                      <button 
+                        type="button"
+                        onClick={() => onWithdrawDeposit(customer)}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white shadow-sm shadow-amber-600/30 transition-all active:scale-95 cursor-pointer"
+                        title="Withdraw Advance Savings Deposit"
+                      >
+                        <ArrowUpRight size={15} strokeWidth={2.5} />
+                        <span className="text-[11px] font-black uppercase tracking-wider">WITHDRAW</span>
+                      </button>
+                    )}
+                    {onStartNewLoan ? (
+                      <button 
+                        type="button"
+                        onClick={() => onStartNewLoan(customer)}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-600/30 transition-all active:scale-95 cursor-pointer"
+                        title="Issue New Loan Cycle with Advance Credit"
+                      >
+                        <Sparkles size={15} />
+                        <span className="text-[11px] font-black uppercase tracking-wider">NEW LOAN</span>
+                      </button>
+                    ) : (
+                      <button 
+                        type="button"
+                        onClick={() => handleAction('cash')}
+                        disabled={isProcessing}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl bg-sky-500/10 text-sky-600 border border-sky-500/20 hover:bg-sky-500 hover:text-white transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                      >
+                        <PiggyBank size={15} />
+                        <span className="text-[11px] font-black uppercase tracking-wider">ADVANCE</span>
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <button 
+                    onClick={() => handleAction('NP')}
+                    disabled={isProcessing}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500 hover:text-white transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                  >
+                    {processingType === 'NP' || processingType === 'unsettled' ? <Loader2 className="animate-spin" size={15} /> : <Clock size={16} />}
+                    <span className="text-[11px] font-black uppercase tracking-wider">NOT PAID (NP)</span>
+                  </button>
+                )}
               </div>
             </div>
           )}

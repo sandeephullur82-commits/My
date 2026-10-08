@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { 
   FileSpreadsheet, FileText, Download, Printer, 
   Eye, CheckCircle2, Loader2, Sparkles, Database, 
-  Users, Receipt, ShieldCheck
+  Users, Receipt, ShieldCheck, MessageCircle, Send
 } from 'lucide-react';
 import { Customer, Transaction } from '../services/firestoreService';
 import { 
@@ -11,6 +11,7 @@ import {
   exportMasterToExcel, 
   generateMasterPDFReport 
 } from '../utils/masterExport';
+import { whatsappReportService } from '../services/whatsappReportService';
 import { BottomSheet } from './BottomSheet';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
@@ -33,8 +34,34 @@ export function MasterExportModal({
   const { user } = useAuth();
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
+  const [customWhatsAppPhone, setCustomWhatsAppPhone] = useState(() => whatsappReportService.getSettings().phoneNumber || '');
 
   const metrics = calculateMasterMetrics(customers, transactions);
+
+  const handleWhatsAppSend = async () => {
+    setIsSendingWhatsApp(true);
+    const toastId = toast.loading('Preparing WhatsApp report & PDF statement...');
+    try {
+      if (customWhatsAppPhone) {
+        whatsappReportService.saveSettings({ phoneNumber: customWhatsAppPhone });
+      }
+      const result = await whatsappReportService.sendReportToWhatsApp(customers, transactions, customWhatsAppPhone);
+      if (result.success) {
+        toast.success(
+          result.method === 'web_share'
+            ? 'Master PDF ready in share dialog. Tap WhatsApp to send!'
+            : 'WhatsApp opened with structured statement. PDF downloaded for attachment.',
+          { id: toastId }
+        );
+      }
+    } catch (err: any) {
+      console.error('WhatsApp report error', err);
+      toast.error('Failed to dispatch WhatsApp report.', { id: toastId });
+    } finally {
+      setIsSendingWhatsApp(false);
+    }
+  };
 
   const handleExcelExport = async () => {
     setIsExportingExcel(true);
@@ -236,6 +263,56 @@ export function MasterExportModal({
             >
               <Eye size={16} />
               <span className="hidden sm:inline">Preview / Print</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Option 3: WhatsApp Master Statement (Free Channel) */}
+        <div className="p-4 rounded-2xl bg-card border border-border/50 hover:border-emerald-500/40 transition-all shadow-xs flex flex-col gap-3">
+          <div className="flex items-start gap-3">
+            <div className="w-11 h-11 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+              <MessageCircle size={24} />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <h4 className="font-bold text-sm text-text-primary tracking-tight">WhatsApp Master Statement</h4>
+                <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-md">
+                  Free Channel
+                </span>
+              </div>
+              <p className="text-xs text-text-secondary opacity-70 mt-1 leading-relaxed">
+                Dispatch complete structured Firestore data and attach the Master PDF to your WhatsApp number.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
+            <div className="relative w-full sm:flex-1">
+              <input
+                type="tel"
+                value={customWhatsAppPhone}
+                onChange={(e) => setCustomWhatsAppPhone(e.target.value)}
+                placeholder="Custom WhatsApp No. (e.g. 919876543210)"
+                className="w-full h-11 px-3.5 bg-bg border border-border/60 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-500 transition-colors"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleWhatsAppSend}
+              disabled={isSendingWhatsApp}
+              className="w-full sm:w-auto h-11 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm shadow-emerald-600/20 active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer shrink-0"
+            >
+              {isSendingWhatsApp ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>Preparing...</span>
+                </>
+              ) : (
+                <>
+                  <Send size={15} />
+                  <span>Send to WhatsApp</span>
+                </>
+              )}
             </button>
           </div>
         </div>

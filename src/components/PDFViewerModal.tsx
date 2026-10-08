@@ -45,17 +45,22 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
   const containerRef = useRef<HTMLDivElement>(null);
   const touchStartXRef = useRef<number | null>(null);
 
-  // Sync isModalOpen so bottom navigation bar and FABs are disabled/hidden
+  // Sync isModalOpen and handle Escape key for accessibility
   useEffect(() => {
     if (isOpen) {
       setIsModalOpen(true);
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') onClose();
+      };
+      window.addEventListener('keydown', handleKeyDown);
       return () => {
         setIsModalOpen(false);
+        window.removeEventListener('keydown', handleKeyDown);
       };
     } else {
       setIsModalOpen(false);
     }
-  }, [isOpen, setIsModalOpen]);
+  }, [isOpen, setIsModalOpen, onClose]);
 
   // Load and render PDF
   useEffect(() => {

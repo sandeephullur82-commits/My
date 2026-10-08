@@ -4,9 +4,10 @@ import { toast } from 'sonner';
 import { 
   collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, 
   writeBatch, query, orderBy, getDocs, runTransaction, serverTimestamp, where, collectionGroup,
-  deleteField
+  deleteField, limit, WriteBatch
 } from 'firebase/firestore';
 import { v4 as uuidv4 } from 'uuid';
+import { format } from 'date-fns';
 
 export interface LoanCycle {
   cycleNumber: number;          // 1, 2, 3...
@@ -23,6 +24,8 @@ export interface LoanCycle {
   durationDays: number;         // Term duration in days
   status: 'completed' | 'matured_renewed' | 'rolled_over';
   rolloverAction?: 'deducted_from_payout' | 'absorbed' | 'cleared' | 'none';
+  advanceSavings?: number;      // Accumulated advance savings at cycle completion
+  advanceApplied?: number;      // Advance credit transferred into this cycle
   notes?: string;
 }
 
@@ -31,7 +34,12 @@ export interface RenewalData {
   durationDays: number;
   startDate: number;
   endDate: number;
-  rolloverAction: 'deducted_from_payout' | 'absorbed' | 'cleared';
+  rolloverAction?: 'deducted_from_payout' | 'absorbed' | 'cleared' | 'none';
+  frequency?: 'daily' | 'weekly' | 'monthly' | 'custom' | string;
+  frequencyDays?: number;
+  advanceApplied?: number;      // Amount of accumulated advance to credit towards new loan
+  interestRate?: number;        // Interest rate percentage applied (e.g. 3%)
+  interestAmount?: number;      // Interest amount in Rupees
   notes?: string;
 }
 
@@ -77,6 +85,7 @@ export interface Customer {
   isPinned?: boolean;
   currentCycle?: number;
   cycles?: LoanCycle[];
+  advanceBalance?: number;      // Accumulated daily savings deposits after loan completion
   lastRenewalDate?: number;
   renewalStatus?: 'pending_review' | 'rejected' | 'renewed' | null;
   renewalRejectedAt?: number;
@@ -133,6 +142,8 @@ export interface Transaction {
   settledFromNpId?: string;
   settledMethod?: 'cash' | 'phonepe';
   isSettled?: boolean;
+  isAdvance?: boolean;          // Payment was recorded as advance savings
+  isWithdrawal?: boolean;       // Payout or withdrawal from advance savings deposit
   createdBy?: string;
   isDeleted?: boolean;
   notes?: string;
@@ -222,16 +233,41 @@ function cleanData<T>(obj: T): T {
   return obj;
 }
 
+// Scalable batch write helper to enforce the Firestore 500-write limit
+async function commitBatchInChunks(operations: Array<(batch: WriteBatch) => void>) {
+  const CHUNK_SIZE = 400; // Well below Firestore 500-operation ceiling
+  for (let i = 0; i < operations.length; i += CHUNK_SIZE) {
+    const chunk = operations.slice(i, i + CHUNK_SIZE);
+    const batch = writeBatch(db);
+    chunk.forEach(op => op(batch));
+    await batch.commit();
+  }
+}
+
 export const firestoreService = {
-  // Helper to generate next customer ID
+  // Helper to generate next customer ID with limit(25) to avoid full collection scan
   async getNextCustomerId(): Promise<string> {
     try {
-      const snap = await getDocs(query(collectionGroup(db, 'customers')));
-      if (snap.empty) return 'CUST-001';
+      // First try root customers ordered by ID desc
+      let snap = await getDocs(query(
+        collection(db, 'customers'),
+        orderBy('id', 'desc'),
+        limit(25)
+      )).catch(() => null);
+
+      if (!snap || snap.empty) {
+        snap = await getDocs(query(
+          collectionGroup(db, 'customers'),
+          orderBy('id', 'desc'),
+          limit(25)
+        )).catch(() => null);
+      }
+
+      if (!snap || snap.empty) return 'CUST-001';
       
       const ids = snap.docs
         .map(doc => doc.data()?.id || doc.id)
-        .filter(id => typeof id === 'string' && /^CUST-\d{3}$/.test(id))
+        .filter(id => typeof id === 'string' && /^CUST-\d{3,}$/.test(id))
         .map(id => parseInt(String(id).replace('CUST-', ''), 10))
         .sort((a, b) => b - a);
         
@@ -247,7 +283,8 @@ export const firestoreService = {
     try {
       const snap = await getDocs(query(
         collectionGroup(db, 'customers'), 
-        where('id', '==', id)
+        where('id', '==', id),
+        limit(1)
       ));
       return snap.empty;
     } catch {
@@ -261,7 +298,8 @@ export const firestoreService = {
       const snap = await getDocs(query(
         collectionGroup(db, 'customers'), 
         where('uniqueKey', '==', uniqueKey), 
-        where('isDeleted', '==', false)
+        where('isDeleted', '==', false),
+        limit(1)
       ));
       return snap.empty;
     } catch {
@@ -274,7 +312,8 @@ export const firestoreService = {
       const snap = await getDocs(query(
         collectionGroup(db, 'customers'), 
         where('phone', '==', phone.trim()), 
-        where('isDeleted', '==', false)
+        where('isDeleted', '==', false),
+        limit(1)
       ));
       if (snap.empty) return { exists: false, name: null };
       return { exists: true, name: (snap.docs[0].data() as Customer).name };
@@ -385,9 +424,29 @@ export const firestoreService = {
   },
 
   async saveCustomer(customer: Partial<Customer> & { id: string }) {
+    if (!customer.id || !/^[a-zA-Z0-9_\-]{1,128}$/.test(customer.id)) {
+      throw new Error('Invalid customer ID format.');
+    }
+    if (!customer.name || typeof customer.name !== 'string' || customer.name.trim().length === 0 || customer.name.length > 200) {
+      throw new Error('Customer name must be between 1 and 200 characters.');
+    }
+    const cleanPhone = String(customer.phone || '').trim().replace(/[^0-9]/g, '');
+    if (cleanPhone.length < 10 || cleanPhone.length > 15) {
+      throw new Error('Customer phone must be between 10 and 15 digits.');
+    }
+
+    const loanAmount = Math.max(0, Number(customer.loan ?? customer.loanAmount ?? customer.totalLoan ?? 0));
     const rootCustomerRef = doc(db, 'customers', customer.id);
     const existingRef = customer.docPath ? doc(db, customer.docPath) : rootCustomerRef;
-    const data = cleanData({ ...customer, createdBy: customer.createdBy || 'agent' });
+    const data = cleanData({
+      ...customer,
+      name: customer.name.trim(),
+      phone: cleanPhone,
+      loan: loanAmount,
+      loanAmount: loanAmount,
+      totalLoan: loanAmount,
+      createdBy: customer.createdBy || 'agent'
+    });
     const now = serverTimestamp();
 
     try {
@@ -437,17 +496,30 @@ export const firestoreService = {
     const oldPaid = customer.paid || 0;
     const oldLoan = customer.loanAmount || customer.loan || 0;
 
+    const currentAdvance = customer.advanceBalance || 0;
+    const advanceToApply = renewal.advanceApplied !== undefined 
+      ? Math.min(currentAdvance, Math.max(0, renewal.advanceApplied))
+      : currentAdvance;
+
+    const remainingAdvance = Math.max(0, currentAdvance - advanceToApply);
+    const newLoanTotal = renewal.newLoanAmount;
+    const initialPaid = advanceToApply;
+    const initialPending = Math.max(0, newLoanTotal - initialPaid);
+
     const completedCycle: LoanCycle = {
       cycleNumber: currentCycleNum,
       loanAmount: oldLoan,
       paidAmount: oldPaid,
       pendingAmount: oldPending,
+      advanceSavings: currentAdvance,
+      advanceApplied: advanceToApply,
+      ...(renewal.interestAmount !== undefined ? { interestAdded: renewal.interestAmount, interestRate: renewal.interestRate } : {}),
       startDate: customer.startDate || (Date.now() - (customer.durationDays || 100) * 86400000),
       endDate: customer.endDate || Date.now(),
       completedAt: Date.now(),
       durationDays: customer.durationDays || 100,
       status: oldPending <= 0 ? 'completed' : 'rolled_over',
-      rolloverAction: oldPending > 0 ? renewal.rolloverAction : 'none',
+      rolloverAction: oldPending > 0 ? (renewal.rolloverAction || 'absorbed') : 'none',
       notes: customer.notes || ''
     };
 
@@ -457,19 +529,24 @@ export const firestoreService = {
     const now = serverTimestamp();
 
     const updatedCustomerData: Partial<Customer> = {
-      loan: renewal.newLoanAmount,
-      loanAmount: renewal.newLoanAmount,
-      totalLoan: renewal.newLoanAmount,
-      paid: 0,
-      pending: renewal.newLoanAmount,
+      loan: newLoanTotal,
+      loanAmount: newLoanTotal,
+      totalLoan: newLoanTotal,
+      paid: initialPaid,
+      pending: initialPending,
+      advanceBalance: remainingAdvance,
       startDate: renewal.startDate,
       endDate: renewal.endDate,
       durationDays: renewal.durationDays,
+      frequency: renewal.frequency || customer.frequency || 'daily',
+      frequencyDays: renewal.frequencyDays || customer.frequencyDays || 1,
       currentCycle: newCycleNum,
       cycles: updatedCycles,
       lastRenewalDate: Date.now(),
-      notes: renewal.notes ? renewal.notes : `Cycle #${newCycleNum} Renewal`,
-      updatedAt: now
+      notes: renewal.notes ? renewal.notes : (advanceToApply > 0 ? `Cycle #${newCycleNum} New Loan (₹${advanceToApply.toLocaleString('en-IN')} Advance Applied)` : `Cycle #${newCycleNum} New Loan`),
+      updatedAt: now,
+      ...(customer.renewalStatus ? { renewalStatus: deleteField() as any } : {}),
+      ...(customer.renewalRejectedAt ? { renewalRejectedAt: deleteField() as any } : {})
     };
 
     await setDoc(rootCustomerRef, cleanData(updatedCustomerData), { merge: true });
@@ -585,15 +662,17 @@ export const firestoreService = {
   async deleteCustomer(id: string, docPath?: string) {
     try {
       const rootRef = doc(db, 'customers', id);
-      const batch = writeBatch(db);
       const updateData = { isDeleted: true, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() };
-      
-      batch.set(rootRef, updateData, { merge: true });
-      if (docPath && docPath !== rootRef.path) {
-        batch.set(doc(db, docPath), updateData, { merge: true });
-      }
+      const ops: Array<(batch: WriteBatch) => void> = [];
 
-      // Mark associated entries as deleted
+      ops.push(batch => {
+        batch.set(rootRef, updateData, { merge: true });
+        if (docPath && docPath !== rootRef.path) {
+          batch.set(doc(db, docPath), updateData, { merge: true });
+        }
+      });
+
+      // Mark associated entries as deleted safely in chunks
       try {
         const entriesQuery = query(
           collectionGroup(db, 'entries'), 
@@ -601,13 +680,15 @@ export const firestoreService = {
         );
         const entriesSnap = await getDocs(entriesQuery);
         entriesSnap.docs.forEach(d => {
-          batch.set(d.ref, { isDeleted: true, updatedAt: serverTimestamp() }, { merge: true });
+          ops.push(batch => {
+            batch.set(d.ref, { isDeleted: true, updatedAt: serverTimestamp() }, { merge: true });
+          });
         });
       } catch (e) {
         console.warn('Could not query associated entries for deletion batch:', e);
       }
 
-      await batch.commit();
+      await commitBatchInChunks(ops);
     } catch (error: any) {
       handleFirestoreError(error, OperationType.DELETE, `customers/${id}`);
     }
@@ -629,13 +710,15 @@ export const firestoreService = {
   async undoDeleteCustomer(id: string, docPath?: string) {
     try {
       const rootRef = doc(db, 'customers', id);
-      const batch = writeBatch(db);
       const restoreData = { isDeleted: false, updatedAt: serverTimestamp(), deletedAt: null };
-      
-      batch.set(rootRef, restoreData, { merge: true });
-      if (docPath && docPath !== rootRef.path) {
-        batch.set(doc(db, docPath), restoreData, { merge: true });
-      }
+      const ops: Array<(batch: WriteBatch) => void> = [];
+
+      ops.push(batch => {
+        batch.set(rootRef, restoreData, { merge: true });
+        if (docPath && docPath !== rootRef.path) {
+          batch.set(doc(db, docPath), restoreData, { merge: true });
+        }
+      });
 
       try {
         const entriesQuery = query(
@@ -644,13 +727,15 @@ export const firestoreService = {
         );
         const entriesSnap = await getDocs(entriesQuery);
         entriesSnap.docs.forEach(d => {
-          batch.set(d.ref, { isDeleted: false, updatedAt: serverTimestamp() }, { merge: true });
+          ops.push(batch => {
+            batch.set(d.ref, { isDeleted: false, updatedAt: serverTimestamp() }, { merge: true });
+          });
         });
       } catch (e) {
         console.warn('Could not query associated entries for restore:', e);
       }
 
-      await batch.commit();
+      await commitBatchInChunks(ops);
     } catch (error: any) {
       handleFirestoreError(error, OperationType.WRITE, `customers/${id}`);
     }
@@ -776,17 +861,28 @@ export const firestoreService = {
     customer: Customer, 
     oldTx?: Transaction
   ): Promise<boolean> {
+    if (!txData.id || !/^[a-zA-Z0-9_\-]{1,128}$/.test(txData.id)) {
+      throw new Error('Invalid transaction ID format.');
+    }
+    if (!customer?.id || !/^[a-zA-Z0-9_\-]{1,128}$/.test(customer.id)) {
+      throw new Error('Invalid customer ID format.');
+    }
+    if (txData.amount === undefined || typeof txData.amount !== 'number' || txData.amount <= 0) {
+      throw new Error('Transaction amount must be greater than zero.');
+    }
+
     try {
       await runTransaction(db, async (transaction) => {
         const rootCustomerRef = doc(db, 'customers', customer.id);
         const customerRef = customer.docPath ? doc(db, customer.docPath) : rootCustomerRef;
         
         const rootTxRef = doc(db, 'entries', txData.id);
-        const txRef = txData.docPath ? doc(db, txData.docPath) : rootTxRef;
+        const txDocPath = txData.docPath || (customer.docPath ? `${customer.docPath}/entries/${txData.id}` : undefined);
+        const subTxRef = txDocPath ? doc(db, txDocPath) : null;
 
         const [customerSnap, txSnap] = await Promise.all([
           transaction.get(customerRef),
-          transaction.get(txRef)
+          transaction.get(rootTxRef) // use root reference for checking transaction existence
         ]);
 
         const currentCustomer = customerSnap.exists() ? (customerSnap.data() as Customer) : customer;
@@ -803,16 +899,41 @@ export const firestoreService = {
         const isNP = txData.type === 'NP' || txData.type === 'unsettled' || txData.status === 'unsettled';
         const isActualPayment = (txData.status === 'paid' || !txData.status) && !isNP;
 
+        const currentPending = currentCustomer.pending !== undefined 
+          ? currentCustomer.pending 
+          : Math.max(0, (currentCustomer.loanAmount || currentCustomer.loan || 0) - (currentCustomer.paid || 0));
+
+        let advanceDiff = 0;
+
         if (isActualPayment) {
-          paidDiff += (txData.amount || 0);
-          pendingDiff -= (txData.amount || 0);
+          const amt = txData.amount || 0;
+          if (currentPending <= 0 || txData.isAdvance) {
+            // Customer loan is completed: all of this payment goes into advance savings credit!
+            advanceDiff += amt;
+            paidDiff += amt;
+            pendingDiff = 0; // pending stays 0
+            txData.isAdvance = true; // Mark as advance savings transaction!
+          } else if (amt > currentPending) {
+            // Customer pays more than pending: remaining balance cleared to 0, excess to advance savings!
+            const excess = amt - currentPending;
+            paidDiff += amt;
+            pendingDiff -= currentPending;
+            advanceDiff += excess;
+            txData.isAdvance = true;
+          } else {
+            paidDiff += amt;
+            pendingDiff -= amt;
+          }
         }
 
         const nowServer = serverTimestamp();
         const updatedCustomerData: Partial<Customer> = {};
-        if (paidDiff !== 0 || pendingDiff !== 0) {
+        if (paidDiff !== 0 || pendingDiff !== 0 || advanceDiff !== 0) {
           updatedCustomerData.paid = (currentCustomer.paid || 0) + paidDiff;
-          updatedCustomerData.pending = (currentCustomer.pending || 0) + pendingDiff;
+          updatedCustomerData.pending = Math.max(0, (currentCustomer.pending || 0) + pendingDiff);
+          if (advanceDiff !== 0 || currentCustomer.advanceBalance !== undefined) {
+            updatedCustomerData.advanceBalance = Math.max(0, (currentCustomer.advanceBalance || 0) + advanceDiff);
+          }
           updatedCustomerData.updatedAt = nowServer;
         }
 
@@ -827,10 +948,18 @@ export const firestoreService = {
           }
         }
 
+        const effectiveDate = txData.date || (typeof format === 'function' ? format(new Date(), 'yyyy-MM-dd') : new Date().toISOString().slice(0, 10));
+        const effectiveStatus: Transaction['status'] = txData.status || (isNP ? 'unsettled' : 'paid');
+        const effectiveType: Transaction['type'] = txData.type || (isNP ? 'unsettled' : 'cash');
+
         const cleanedTxData = cleanData({
           ...txData,
           customerId: customer.id,
-          createdBy: 'agent',
+          date: effectiveDate,
+          status: effectiveStatus,
+          type: effectiveType,
+          isDeleted: false,
+          createdBy: txData.createdBy || 'agent',
           updatedAt: nowServer,
           createdAt: currentTx?.createdAt || nowServer,
           paidAt: isActualPayment ? (txData.paidAt || nowServer) : null,
@@ -838,8 +967,8 @@ export const firestoreService = {
         });
 
         transaction.set(rootTxRef, cleanedTxData, { merge: true });
-        if (txData.docPath && txData.docPath !== rootTxRef.path) {
-          transaction.set(doc(db, txData.docPath), cleanedTxData, { merge: true });
+        if (subTxRef && subTxRef.path !== rootTxRef.path) {
+          transaction.set(subTxRef, cleanedTxData, { merge: true });
         }
       });
       return true;
@@ -847,45 +976,79 @@ export const firestoreService = {
       if (error.code === 'unavailable' || error.message?.includes('offline')) {
         const batch = writeBatch(db);
         const rootCustomerRef = doc(db, 'customers', customer.id);
-        const customerRef = customer.docPath ? doc(db, customer.docPath) : rootCustomerRef;
         const rootTxRef = doc(db, 'entries', txData.id);
+        const txDocPath = txData.docPath || (customer.docPath ? `${customer.docPath}/entries/${txData.id}` : undefined);
+        const subTxRef = txDocPath ? doc(db, txDocPath) : null;
 
         let paidDiff = 0;
         let pendingDiff = 0;
+        let advanceDiff = 0;
         if (oldTx && oldTx.status === 'paid' && oldTx.type !== 'NP' && oldTx.type !== 'unsettled') {
           paidDiff -= (oldTx.amount || 0);
           pendingDiff += (oldTx.amount || 0);
         }
         const isNP = txData.type === 'NP' || txData.type === 'unsettled' || txData.status === 'unsettled';
         const isActualPayment = (txData.status === 'paid' || !txData.status) && !isNP;
+        
+        const currentPending = customer.pending !== undefined 
+          ? customer.pending 
+          : Math.max(0, (customer.loanAmount || customer.loan || 0) - (customer.paid || 0));
+
         if (isActualPayment) {
-          paidDiff += (txData.amount || 0);
-          pendingDiff -= (txData.amount || 0);
+          const amt = txData.amount || 0;
+          if (currentPending <= 0 || txData.isAdvance) {
+            advanceDiff += amt;
+            paidDiff += amt;
+            pendingDiff = 0;
+            txData.isAdvance = true;
+          } else if (amt > currentPending) {
+            const excess = amt - currentPending;
+            paidDiff += amt;
+            pendingDiff -= currentPending;
+            advanceDiff += excess;
+            txData.isAdvance = true;
+          } else {
+            paidDiff += amt;
+            pendingDiff -= amt;
+          }
         }
 
-        if (paidDiff !== 0 || pendingDiff !== 0) {
-          const updateData = {
+        if (paidDiff !== 0 || pendingDiff !== 0 || advanceDiff !== 0) {
+          const updateData: any = {
             paid: (customer.paid || 0) + paidDiff,
-            pending: (customer.pending || 0) + pendingDiff,
+            pending: Math.max(0, (customer.pending || 0) + pendingDiff),
             updatedAt: serverTimestamp()
           };
+          if (advanceDiff !== 0 || customer.advanceBalance !== undefined) {
+            updateData.advanceBalance = Math.max(0, (customer.advanceBalance || 0) + advanceDiff);
+          }
           batch.set(rootCustomerRef, updateData, { merge: true });
           if (customer.docPath && customer.docPath !== rootCustomerRef.path) {
             batch.set(doc(db, customer.docPath), updateData, { merge: true });
           }
         }
 
+        const effectiveDate = txData.date || (typeof format === 'function' ? format(new Date(), 'yyyy-MM-dd') : new Date().toISOString().slice(0, 10));
+        const effectiveStatus: Transaction['status'] = txData.status || (isNP ? 'unsettled' : 'paid');
+        const effectiveType: Transaction['type'] = txData.type || (isNP ? 'unsettled' : 'cash');
+
         const cleanedTxData = cleanData({
           ...txData,
           customerId: customer.id,
-          createdBy: 'agent',
+          date: effectiveDate,
+          status: effectiveStatus,
+          type: effectiveType,
+          isDeleted: false,
+          createdBy: txData.createdBy || 'agent',
           createdAt: txData.createdAt || serverTimestamp(),
-          updatedAt: serverTimestamp()
+          updatedAt: serverTimestamp(),
+          paidAt: isActualPayment ? (txData.paidAt || serverTimestamp()) : null,
+          unsettledAt: isNP ? (txData.unsettledAt || serverTimestamp()) : null
         });
 
         batch.set(rootTxRef, cleanedTxData, { merge: true });
-        if (txData.docPath && txData.docPath !== rootTxRef.path) {
-          batch.set(doc(db, txData.docPath), cleanedTxData, { merge: true });
+        if (subTxRef && subTxRef.path !== rootTxRef.path) {
+          batch.set(subTxRef, cleanedTxData, { merge: true });
         }
 
         await batch.commit();
@@ -909,43 +1072,70 @@ export const firestoreService = {
         const customerRef = customer.docPath ? doc(db, customer.docPath) : rootCustomerRef;
 
         const rootTxRef = doc(db, 'entries', tx.id);
-        const txRef = tx.docPath ? doc(db, tx.docPath) : rootTxRef;
+        const txDocPath = tx.docPath || (customer.docPath ? `${customer.docPath}/entries/${tx.id}` : undefined);
+        const subTxRef = txDocPath ? doc(db, txDocPath) : null;
 
         const customerSnap = await transaction.get(customerRef);
         
         if (customerSnap.exists() && tx.status === 'paid' && tx.type !== 'NP' && tx.type !== 'unsettled') {
           const currentCustomer = customerSnap.data() as Customer;
-          const updateData = {
-            paid: Math.max(0, (currentCustomer.paid || 0) - tx.amount),
-            pending: (currentCustomer.pending || 0) + tx.amount,
+          const currentAdvance = currentCustomer.advanceBalance || 0;
+          let newAdvance = currentAdvance;
+          let newPending = (currentCustomer.pending || 0);
+
+          if (tx.isWithdrawal) {
+            // Reversing a withdrawal refunds the amount back to advance balance
+            newAdvance = currentAdvance + tx.amount;
+          } else if (currentAdvance > 0 && (tx.isAdvance || newPending <= 0)) {
+            newAdvance = Math.max(0, currentAdvance - tx.amount);
+          } else {
+            newPending += tx.amount;
+          }
+
+          const updateData: any = {
+            paid: tx.isWithdrawal ? (currentCustomer.paid || 0) : Math.max(0, (currentCustomer.paid || 0) - tx.amount),
+            pending: newPending,
             updatedAt: serverTimestamp()
           };
+          if (currentCustomer.advanceBalance !== undefined || tx.isWithdrawal) {
+            updateData.advanceBalance = newAdvance;
+          }
           transaction.set(rootCustomerRef, updateData, { merge: true });
           if (customer.docPath && customer.docPath !== rootCustomerRef.path) {
             transaction.set(doc(db, customer.docPath), updateData, { merge: true });
           }
         }
         
-        transaction.delete(rootTxRef);
-        if (tx.docPath && tx.docPath !== rootTxRef.path) {
-          transaction.delete(doc(db, tx.docPath));
+        const deleteData = { isDeleted: true, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() };
+        transaction.set(rootTxRef, deleteData, { merge: true });
+        if (subTxRef && subTxRef.path !== rootTxRef.path) {
+          transaction.set(subTxRef, deleteData, { merge: true });
         }
       });
     } catch (error: any) {
       if (error.code === 'unavailable' || error.message?.includes('offline')) {
         const batch = writeBatch(db);
         const rootTxRef = doc(db, 'entries', tx.id);
-        batch.delete(rootTxRef);
-        if (tx.docPath && tx.docPath !== rootTxRef.path) {
-          batch.delete(doc(db, tx.docPath));
+        const txDocPath = tx.docPath || (customer.docPath ? `${customer.docPath}/entries/${tx.id}` : undefined);
+        const subTxRef = txDocPath ? doc(db, txDocPath) : null;
+
+        const deleteData = { isDeleted: true, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() };
+        batch.set(rootTxRef, deleteData, { merge: true });
+        if (subTxRef && subTxRef.path !== rootTxRef.path) {
+          batch.set(subTxRef, deleteData, { merge: true });
         }
         if (tx.status === 'paid' && tx.type !== 'NP' && tx.type !== 'unsettled') {
           const rootCustomerRef = doc(db, 'customers', customer.id);
-          const updateData = {
-            paid: Math.max(0, (customer.paid || 0) - tx.amount),
-            pending: (customer.pending || 0) + tx.amount,
-            updatedAt: serverTimestamp()
-          };
+          const updateData: any = tx.isWithdrawal
+            ? {
+                advanceBalance: (customer.advanceBalance || 0) + tx.amount,
+                updatedAt: serverTimestamp()
+              }
+            : {
+                paid: Math.max(0, (customer.paid || 0) - tx.amount),
+                pending: (customer.pending || 0) + tx.amount,
+                updatedAt: serverTimestamp()
+              };
           batch.set(rootCustomerRef, updateData, { merge: true });
           if (customer.docPath && customer.docPath !== rootCustomerRef.path) {
             batch.set(doc(db, customer.docPath), updateData, { merge: true });
@@ -958,16 +1148,161 @@ export const firestoreService = {
     }
   },
 
+  async undoDeleteTransaction(tx: Transaction, customer: Customer) {
+    if (!tx?.id || !customer?.id) return;
+    try {
+      await runTransaction(db, async (transaction) => {
+        const rootCustomerRef = doc(db, 'customers', customer.id);
+        const customerRef = customer.docPath ? doc(db, customer.docPath) : rootCustomerRef;
+        const rootTxRef = doc(db, 'entries', tx.id);
+        const txDocPath = tx.docPath || (customer.docPath ? `${customer.docPath}/entries/${tx.id}` : undefined);
+        const subTxRef = txDocPath ? doc(db, txDocPath) : null;
+
+        const customerSnap = await transaction.get(customerRef);
+        if (customerSnap.exists() && tx.status === 'paid' && tx.type !== 'NP' && tx.type !== 'unsettled') {
+          const currentCustomer = customerSnap.data() as Customer;
+          const currentAdvance = currentCustomer.advanceBalance || 0;
+          let newAdvance = currentAdvance;
+          let newPending = currentCustomer.pending || 0;
+
+          if (tx.isWithdrawal) {
+            newAdvance = Math.max(0, currentAdvance - tx.amount);
+          } else if (currentAdvance > 0 && tx.isAdvance) {
+            newAdvance = currentAdvance + tx.amount;
+          } else {
+            newPending = Math.max(0, newPending - tx.amount);
+          }
+
+          const updateData: any = {
+            paid: tx.isWithdrawal ? (currentCustomer.paid || 0) : (currentCustomer.paid || 0) + tx.amount,
+            pending: newPending,
+            updatedAt: serverTimestamp()
+          };
+          if (currentCustomer.advanceBalance !== undefined || tx.isWithdrawal) {
+            updateData.advanceBalance = newAdvance;
+          }
+          transaction.set(rootCustomerRef, updateData, { merge: true });
+          if (customer.docPath && customer.docPath !== rootCustomerRef.path) {
+            transaction.set(doc(db, customer.docPath), updateData, { merge: true });
+          }
+        }
+
+        const restoreData = { isDeleted: false, updatedAt: serverTimestamp(), deletedAt: null };
+        transaction.set(rootTxRef, restoreData, { merge: true });
+        if (subTxRef && subTxRef.path !== rootTxRef.path) {
+          transaction.set(subTxRef, restoreData, { merge: true });
+        }
+      });
+    } catch (error: any) {
+      handleFirestoreError(error, OperationType.WRITE, `entries/${tx.id}`);
+    }
+  },
+
+  /**
+   * Withdraw / Payout accumulated advance savings deposit for a customer
+   */
+  async withdrawAdvanceDeposit(
+    customer: Customer,
+    amount: number,
+    payoutType: 'cash' | 'phonepe',
+    notes?: string
+  ): Promise<{ transaction: Transaction; updatedCustomer: Customer; previousAdvance: number; newAdvance: number }> {
+    if (amount <= 0) {
+      throw new Error('Withdrawal amount must be greater than zero');
+    }
+    const currentAdvance = customer.advanceBalance || 0;
+    if (amount > currentAdvance) {
+      throw new Error(`Cannot withdraw ₹${amount}. Available advance balance is ₹${currentAdvance}`);
+    }
+
+    const txId = uuidv4();
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const nowTimestamp = Date.now();
+
+    const txData: Transaction = {
+      id: txId,
+      customerId: customer.id,
+      amount,
+      type: payoutType,
+      status: 'paid',
+      date: todayStr,
+      timestamp: nowTimestamp,
+      paidAt: nowTimestamp,
+      isAdvance: true,
+      isWithdrawal: true,
+      notes: notes || `Advance deposit withdrawal of ₹${amount} via ${payoutType === 'phonepe' ? 'PhonePe UPI' : 'Cash'}`
+    };
+
+    let updatedCust: Customer = { ...customer };
+    let previousAdv = currentAdvance;
+    let newAdv = Math.max(0, currentAdvance - amount);
+
+    await runTransaction(db, async (t) => {
+      const rootCustomerRef = doc(db, 'customers', customer.id);
+      const customerRef = customer.docPath ? doc(db, customer.docPath) : rootCustomerRef;
+      const rootTxRef = doc(db, 'entries', txId);
+
+      const customerSnap = await t.get(customerRef);
+      if (!customerSnap.exists()) {
+        throw new Error('Customer record not found');
+      }
+
+      const freshCust = customerSnap.data() as Customer;
+      previousAdv = freshCust.advanceBalance || 0;
+      if (amount > previousAdv) {
+        throw new Error(`Insufficient advance balance. Available: ₹${previousAdv}`);
+      }
+      newAdv = Math.max(0, previousAdv - amount);
+
+      const customerUpdate = {
+        advanceBalance: newAdv,
+        updatedAt: serverTimestamp()
+      };
+
+      t.set(rootCustomerRef, customerUpdate, { merge: true });
+      if (customer.docPath && customer.docPath !== rootCustomerRef.path) {
+        t.set(doc(db, customer.docPath), customerUpdate, { merge: true });
+      }
+
+      const cleanedTx = cleanData({
+        ...txData,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+
+      t.set(rootTxRef, cleanedTx);
+      if (customer.docPath) {
+        t.set(doc(db, `${customer.docPath}/entries`, txId), cleanedTx);
+      }
+
+      updatedCust = {
+        ...freshCust,
+        advanceBalance: newAdv
+      };
+    });
+
+    return {
+      transaction: txData,
+      updatedCustomer: updatedCust,
+      previousAdvance: previousAdv,
+      newAdvance: newAdv
+    };
+  },
+
   async clearAll() {
     try {
-      const batch = writeBatch(db);
+      const ops: Array<(batch: WriteBatch) => void> = [];
       const customersSnap = await getDocs(query(collectionGroup(db, 'customers')));
-      customersSnap.forEach(d => batch.delete(d.ref));
+      customersSnap.forEach(d => {
+        ops.push(batch => batch.set(d.ref, { isDeleted: true, updatedAt: serverTimestamp() }, { merge: true }));
+      });
       
       const txSnap = await getDocs(query(collectionGroup(db, 'entries')));
-      txSnap.forEach(d => batch.delete(d.ref));
+      txSnap.forEach(d => {
+        ops.push(batch => batch.set(d.ref, { isDeleted: true, updatedAt: serverTimestamp() }, { merge: true }));
+      });
       
-      await batch.commit();
+      await commitBatchInChunks(ops);
       toast.success('Database cleared.');
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'clearAll');
@@ -992,24 +1327,28 @@ export const firestoreService = {
   async importData(json: string) {
     try {
       const data = JSON.parse(json);
-      const batch = writeBatch(db);
+      const ops: Array<(batch: WriteBatch) => void> = [];
       
       if (data.customers && Array.isArray(data.customers)) {
         for (const c of data.customers) {
           if (c.id) {
-            batch.set(doc(db, 'customers', c.id), { ...c, updatedAt: serverTimestamp() }, { merge: true });
+            ops.push(batch => {
+              batch.set(doc(db, 'customers', c.id), { ...c, updatedAt: serverTimestamp() }, { merge: true });
+            });
           }
         }
       }
       if (data.transactions && Array.isArray(data.transactions)) {
         for (const t of data.transactions) {
           if (t.id) {
-            batch.set(doc(db, 'entries', t.id), { ...t, updatedAt: serverTimestamp() }, { merge: true });
+            ops.push(batch => {
+              batch.set(doc(db, 'entries', t.id), { ...t, updatedAt: serverTimestamp() }, { merge: true });
+            });
           }
         }
       }
       
-      await batch.commit();
+      await commitBatchInChunks(ops);
       toast.success('Import completed successfully.');
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'importData');

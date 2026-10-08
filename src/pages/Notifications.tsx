@@ -100,18 +100,19 @@ export function Notifications() {
     <div className="h-full overflow-y-auto bg-bg pb-28">
       {/* Header */}
       <div className="sticky top-0 z-40 bg-bg/90 backdrop-blur-md border-b border-border/40">
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
             <button 
               onClick={() => navigate(-1)}
-              className="w-10 h-10 rounded-xl bg-card border border-border/20 flex items-center justify-center text-text-secondary active:scale-95 transition-all hover:border-border"
+              className="w-8 h-8 rounded-xl bg-card border border-border/80 flex items-center justify-center text-text-secondary active:scale-95 transition-all hover:text-text-primary"
+              title="Go back"
             >
-              <ChevronLeft size={20} />
+              <ChevronLeft size={18} />
             </button>
             <div>
-              <h1 className="text-[19px] font-black uppercase tracking-tight text-text-primary">Payment Alerts</h1>
-              <p className="text-[10px] font-bold text-text-secondary opacity-60 uppercase tracking-widest leading-none mt-0.5">
-                {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
+              <h1 className="text-base font-black tracking-tight text-text-primary leading-tight">Payment Alerts</h1>
+              <p className="text-[11px] font-semibold text-text-secondary leading-none">
+                {unreadCount > 0 ? `${unreadCount} unread alerts` : 'All caught up'}
               </p>
             </div>
           </div>

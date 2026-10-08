@@ -49,8 +49,15 @@ export function generateReceiptPDF(data: ReceiptData): GeneratedReceipt {
     safeFormat(Date.now(), 'dd MMM yyyy, hh:mm a')
   );
   const isUpi = transaction.type === 'phonepe';
+  const isWithdrawal = Boolean(transaction.isWithdrawal);
   const isNP = transaction.type === 'NP' || transaction.type === 'unsettled' || transaction.status === 'unsettled';
-  const paymentModeLabel = isUpi ? 'UPI / PHONEPE' : isNP ? 'NP' : 'CASH DEPOSIT';
+  const paymentModeLabel = isWithdrawal 
+    ? (isUpi ? 'PHONEPE UPI PAYOUT' : 'CASH PAYOUT')
+    : isUpi 
+      ? 'UPI / PHONEPE' 
+      : isNP 
+        ? 'NP' 
+        : 'CASH DEPOSIT';
   const fileName = `Receipt_${customer.name.replace(/[^a-zA-Z0-9]/g, '_')}_${receiptNo}.pdf`;
 
   const pageWidth = 105;
@@ -63,8 +70,12 @@ export function generateReceiptPDF(data: ReceiptData): GeneratedReceipt {
   doc.setLineWidth(0.4);
   doc.roundedRect(4, 4, pageWidth - 8, pageHeight - 8, 3, 3, 'D');
 
-  // Top Accent Bar (Brand Emerald Green)
-  doc.setFillColor(16, 185, 129); // Emerald 500
+  // Top Accent Bar (Brand Emerald Green or Amber for withdrawal)
+  if (isWithdrawal) {
+    doc.setFillColor(217, 119, 6); // Amber 600
+  } else {
+    doc.setFillColor(16, 185, 129); // Emerald 500
+  }
   doc.rect(4, 4, pageWidth - 8, 2.5, 'F');
 
   // 1. Header Section with Company Logo & Brand Name
@@ -133,26 +144,44 @@ export function generateReceiptPDF(data: ReceiptData): GeneratedReceipt {
 
   y += 13;
 
-  // 2. Total Amount Collected Box (Hero Visual)
-  doc.setFillColor(236, 253, 245); // Emerald 50
-  doc.setDrawColor(167, 243, 208); // Emerald 200
+  // 2. Total Amount Box (Hero Visual)
+  if (isWithdrawal) {
+    doc.setFillColor(254, 243, 199); // Amber 100
+    doc.setDrawColor(251, 191, 36); // Amber 400
+  } else {
+    doc.setFillColor(236, 253, 245); // Emerald 50
+    doc.setDrawColor(167, 243, 208); // Emerald 200
+  }
   doc.setLineWidth(0.5);
   doc.roundedRect(margin, y, contentWidth, 23, 2.5, 2.5, 'FD');
 
-  doc.setTextColor(5, 150, 105); // Emerald 600
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7);
-  doc.text('TOTAL AMOUNT COLLECTED', margin + contentWidth / 2, y + 5.5, { align: 'center' });
+  if (isWithdrawal) {
+    doc.setTextColor(180, 83, 9); // Amber 700
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.text('ADVANCE DEPOSIT WITHDRAWAL PAYOUT', margin + contentWidth / 2, y + 5.5, { align: 'center' });
 
-  // Big Amount Display
-  doc.setTextColor(4, 120, 87); // Emerald 700
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.text(`Rs. ${transaction.amount.toLocaleString('en-IN')}`, margin + contentWidth / 2, y + 14, { align: 'center' });
+    // Big Amount Display
+    doc.setTextColor(180, 83, 9); // Amber 700
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text(`Rs. ${transaction.amount.toLocaleString('en-IN')}`, margin + contentWidth / 2, y + 14, { align: 'center' });
+  } else {
+    doc.setTextColor(5, 150, 105); // Emerald 600
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.text('TOTAL AMOUNT COLLECTED', margin + contentWidth / 2, y + 5.5, { align: 'center' });
+
+    // Big Amount Display
+    doc.setTextColor(4, 120, 87); // Emerald 700
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text(`Rs. ${transaction.amount.toLocaleString('en-IN')}`, margin + contentWidth / 2, y + 14, { align: 'center' });
+  }
 
   // Payment Mode Badge inside box
-  doc.setFillColor(isUpi ? 37 : 16, isUpi ? 99 : 185, isUpi ? 235 : 129); // Blue or Emerald
-  doc.roundedRect(margin + contentWidth / 2 - 18, y + 16.5, 36, 5, 1, 1, 'F');
+  doc.setFillColor(isWithdrawal ? (isUpi ? 2 : 217) : (isUpi ? 37 : 16), isWithdrawal ? (isUpi ? 132 : 119) : (isUpi ? 99 : 185), isWithdrawal ? (isUpi ? 199 : 6) : (isUpi ? 235 : 129));
+  doc.roundedRect(margin + contentWidth / 2 - 20, y + 16.5, 40, 5, 1, 1, 'F');
 
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
@@ -204,21 +233,29 @@ export function generateReceiptPDF(data: ReceiptData): GeneratedReceipt {
   doc.line(margin, y + 2, margin + contentWidth, y + 2);
 
   y += 6.5;
-  renderDataRow('Previous Outstanding', `Rs. ${previousBalance.toLocaleString('en-IN')}`);
-  renderDataRow('Amount Credited / Paid', `- Rs. ${transaction.amount.toLocaleString('en-IN')}`, true, [5, 150, 105]);
+  renderDataRow(
+    isWithdrawal ? 'Previous Deposit Held' : 'Previous Outstanding', 
+    `Rs. ${previousBalance.toLocaleString('en-IN')}`
+  );
+  renderDataRow(
+    isWithdrawal ? 'Withdrawn Payout' : 'Amount Credited / Paid', 
+    `- Rs. ${transaction.amount.toLocaleString('en-IN')}`, 
+    true, 
+    isWithdrawal ? [194, 65, 12] : [5, 150, 105]
+  );
 
   // Outstanding Balance Highlight Box
   y += 1;
-  doc.setFillColor(241, 245, 249); // Slate 100
-  doc.setDrawColor(203, 213, 225); // Slate 300
+  doc.setFillColor(isWithdrawal ? 254 : 241, isWithdrawal ? 243 : 245, isWithdrawal ? 199 : 249);
+  doc.setDrawColor(isWithdrawal ? 251 : 203, isWithdrawal ? 191 : 213, isWithdrawal ? 36 : 225);
   doc.roundedRect(margin, y - 3.5, contentWidth, 8, 1.5, 1.5, 'FD');
 
   doc.setTextColor(15, 23, 42);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
-  doc.text('Remaining Balance', margin + 3, y + 1.5);
+  doc.text(isWithdrawal ? 'Remaining Deposit Held' : 'Remaining Balance', margin + 3, y + 1.5);
 
-  doc.setTextColor(5, 150, 105);
+  doc.setTextColor(isWithdrawal ? 180 : 5, isWithdrawal ? 83 : 150, isWithdrawal ? 9 : 105);
   doc.setFontSize(8.5);
   doc.text(`Rs. ${newBalance.toLocaleString('en-IN')}`, margin + contentWidth - 3, y + 1.5, { align: 'right' });
 

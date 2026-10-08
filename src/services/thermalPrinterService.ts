@@ -21,6 +21,7 @@ function buildEscPosData(data: ReceiptData): Uint8Array {
     safeFormat(Date.now(), 'dd/MM/yyyy hh:mm a')
   );
   const isUpi = transaction.type === 'phonepe';
+  const isWithdrawal = Boolean(transaction.isWithdrawal);
   const isNP = transaction.type === 'NP' || transaction.type === 'unsettled' || transaction.status === 'unsettled';
   const wasNP = Boolean(
     transaction.convertedFromNP || 
@@ -34,7 +35,15 @@ function buildEscPosData(data: ReceiptData): Uint8Array {
     ? safeFormat(rawNpTime, 'dd/MM/yyyy hh:mm a', 'Earlier') 
     : (transaction.npMarkedDate || null);
 
-  const modeStr = isUpi ? 'UPI / PHONEPE' : isNP ? 'NP' : wasNP ? 'CASH (NP SETTLED)' : 'CASH';
+  const modeStr = isWithdrawal 
+    ? (isUpi ? 'PHONEPE UPI PAYOUT' : 'CASH PAYOUT')
+    : isUpi 
+      ? 'UPI / PHONEPE' 
+      : isNP 
+        ? 'NP' 
+        : wasNP 
+          ? 'CASH (NP SETTLED)' 
+          : 'CASH';
 
   const encoder = new TextEncoder();
   const parts: Uint8Array[] = [];
@@ -87,7 +96,7 @@ function buildEscPosData(data: ReceiptData): Uint8Array {
 
   // Amount - Center, Double Size, Bold
   addCmd([0x1b, 0x61, 0x01]); // Center
-  addText('AMOUNT RECEIVED\n');
+  addText(isWithdrawal ? 'AMOUNT PAID OUT\n' : 'AMOUNT RECEIVED\n');
   addCmd([0x1d, 0x21, 0x11]); // Double size
   addCmd([0x1b, 0x45, 0x01]); // Bold on
   addText(`Rs. ${transaction.amount.toLocaleString('en-IN')}\n`);
@@ -98,10 +107,22 @@ function buildEscPosData(data: ReceiptData): Uint8Array {
 
   // Financial Breakdown - Left align
   addCmd([0x1b, 0x61, 0x00]);
-  addText(`Previous Bal: Rs. ${previousBalance.toLocaleString('en-IN')}\n`);
-  addText(`Amount Paid : Rs. ${transaction.amount.toLocaleString('en-IN')}\n`);
+  addText(
+    isWithdrawal
+      ? `Prev Deposit: Rs. ${previousBalance.toLocaleString('en-IN')}\n`
+      : `Previous Bal: Rs. ${previousBalance.toLocaleString('en-IN')}\n`
+  );
+  addText(
+    isWithdrawal
+      ? `Withdrawn   : Rs. ${transaction.amount.toLocaleString('en-IN')}\n`
+      : `Amount Paid : Rs. ${transaction.amount.toLocaleString('en-IN')}\n`
+  );
   addCmd([0x1b, 0x45, 0x01]); // Bold on
-  addText(`Remaining   : Rs. ${newBalance.toLocaleString('en-IN')}\n`);
+  addText(
+    isWithdrawal
+      ? `Remaining Dp: Rs. ${newBalance.toLocaleString('en-IN')}\n`
+      : `Remaining   : Rs. ${newBalance.toLocaleString('en-IN')}\n`
+  );
   addCmd([0x1b, 0x45, 0x00]); // Bold off
   addText('--------------------------------\n');
 

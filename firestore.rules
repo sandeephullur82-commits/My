@@ -2,8 +2,142 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // --- Helper Functions ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidCustomer(data) {
+      return data.keys().hasAll(['id', 'name', 'phone']) &&
+             data.id is string && isValidId(data.id) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.phone is string && data.phone.size() >= 10 && data.phone.size() <= 15 &&
+             ((!('loan' in data) && 'loanAmount' in data && data.loanAmount is number && data.loanAmount >= 0) ||
+              ('loan' in data && data.loan is number && data.loan >= 0) ||
+              ('totalLoan' in data && data.totalLoan is number && data.totalLoan >= 0)) &&
+             (!('address' in data) || (data.address is string && data.address.size() <= 500)) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 2000));
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['id', 'customerId', 'amount', 'type', 'status', 'date']) &&
+             data.id is string && isValidId(data.id) &&
+             data.customerId is string && isValidId(data.customerId) &&
+             data.amount is number && data.amount > 0 &&
+             data.type in ['cash', 'phonepe', 'unsettled', 'NP'] &&
+             data.status in ['paid', 'pending', 'unsettled'] &&
+             data.date is string && data.date.size() == 10;
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['id', 'userId', 'type', 'title', 'timestamp']) &&
+             data.id is string && isValidId(data.id) &&
+             data.userId is string &&
+             data.type in ['success', 'error', 'info', 'transaction', 'warning', 'critical'] &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.timestamp is number;
+    }
+
+    // --- 1. Customers Collection & Collection Groups ---
+    // Enforces Invariant 1 (valid name, phone, loan) & Dirty Dozen #1, #6, #7, #10, #11
+    match /{path=**}/customers/{customerId} {
+      allow get, list: if true;
+
+      allow create: if isValidId(customerId) &&
+                      incoming().id == customerId &&
+                      isValidCustomer(incoming()) &&
+                      incoming().createdAt == request.time;
+
+      allow update: if isValidId(customerId) &&
+                      incoming().id == customerId &&
+                      isValidCustomer(incoming()) &&
+                      incoming().updatedAt == request.time &&
+                      (!('createdAt' in existing()) || incoming().createdAt == existing().createdAt);
+
+      // Orphan Write Protection (Dirty Dozen #10): Hard deletion is rejected to prevent orphaned records.
+      // Soft-deletion is enforced via update setting isDeleted: true with updatedAt == request.time.
+      allow delete: if false;
+    }
+
+    // --- 2. Entries / Transactions Collection & Collection Groups ---
+    // Enforces Invariant 2 (customerId), Invariant 3 (status), & Dirty Dozen #3, #4, #5, #7, #11
+    match /{path=**}/entries/{entryId} {
+      allow get, list: if true;
+
+      allow create: if isValidId(entryId) &&
+                      incoming().id == entryId &&
+                      isValidTransaction(incoming()) &&
+                      // Link Poisoning Protection (Dirty Dozen #4): Customer must exist
+                      (exists(/databases/$(database)/documents/customers/$(incoming().customerId)) ||
+                       (request.auth != null && exists(/databases/$(database)/documents/users/$(request.auth.uid)/customers/$(incoming().customerId)))) &&
+                      incoming().createdAt == request.time;
+
+      allow update: if isValidId(entryId) &&
+                      incoming().id == entryId &&
+                      isValidTransaction(incoming()) &&
+                      incoming().updatedAt == request.time &&
+                      // State Skip Protection (Dirty Dozen #5): Transition to paid requires timestamp audit
+                      (existing().status == incoming().status ||
+                       incoming().status != 'paid' ||
+                       incoming().paidAt == request.time);
+
+      allow delete: if false;
+    }
+
+    // --- 3. Audit History Subcollections ---
+    // Immutable audit logs (append-only)
+    match /{path=**}/entries/{entryId}/history/{historyId} {
+      allow read: if true;
+      allow create: if incoming().createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+    // --- 4. User Profiles & Settings ---
+    // Enforces PII Leak Protection (Dirty Dozen #8), Owner Hijack (Dirty Dozen #2), Ghost Fields (Dirty Dozen #9)
+    match /users/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+
+      allow write: if isSignedIn() && request.auth.uid == userId &&
+                     // Ghost Fields Protection (Dirty Dozen #9): Prevent unauthorized isAdmin privilege injection
+                     (!('isAdmin' in incoming()) || incoming().isAdmin == false ||
+                      (existing() != null && 'isAdmin' in existing() && incoming().isAdmin == existing().isAdmin)) &&
+                     (!('role' in incoming()) || incoming().role != 'admin' ||
+                      (existing() != null && 'role' in existing() && incoming().role == existing().role));
+
+      match /fcmTokens/{token} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+
+      // Enforces Invariant 4 & Cross-User Notification Protection (Dirty Dozen #12)
+      match /notifications/{notificationId} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow create: if isSignedIn() && request.auth.uid == userId &&
+                        incoming().userId == userId &&
+                        isValidNotification(incoming()) &&
+                        incoming().createdAt == request.time;
+        allow update: if isSignedIn() && request.auth.uid == userId &&
+                        incoming().userId == userId &&
+                        isValidNotification(incoming());
+        allow delete: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+
+    // Global Safety Net
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

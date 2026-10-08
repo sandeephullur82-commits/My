@@ -155,6 +155,7 @@ export async function generateReceiptImage(data: ReceiptData): Promise<Generated
     safeFormat(Date.now(), 'dd MMM yyyy, hh:mm a')
   );
   const isUpi = transaction.type === 'phonepe';
+  const isWithdrawal = Boolean(transaction.isWithdrawal);
   const isNP = transaction.type === 'NP' || transaction.type === 'unsettled' || transaction.status === 'unsettled';
   
   const wasNP = Boolean(
@@ -170,7 +171,15 @@ export async function generateReceiptImage(data: ReceiptData): Promise<Generated
     ? safeFormat(rawNpTime, 'dd MMM yyyy, hh:mm a', safeFormat(rawNpTime, 'dd MMM yyyy', 'Earlier'))
     : (transaction.npMarkedDate ? safeFormat(transaction.npMarkedDate, 'dd MMM yyyy', transaction.npMarkedDate) : null);
 
-  const paymentModeLabel = isUpi ? 'UPI / PHONEPE' : isNP ? 'NOT PAID (DUE RECORDED)' : wasNP ? 'CASH (SETTLED FROM NP)' : 'CASH COLLECTION';
+  const paymentModeLabel = isWithdrawal
+    ? (isUpi ? 'PHONEPE UPI PAYOUT' : 'CASH PAYOUT')
+    : isUpi 
+      ? 'UPI / PHONEPE' 
+      : isNP 
+        ? 'NOT PAID (DUE RECORDED)' 
+        : wasNP 
+          ? 'CASH (SETTLED FROM NP)' 
+          : 'CASH COLLECTION';
   const fileName = `Receipt_${(customer.name || 'Customer').replace(/[^a-zA-Z0-9]/g, '_')}_${receiptNo}.png`;
 
   // Logical dimensions (rendered at 2.5x scale for razor-sharp Retina/OLED mobile clarity)
@@ -217,7 +226,11 @@ export async function generateReceiptImage(data: ReceiptData): Promise<Generated
   const headerHeight = 142;
   const headerGrad = ctx.createLinearGradient(cardX, cardY, cardX + cardWidth, cardY + headerHeight);
 
-  if (isNP) {
+  if (isWithdrawal) {
+    headerGrad.addColorStop(0, '#7c2d12'); // orange-900
+    headerGrad.addColorStop(0.6, '#c2410c'); // orange-700
+    headerGrad.addColorStop(1, '#ea580c'); // orange-600
+  } else if (isNP) {
     headerGrad.addColorStop(0, '#78350f'); // amber-900
     headerGrad.addColorStop(0.6, '#b45309'); // amber-700
     headerGrad.addColorStop(1, '#d97706'); // amber-600
@@ -233,8 +246,8 @@ export async function generateReceiptImage(data: ReceiptData): Promise<Generated
   ctx.fill();
   ctx.clip();
 
-  // Top Accent Bar (Mint Green or Gold)
-  ctx.fillStyle = isNP ? '#fbbf24' : '#34d399';
+  // Top Accent Bar (Mint Green or Gold/Orange)
+  ctx.fillStyle = isWithdrawal ? '#fdba74' : isNP ? '#fbbf24' : '#34d399';
   ctx.fillRect(cardX, cardY, cardWidth, 3.5);
 
   // Subtle geometric curve watermarks in header
@@ -298,7 +311,17 @@ export async function generateReceiptImage(data: ReceiptData): Promise<Generated
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 10px system-ui, -apple-system, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(isNP ? '⚠ MISSED INSTALLMENT' : wasNP ? '✓ SETTLED FROM NP' : '✓ OFFICIAL RECEIPT', statusPillX + (statusPillWidth / 2), statusPillY + 18);
+  ctx.fillText(
+    isWithdrawal 
+      ? '✓ ADVANCE WITHDRAWAL' 
+      : isNP 
+        ? '⚠ MISSED INSTALLMENT' 
+        : wasNP 
+          ? '✓ SETTLED FROM NP' 
+          : '✓ OFFICIAL RECEIPT', 
+    statusPillX + (statusPillWidth / 2), 
+    statusPillY + 18
+  );
 
   // Sub-bar in Header: Receipt No & Date
   const subBarY = cardY + 94;
@@ -354,19 +377,27 @@ export async function generateReceiptImage(data: ReceiptData): Promise<Generated
   const heroWidth = cardWidth - 44;
   const heroX = cardX + 22;
 
-  ctx.fillStyle = isNP ? '#fffbeb' : '#f0fdf4'; // Amber-50 or Emerald-50
+  ctx.fillStyle = isWithdrawal ? '#fff7ed' : isNP ? '#fffbeb' : '#f0fdf4'; // Orange-50, Amber-50, or Emerald-50
   roundRect(ctx, heroX, heroY, heroWidth, heroHeight, 18);
   ctx.fill();
 
-  ctx.strokeStyle = isNP ? '#fde68a' : '#bbf7d0';
+  ctx.strokeStyle = isWithdrawal ? '#fed7aa' : isNP ? '#fde68a' : '#bbf7d0';
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
   // Subtitle
-  ctx.fillStyle = isNP ? '#b45309' : '#047857';
+  ctx.fillStyle = isWithdrawal ? '#c2410c' : isNP ? '#b45309' : '#047857';
   ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(isNP ? 'RECORDED DUE / UNPAID INSTALLMENT' : 'AMOUNT COLLECTED & CREDITED', logicalWidth / 2, heroY + 30);
+  ctx.fillText(
+    isWithdrawal
+      ? 'ADVANCE DEPOSIT WITHDRAWAL PAYOUT'
+      : isNP 
+        ? 'RECORDED DUE / UNPAID INSTALLMENT' 
+        : 'AMOUNT COLLECTED & CREDITED', 
+    logicalWidth / 2, 
+    heroY + 30
+  );
 
   // Big Amount Display
   ctx.fillStyle = isNP ? '#9a3412' : '#0f172a';
@@ -463,29 +494,41 @@ export async function generateReceiptImage(data: ReceiptData): Promise<Generated
   ctx.textAlign = 'left';
   ctx.fillText('ACCOUNT BALANCE BREAKDOWN', sectionX + 16, balCardY + 22);
 
-  // Row 1: Previous Outstanding
+  // Row 1: Previous Outstanding / Deposit
   let rowY = balCardY + 46;
   ctx.fillStyle = '#64748b';
   ctx.font = '500 12.5px system-ui, -apple-system, sans-serif';
-  ctx.fillText(isNP ? 'Outstanding Balance' : 'Previous Outstanding', sectionX + 16, rowY);
+  ctx.fillText(
+    isWithdrawal ? 'Previous Deposit Held' : isNP ? 'Outstanding Balance' : 'Previous Outstanding', 
+    sectionX + 16, 
+    rowY
+  );
 
   ctx.fillStyle = '#334155';
   ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
   ctx.textAlign = 'right';
   ctx.fillText(`₹ ${previousBalance.toLocaleString('en-IN')}`, sectionX + sectionWidth - 16, rowY);
 
-  // Row 2: Amount Credited
+  // Row 2: Amount Credited / Withdrawn
   rowY += 26;
   ctx.textAlign = 'left';
   ctx.fillStyle = '#64748b';
   ctx.font = '500 12.5px system-ui, -apple-system, sans-serif';
-  ctx.fillText(isNP ? 'Status' : 'Amount Paid & Credited', sectionX + 16, rowY);
+  ctx.fillText(
+    isWithdrawal ? 'Withdrawn Payout' : isNP ? 'Status' : 'Amount Paid & Credited', 
+    sectionX + 16, 
+    rowY
+  );
 
-  ctx.fillStyle = isNP ? '#d97706' : '#059669';
+  ctx.fillStyle = isWithdrawal ? '#c2410c' : isNP ? '#d97706' : '#059669';
   ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
   ctx.textAlign = 'right';
   ctx.fillText(
-    isNP ? 'NP • Due Retained' : `- ₹ ${transaction.amount.toLocaleString('en-IN')}`, 
+    isWithdrawal 
+      ? `- ₹ ${transaction.amount.toLocaleString('en-IN')}` 
+      : isNP 
+        ? 'NP • Due Retained' 
+        : `- ₹ ${transaction.amount.toLocaleString('en-IN')}`, 
     sectionX + sectionWidth - 16, 
     rowY
   );
@@ -497,20 +540,20 @@ export async function generateReceiptImage(data: ReceiptData): Promise<Generated
   const remBoxX = sectionX + 16;
   const remBoxY = rowY;
 
-  ctx.fillStyle = '#ecfdf5'; // emerald-50
+  ctx.fillStyle = isWithdrawal ? '#fff7ed' : '#ecfdf5'; // Orange-50 or Emerald-50
   roundRect(ctx, remBoxX, remBoxY, remBoxWidth, remBoxHeight, 12);
   ctx.fill();
-  ctx.strokeStyle = '#a7f3d0'; // emerald-200
+  ctx.strokeStyle = isWithdrawal ? '#fed7aa' : '#a7f3d0';
   ctx.lineWidth = 1;
   ctx.stroke();
 
   ctx.textAlign = 'left';
-  ctx.fillStyle = '#065f46';
+  ctx.fillStyle = isWithdrawal ? '#9a3412' : '#065f46';
   ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
-  ctx.fillText('Net Remaining Balance', remBoxX + 14, remBoxY + 27);
+  ctx.fillText(isWithdrawal ? 'Remaining Deposit Held' : 'Net Remaining Balance', remBoxX + 14, remBoxY + 27);
 
   ctx.textAlign = 'right';
-  ctx.fillStyle = '#047857';
+  ctx.fillStyle = isWithdrawal ? '#c2410c' : '#047857';
   ctx.font = '900 17px system-ui, -apple-system, sans-serif';
   ctx.fillText(`₹ ${newBalance.toLocaleString('en-IN')}`, remBoxX + remBoxWidth - 14, remBoxY + 28);
 

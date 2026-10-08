@@ -30,11 +30,16 @@ export function BottomSheet({
   useEffect(() => {
     if (isOpen) {
       setIsModalOpen(true);
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') onClose();
+      };
+      window.addEventListener('keydown', handleKeyDown);
       return () => {
         setIsModalOpen(false);
+        window.removeEventListener('keydown', handleKeyDown);
       };
     }
-  }, [isOpen, setIsModalOpen]);
+  }, [isOpen, setIsModalOpen, onClose]);
 
   const content = (
     <AnimatePresence>
@@ -45,13 +50,17 @@ export function BottomSheet({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose}
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[1999]"
+          aria-hidden="true"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[99990]"
         />
       )}
       {isOpen && (
         <motion.div
           key="sheet-container"
-          className="fixed inset-0 z-[2000] flex items-end justify-center pointer-events-none"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={title ? "bottom-sheet-title" : undefined}
+          className="fixed inset-0 z-[99995] flex items-end justify-center pointer-events-none"
         >
           <motion.div
             initial={{ y: '100%' }}
@@ -74,10 +83,10 @@ export function BottomSheet({
                 <div className="flex items-center justify-between w-full px-6 mb-2">
                   <div className="flex-1">
                     {title && (
-                      <h3 className="text-[20px] font-bold text-text-primary tracking-tight uppercase leading-none">{title}</h3>
+                      <h3 id="bottom-sheet-title" className="text-[20px] font-bold text-text-primary tracking-tight uppercase leading-none">{title}</h3>
                     )}
                     {subtitle && (
-                      <p className="text-[11px] font-black text-text-secondary opacity-30 uppercase tracking-widest leading-none mt-1.5">
+                      <p className="text-[11px] font-black text-text-secondary opacity-60 uppercase tracking-widest leading-none mt-1.5">
                         {subtitle}
                       </p>
                     )}
@@ -86,9 +95,10 @@ export function BottomSheet({
                     <motion.button 
                       whileTap={{ scale: 0.96, transition: { duration: 0.08 } }}
                       onClick={onClose}
-                      className="p-1.5 rounded-full bg-bg text-text-secondary hover:text-text-primary transition-all border border-border/50"
+                      aria-label="Close dialog"
+                      className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-text-secondary hover:text-text-primary hover:bg-muted transition-all active:scale-90"
                     >
-                      <X size={16} />
+                      <X size={18} />
                     </motion.button>
                   )}
                 </div>

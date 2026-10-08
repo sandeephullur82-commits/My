@@ -38,8 +38,17 @@ export function TransactionsList() {
   // Receipt Modal State
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptData | null>(null);
 
+  // Fast O(1) customer map to eliminate repeated O(C) array scans
+  const customerMap = useMemo(() => {
+    const map = new Map<string, Customer>();
+    for (let i = 0; i < customers.length; i++) {
+      map.set(customers[i].id, customers[i]);
+    }
+    return map;
+  }, [customers]);
+
   const handleOpenReceipt = (tx: Transaction) => {
-    const customer = customers.find(c => c.id === tx.customerId);
+    const customer = customerMap.get(tx.customerId);
     const targetCustomer: Customer = customer || ({
       id: tx.customerId,
       name: 'Unknown Customer',
@@ -133,7 +142,7 @@ export function TransactionsList() {
 
       // 2. Search Logic
       if (debouncedQuery) {
-        const customer = customers.find(c => c.id === tx.customerId);
+        const customer = customerMap.get(tx.customerId);
         if (!customer) return false;
         
         const nameMatch = customer.name.toLowerCase().includes(debouncedQuery);
@@ -153,7 +162,7 @@ export function TransactionsList() {
 
       return true;
     });
-  }, [transactions, customers, filter, debouncedQuery]);
+  }, [transactions, customerMap, filter, debouncedQuery]);
 
   // Transaction counts for filter tabs
   const filterCounts = useMemo(() => {
@@ -279,35 +288,34 @@ export function TransactionsList() {
             </motion.button>
           </div>
 
-          {/* Filter Tabs - Horizontal Scrollable */}
-          <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-2 px-2 pb-1 scroll-smooth">
-            {(['ALL', 'CASH', 'PHONEPE', 'UNSETTLED'] as FilterType[]).map((f) => (
-              <motion.button
-                key={f}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => handleSetFilter(f)}
-                className={`flex-1 min-w-[90px] relative py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap overflow-hidden ${
-                  filter === f 
-                    ? 'text-white' 
-                    : 'bg-card border border-border/10 text-text-secondary opacity-40 hover:opacity-100'
-                }`}
-              >
-                <div className="relative z-10 flex flex-col items-center gap-0.5">
-                  <span>{f === 'PHONEPE' ? 'UPI' : f === 'UNSETTLED' ? 'NP' : f}</span>
-                  <span className={`text-[8px] font-bold ${filter === f ? 'text-white/60' : 'text-text-secondary/30'}`}>
+          {/* Filter Tabs - Clean Segmented Control */}
+          <div className="flex items-center gap-1.5 p-1 bg-muted/70 rounded-xl border border-border/50 overflow-x-auto scrollbar-hide">
+            {(['ALL', 'CASH', 'PHONEPE', 'UNSETTLED'] as FilterType[]).map((f) => {
+              const label = f === 'PHONEPE' ? 'UPI' : f === 'UNSETTLED' ? 'Unsettled / NP' : f === 'ALL' ? 'All' : 'Cash';
+              const isActive = filter === f;
+              return (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => {
+                    if (navigator.vibrate) navigator.vibrate(5);
+                    handleSetFilter(f);
+                  }}
+                  className={`flex-1 min-w-[70px] py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                    isActive 
+                      ? 'bg-card text-text-primary shadow-xs border border-border/80 font-black' 
+                      : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  <span>{label}</span>
+                  <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md ${
+                    isActive ? 'bg-accent/15 text-accent font-bold' : 'bg-card/50 text-text-secondary'
+                  }`}>
                     {filterCounts[f]}
                   </span>
-                </div>
-
-                {filter === f && (
-                  <motion.div 
-                    layoutId="activeHistoryFilter"
-                    className="absolute inset-0 bg-accent z-0"
-                    transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
-                  />
-                )}
-              </motion.button>
-            ))}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -407,7 +415,7 @@ export function TransactionsList() {
                         >
                           <div className="flex flex-col p-3 gap-2">
                             {group.transactions.map((tx) => {
-                              const customer = customers.find(c => c.id === tx.customerId);
+                              const customer = customerMap.get(tx.customerId);
                               const isCash = tx.type === 'cash';
                               const isUPI = tx.type === 'phonepe';
                               const isNP = tx.type === 'NP' || tx.type === 'unsettled';

@@ -94,7 +94,15 @@ function buildAndroidNotificationOptions(payload) {
     case 'renewal_completed':
       actions = [
         { action: 'view_dashboard', title: '📊 Dashboard' },
-        { action: 'whatsapp_renewal', title: '💬 WhatsApp Terms' }
+        { action: 'open_route', title: '🚀 Daily Route' }
+      ];
+      vibrationPattern = [0, 150, 80, 150];
+      break;
+
+    case 'new_loan':
+      actions = [
+        { action: 'open_route', title: '🚀 Daily Route' },
+        { action: 'view_dashboard', title: '📊 Dashboard' }
       ];
       vibrationPattern = [0, 150, 80, 150];
       break;

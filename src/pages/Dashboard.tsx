@@ -4,12 +4,10 @@ import { format } from 'date-fns';
 import { SyncStatus } from '../components/Dashboard/SyncStatus';
 import { StatsGrid } from '../components/Dashboard/StatsGrid';
 import { DashboardRenewalSection } from '../components/Dashboard/DashboardRenewalSection';
-import { firestoreService } from '../services/firestoreService';
-import { toast } from 'sonner';
-
 import { StatsSkeleton, Skeleton } from '../components/Skeleton';
 import { PageContainer } from '../components/PageContainer';
 import { notificationService } from '../services/notificationService';
+import { CheckCircle2, Clock, Users, ArrowRight } from 'lucide-react';
 
 export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: any, customerId?: string, entryTabVal?: any, dateFilterVal?: any, urlFilter?: string) => void }) {
   const { transactions, customers, loading } = useRealtimeData();
@@ -19,17 +17,14 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
     notificationService.initialize();
   }, []);
 
-  // Maintain isReady only for the initial mount to prevent flickering on every tab switch
   useEffect(() => {
     if (!loading) {
-       setIsReady(true);
-     }
+      setIsReady(true);
+    }
   }, [loading]);
 
-  // Memoize date strings to avoid redundant calculations
   const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
 
-  // Performance Optimization: O(M + N) instead of O(M * N)
   const pendingCustomers = useMemo(() => {
     const paidTodaySet = new Set(
       transactions
@@ -43,7 +38,6 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
     });
   }, [transactions, customers, today]);
 
-  // Memoize stats calculation
   const stats = useMemo(() => {
     let cashToday = 0;
     let cashCount = 0;
@@ -91,16 +85,10 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
     return transactions.filter(tx => tx.date === today && !tx.isDeleted).length;
   }, [transactions, today]);
 
-  const statsStrip = {
-      todayCount: todayEntriesCount,
-      pendingCount: pendingCustomers.length,
-      totalCustomers: customers.length
-  };
-
   if (!isReady) {
     return (
       <PageContainer>
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-5 max-w-4xl mx-auto">
           <SyncStatus />
           <StatsSkeleton />
           <div className="flex flex-col gap-4">
@@ -113,39 +101,77 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
 
   return (
     <PageContainer>
-      <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-        {/* Top Section */}
+      <div className="flex flex-col gap-5 max-w-4xl mx-auto animate-in fade-in duration-300 pb-4">
+        {/* Top Header */}
         <SyncStatus />
 
-        {/* Quick Info Strip */}
-        <div className="flex items-center justify-between px-5 py-3 bg-card border border-border/10 rounded-[20px] shadow-sm">
-           <div 
-             className="flex flex-col items-center cursor-pointer active:scale-95 transition-transform"
-             onClick={() => onNavigate('entry', 'ALL', undefined, 'PAID', 'ALL')}
-           >
-              <span className="text-[14px] font-black text-text-primary">{statsStrip.todayCount}</span>
-              <span className="text-[8px] font-black uppercase tracking-widest text-text-secondary opacity-40">Today</span>
-           </div>
-           <div className="w-px h-6 bg-border/20" />
-           <div 
-             className="flex flex-col items-center cursor-pointer active:scale-95 transition-transform"
-             onClick={() => onNavigate('entry', 'ALL', undefined, 'PENDING', 'ALL')}
-           >
-              <span className="text-[14px] font-black text-warning">{statsStrip.pendingCount}</span>
-              <span className="text-[8px] font-black uppercase tracking-widest text-text-secondary opacity-40">Pending</span>
-           </div>
-           <div className="w-px h-6 bg-border/20" />
-           <div 
-             className="flex flex-col items-center cursor-pointer active:scale-95 transition-transform"
-             onClick={() => onNavigate('customers')}
-           >
-              <span className="text-[14px] font-black text-accent">{statsStrip.totalCustomers}</span>
-              <span className="text-[8px] font-black uppercase tracking-widest text-text-secondary opacity-40">Total</span>
-           </div>
+        {/* Quick Summary Metrics Strip */}
+        <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+          
+          {/* Card 1: Today Collected */}
+          <div 
+            onClick={() => onNavigate('entry', 'ALL', undefined, 'PAID', 'ALL')}
+            className="flex flex-col items-center justify-center p-3 sm:p-4 bg-card border border-border hover:border-success/40 rounded-2xl shadow-xs cursor-pointer active:scale-95 transition-all group text-center"
+          >
+            <div className="w-8 h-8 rounded-xl bg-success/10 text-success flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
+              <CheckCircle2 size={16} strokeWidth={2.5} />
+            </div>
+            <span className="text-lg sm:text-2xl font-black text-text-primary tracking-tight leading-none">
+              {todayEntriesCount}
+            </span>
+            <span className="text-[11px] font-bold text-text-secondary mt-1">
+              Collected Today
+            </span>
+          </div>
+
+          {/* Card 2: Pending Today */}
+          <div 
+            onClick={() => onNavigate('entry', 'ALL', undefined, 'PENDING', 'ALL')}
+            className="flex flex-col items-center justify-center p-3 sm:p-4 bg-card border border-border hover:border-warning/40 rounded-2xl shadow-xs cursor-pointer active:scale-95 transition-all group text-center"
+          >
+            <div className="w-8 h-8 rounded-xl bg-warning/10 text-warning flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
+              <Clock size={16} strokeWidth={2.5} />
+            </div>
+            <span className="text-lg sm:text-2xl font-black text-warning tracking-tight leading-none">
+              {pendingCustomers.length}
+            </span>
+            <span className="text-[11px] font-bold text-text-secondary mt-1">
+              Pending Today
+            </span>
+          </div>
+
+          {/* Card 3: Total Accounts */}
+          <div 
+            onClick={() => onNavigate('customers')}
+            className="flex flex-col items-center justify-center p-3 sm:p-4 bg-card border border-border hover:border-accent/40 rounded-2xl shadow-xs cursor-pointer active:scale-95 transition-all group text-center"
+          >
+            <div className="w-8 h-8 rounded-xl bg-accent/10 text-accent flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
+              <Users size={16} strokeWidth={2.5} />
+            </div>
+            <span className="text-lg sm:text-2xl font-black text-accent tracking-tight leading-none">
+              {customers.length}
+            </span>
+            <span className="text-[11px] font-bold text-text-secondary mt-1">
+              Total Accounts
+            </span>
+          </div>
         </div>
 
-        <div className="space-y-6">
-          {/* Stats Grid */}
+        {/* Financial Highlights & Breakdown */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-text-secondary">
+              Collection Breakdown
+            </h2>
+            <button
+              onClick={() => onNavigate('transactions', 'ALL')}
+              className="text-xs font-bold text-accent hover:underline flex items-center gap-1"
+            >
+              <span>Full Ledger</span>
+              <ArrowRight size={13} />
+            </button>
+          </div>
+
           <StatsGrid 
             stats={stats} 
             onNavigate={(tab, filter, custId, et, df) => {
@@ -161,7 +187,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
           />
         </div>
 
-        {/* Matured Loan Renewals Section (Dashboard Only) - Located at bottom */}
+        {/* Matured Loan Renewals Section */}
         <DashboardRenewalSection customers={customers} onNavigate={onNavigate} />
       </div>
     </PageContainer>

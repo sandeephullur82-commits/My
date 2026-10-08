@@ -24,7 +24,7 @@ export interface NotificationLog {
   title: string;
   body: string;
   timestamp: number;
-  type: 'payment' | 'np' | 'morning_route' | 'evening_summary' | 'test' | 'push' | 'sync' | 'renewal' | 'renewal_summary' | 'renewal_completed' | 'renewal_rejected';
+  type: 'payment' | 'np' | 'morning_route' | 'evening_summary' | 'test' | 'push' | 'sync' | 'renewal' | 'renewal_summary' | 'renewal_completed' | 'renewal_rejected' | 'new_loan';
   data?: Record<string, any>;
 }
 
@@ -705,7 +705,7 @@ class NotificationService {
                 id: 'RENEWED_CONFIRM_ACTIONS',
                 actions: [
                   { id: 'view_dashboard', title: '📊 Dashboard' },
-                  { id: 'whatsapp_renewal', title: '💬 WhatsApp Terms' }
+                  { id: 'open_route', title: '🚀 Daily Route' }
                 ]
               }
             ]
@@ -948,7 +948,7 @@ class NotificationService {
         else if (options.type === 'evening_summary') actionTypeId = 'SUMMARY_ACTIONS';
         else if (options.type === 'sync') actionTypeId = 'SYNC_ACTIONS';
         else if (options.type === 'renewal' || options.type === 'renewal_summary') actionTypeId = 'RENEWAL_ACTIONS';
-        else if (options.type === 'renewal_completed') actionTypeId = 'RENEWED_CONFIRM_ACTIONS';
+        else if (options.type === 'renewal_completed' || options.type === 'new_loan') actionTypeId = 'RENEWED_CONFIRM_ACTIONS';
 
         await LocalNotifications.schedule({
           notifications: [
@@ -1015,9 +1015,10 @@ class NotificationService {
             break;
 
           case 'renewal_completed':
+          case 'new_loan':
             actions = [
               { action: 'view_dashboard', title: '📊 Dashboard' },
-              { action: 'whatsapp_renewal', title: '💬 WhatsApp Terms' }
+              { action: 'open_route', title: '🚀 Daily Route' }
             ];
             vibrationPattern = [0, 150, 80, 150];
             break;
@@ -1117,6 +1118,24 @@ class NotificationService {
       channelId: 'collections_channel',
       type: 'payment',
       extra: { customerName, amount, type, remainingBal, notification_type: 'payment' }
+    });
+  }
+
+  public async notifyAdvanceSavingsDeposit(
+    customerName: string,
+    amount: number,
+    type: 'cash' | 'phonepe',
+    totalAdvance: number
+  ): Promise<boolean> {
+    const title = `💰 Advance Savings: ${customerName}`;
+    const body = `Collected ₹${amount.toLocaleString('en-IN')} ${type === 'cash' ? 'Cash' : 'UPI'} advance savings deposit. Total Advance: ₹${totalAdvance.toLocaleString('en-IN')}.`;
+
+    return this.dispatchNotification({
+      title,
+      body,
+      channelId: 'collections_channel',
+      type: 'payment',
+      extra: { customerName, amount, type, totalAdvance, notification_type: 'advance_deposit' }
     });
   }
 
@@ -1272,6 +1291,37 @@ class NotificationService {
         phone: customerPhone,
         click_action: '/',
         notification_type: 'renewal_completed'
+      }
+    });
+  }
+
+  public async notifyNewLoanIssued(
+    customerName: string,
+    cycleNumber: number,
+    newLoanAmount: number,
+    durationDays: number,
+    dailyInstallment: number,
+    customerId?: string,
+    customerPhone?: string
+  ): Promise<boolean> {
+    const title = `🚀 New Loan Started: ${customerName} (Cycle #${cycleNumber})`;
+    const body = `Cycle #${cycleNumber} active! Loan Amount: ₹${newLoanAmount.toLocaleString('en-IN')} for ${durationDays} days (₹${dailyInstallment.toLocaleString('en-IN')}/day).`;
+
+    return this.dispatchNotification({
+      title,
+      body,
+      channelId: 'renewals_channel',
+      type: 'new_loan',
+      extra: {
+        customerName,
+        cycleNumber,
+        newLoanAmount,
+        durationDays,
+        dailyInstallment,
+        customerId,
+        phone: customerPhone,
+        click_action: customerId ? `/entry?customerId=${customerId}` : '/entry',
+        notification_type: 'new_loan'
       }
     });
   }

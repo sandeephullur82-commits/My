@@ -2,22 +2,15 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   RotateCcw, 
-  AlertTriangle, 
-  X, 
-  Phone, 
-  Calendar, 
-  Check, 
   ArrowRight, 
   Clock, 
   ChevronDown, 
   ChevronUp,
-  ShieldAlert,
   Bell
 } from 'lucide-react';
-import { Customer, firestoreService } from '../../services/firestoreService';
+import { Customer } from '../../services/firestoreService';
 import { notificationService } from '../../services/notificationService';
-import { safeDistanceToNow, safeDifferenceInDays, safeFormat } from '../../lib/utils';
-import { MaturedRenewalModal } from './MaturedRenewalModal';
+import { safeDifferenceInDays } from '../../lib/utils';
 import { toast } from 'sonner';
 
 interface DashboardRenewalSectionProps {
@@ -26,8 +19,6 @@ interface DashboardRenewalSectionProps {
 }
 
 export function DashboardRenewalSection({ customers, onNavigate }: DashboardRenewalSectionProps) {
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(true);
   const [isNotifying, setIsNotifying] = useState(false);
 
@@ -83,45 +74,6 @@ export function DashboardRenewalSection({ customers, onNavigate }: DashboardRene
       toast.error('Could not deliver Android notification');
     } finally {
       setTimeout(() => setIsNotifying(false), 1000);
-    }
-  };
-
-  const handleSendCustomerAlert = async (e: React.MouseEvent, customer: Customer, pending: number, daysPastMaturity: number) => {
-    e.stopPropagation();
-    try {
-      await notificationService.notifyRenewalDue({
-        id: customer.id,
-        name: customer.name,
-        phone: customer.phone,
-        pending,
-        endDate: customer.endDate,
-        daysOverdue: daysPastMaturity
-      });
-      toast.success(`Android alert sent for ${customer.name}!`);
-    } catch {
-      toast.error('Could not send notification');
-    }
-  };
-
-  const handleRejectRenewal = async (customer: Customer) => {
-    try {
-      setRejectingId(customer.id);
-      await firestoreService.rejectMaturedRenewal(customer.id, customer.docPath);
-      const totalLoan = customer.loanAmount || customer.loan || 0;
-      const paid = customer.paid || 0;
-      const pending = customer.pending !== undefined ? customer.pending : (totalLoan - paid);
-
-      // Trigger Android system notification for rejected renewal
-      notificationService.notifyRenewalRejected(customer.name, pending, customer.id).catch(() => {});
-
-      toast.info(`Renewal rejected for ${customer.name}`, {
-        description: 'Account kept as Overdue in regular collection list.'
-      });
-    } catch (err: any) {
-      console.error('Failed to reject renewal:', err);
-      toast.error('Failed to reject renewal');
-    } finally {
-      setRejectingId(null);
     }
   };
 
@@ -194,10 +146,15 @@ export function DashboardRenewalSection({ customers, onNavigate }: DashboardRene
               return (
                 <div 
                   key={customer.id} 
-                  className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 hover:bg-muted/20 transition-colors"
+                  onClick={() => {
+                    if (onNavigate) {
+                      onNavigate('customers', undefined, customer.id);
+                    }
+                  }}
+                  className="group p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 hover:bg-muted/20 transition-colors cursor-pointer"
                 >
                   {/* Customer Info & Matured Meta */}
-                  <div className="flex items-start gap-3 min-w-0">
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
                     <div className="w-10 h-10 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-black uppercase shrink-0 text-sm mt-0.5">
                       {customer.name ? customer.name.charAt(0) : '👤'}
                     </div>
@@ -230,8 +187,8 @@ export function DashboardRenewalSection({ customers, onNavigate }: DashboardRene
                     </div>
                   </div>
 
-                  {/* Financial Balance & Actions */}
-                  <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-border/40">
+                  {/* Financial Balance & Navigation indicator */}
+                  <div className="flex items-center justify-between sm:justify-end gap-5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-border/40">
                     <div className="text-left sm:text-right">
                       <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider block">
                         Remaining Due
@@ -241,38 +198,8 @@ export function DashboardRenewalSection({ customers, onNavigate }: DashboardRene
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      {/* Individual Android Notification Alert */}
-                      <button
-                        type="button"
-                        onClick={(e) => handleSendCustomerAlert(e, customer, pending, daysPastMaturity)}
-                        className="w-8 h-8 rounded-xl bg-muted hover:bg-amber-500/20 hover:text-amber-600 text-text-secondary flex items-center justify-center transition-colors active:scale-95 cursor-pointer"
-                        title="Send Android notification alert for this account"
-                      >
-                        <Bell size={13} />
-                      </button>
-
-                      {/* Reject Button */}
-                      <button
-                        type="button"
-                        disabled={rejectingId === customer.id}
-                        onClick={() => handleRejectRenewal(customer)}
-                        className="px-3 py-2 rounded-xl bg-muted hover:bg-danger/15 hover:text-danger text-text-secondary font-bold text-xs uppercase tracking-wider transition-colors active:scale-95 disabled:opacity-50 cursor-pointer"
-                        title="Dismiss from renewals and keep as overdue"
-                      >
-                        Reject
-                      </button>
-
-                      {/* Renew Button */}
-                      <button
-                        type="button"
-                        onClick={() => setSelectedCustomer(customer)}
-                        className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-sm shadow-amber-600/30 active:scale-95 transition-all cursor-pointer"
-                        title="Restructure remaining balance with interest"
-                      >
-                        <RotateCcw size={13} strokeWidth={2.5} />
-                        <span>Renew</span>
-                      </button>
+                    <div className="text-text-secondary opacity-40 group-hover:opacity-100 group-hover:text-amber-500 transition-all ml-2">
+                      <ArrowRight size={16} strokeWidth={2.5} />
                     </div>
                   </div>
                 </div>
@@ -281,16 +208,6 @@ export function DashboardRenewalSection({ customers, onNavigate }: DashboardRene
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Interactive Renewal Modal */}
-      <MaturedRenewalModal
-        isOpen={!!selectedCustomer}
-        onClose={() => setSelectedCustomer(null)}
-        customer={selectedCustomer}
-        onSuccess={() => {
-          setSelectedCustomer(null);
-        }}
-      />
     </div>
   );
 }
