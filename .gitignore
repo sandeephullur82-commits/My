@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Gemini CLI settings
+.gemini/
+
+# GitHub Actions credentials
+gha-creds-*.json
