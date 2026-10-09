@@ -318,7 +318,7 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
                 whileTap={{ scale: 0.92 }}
                 onClick={handlePrint}
                 title="Print Report"
-                className={`w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all ${isAndroidApp() ? 'flex' : 'hidden sm:flex'}`}
+                className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all"
               >
                 <Printer size={16} />
               </motion.button>

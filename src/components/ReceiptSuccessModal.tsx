@@ -7,6 +7,7 @@ import {
   Clock, 
   Share2, 
   Printer, 
+  Download, 
   X, 
   ArrowRight,
   ArrowUpRight,
@@ -23,9 +24,10 @@ import {
   ReceiptData,
   printReceipt,
   isBluetoothPrintSupported,
-  generateReceiptImage
+  generateReceiptImage,
+  downloadReceiptImage
 } from '../services/receiptImageService';
-import { isAndroidApp, printFileForAndroid } from '../utils/capacitorDeviceHelper';
+import { isAndroidApp, printFileForAndroid, downloadFileForAndroid } from '../utils/capacitorDeviceHelper';
 import { Customer } from '../services/firestoreService';
 import { PIGMY_LOGO_BASE64 } from '../assets/logoBase64';
 import { toast } from 'sonner';
@@ -41,6 +43,7 @@ interface ReceiptSuccessModalProps {
 
 export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: ReceiptSuccessModalProps) {
   const [isSharingImage, setIsSharingImage] = useState(false);
+  const [isDownloadingImage, setIsDownloadingImage] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const containerRef = useFocusTrap(Boolean(receipt));
 
@@ -102,9 +105,35 @@ export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: Receip
     }
   };
 
+  const handleDownloadImage = async () => {
+    try {
+      setIsDownloadingImage(true);
+      const { blob, fileName } = await generateReceiptImage(receipt);
+      if (isAndroidApp()) {
+        await downloadFileForAndroid(blob, fileName, 'Payment Receipt');
+      } else {
+        await downloadReceiptImage(receipt);
+        toast.success('Receipt image downloaded');
+      }
+    } catch (error) {
+      console.error('Download receipt error:', error);
+      toast.error('Failed to download receipt image');
+    } finally {
+      setIsDownloadingImage(false);
+    }
+  };
+
   const handlePrint = async (preferBluetooth: boolean = false) => {
     try {
       setIsPrinting(true);
+      if (preferBluetooth && isBluetoothPrintSupported()) {
+        const res = await printReceipt(receipt, true);
+        if (res === 'printed_bluetooth') {
+          toast.success('Receipt printed via Bluetooth Thermal Printer');
+          return;
+        }
+      }
+
       if (isAndroidApp()) {
         const { blob, fileName } = await generateReceiptImage(receipt);
         await printFileForAndroid(blob, fileName, 'Payment Receipt');
@@ -404,21 +433,37 @@ export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: Receip
               </button>
             )}
 
-            {/* Primary Action: Share Image (for WhatsApp / Messaging) */}
-            <button
-              type="button"
-              disabled={isSharingImage}
-              onClick={handleShareImage}
-              className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/30 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
-              title="Share receipt image on WhatsApp or system share"
-            >
-              {isSharingImage ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Share2 size={16} strokeWidth={2.5} />
-              )}
-              <span>Share Receipt Image</span>
-            </button>
+            {/* Primary Action: Share & Download Image (WhatsApp, Messaging, Device Storage) */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={isSharingImage}
+                onClick={handleShareImage}
+                className="flex-1 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/30 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                title="Share receipt image on WhatsApp or system share"
+              >
+                {isSharingImage ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Share2 size={16} strokeWidth={2.5} />
+                )}
+                <span>Share Receipt Image</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={isDownloadingImage}
+                onClick={handleDownloadImage}
+                className="w-12 h-12 rounded-2xl bg-card border border-border hover:bg-muted text-text-primary active:scale-95 transition-all flex items-center justify-center shadow-sm disabled:opacity-50 cursor-pointer shrink-0"
+                title="Download Receipt Image to Device"
+              >
+                {isDownloadingImage ? (
+                  <Loader2 size={16} className="animate-spin text-accent" />
+                ) : (
+                  <Download size={16} strokeWidth={2.5} />
+                )}
+              </button>
+            </div>
 
             {/* Secondary Actions: Print & Done */}
             <div className="flex items-center gap-2">
