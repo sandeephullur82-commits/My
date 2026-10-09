@@ -71,6 +71,23 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
     };
   }, []);
 
+  useEffect(() => {
+    const handleAndroidBack = (e: Event) => {
+      if (isSettingsOpen) {
+        e.preventDefault();
+        setIsSettingsOpen(false);
+      } else if (showGlobalAddCustomer) {
+        e.preventDefault();
+        setShowGlobalAddCustomer(false);
+      } else if (showGlobalCollection) {
+        e.preventDefault();
+        setShowGlobalCollection(false);
+      }
+    };
+    window.addEventListener('pigmy-android-back', handleAndroidBack);
+    return () => window.removeEventListener('pigmy-android-back', handleAndroidBack);
+  }, [isSettingsOpen, showGlobalAddCustomer, showGlobalCollection]);
+
   const getPageTitle = (tab: string) => {
     switch (tab) {
       case 'dashboard': return 'Financial Overview';

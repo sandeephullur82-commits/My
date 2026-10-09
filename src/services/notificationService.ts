@@ -552,14 +552,19 @@ class NotificationService {
     return '/dashboard';
   }
 
+  private navigateToRoute(targetUrl: string) {
+    const normalized = targetUrl.startsWith('/') ? targetUrl : `/${targetUrl}`;
+    if (this.customNavigate) {
+      this.customNavigate(normalized);
+    } else if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', normalized);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+  }
+
   public handleNotificationDeepLink(data: Record<string, any> = {}) {
     const targetUrl = this.resolveDeepLink(data);
-
-    if (this.customNavigate) {
-      this.customNavigate(targetUrl);
-    } else if (typeof window !== 'undefined') {
-      window.location.hash = targetUrl.startsWith('/') ? targetUrl : `/${targetUrl}`;
-    }
+    this.navigateToRoute(targetUrl);
   }
 
   public async registerDeviceToken(userId: string, token: string, platform: 'web' | 'android' | 'ios' = 'web'): Promise<void> {
@@ -736,19 +741,21 @@ class NotificationService {
                 window.open(`https://wa.me/${phoneWithCode}?text=${encodeURIComponent(textMsg)}`, '_blank');
               }
             } else if (actionId === 'open_renewal') {
-              window.location.href = '/';
+              this.navigateToRoute('/');
             } else if (actionId === 'collect_now') {
-              window.location.href = extra.customerId ? `/entry?customerId=${extra.customerId}` : '/entry';
+              this.navigateToRoute(extra.customerId ? `/entry?customerId=${extra.customerId}` : '/entry');
             } else if (actionId === 'view_receipt') {
-              window.location.href = extra.receiptId ? `/transactions?receipt=${extra.receiptId}` : '/transactions';
+              this.navigateToRoute(extra.receiptId ? `/transactions?receipt=${extra.receiptId}` : '/transactions');
             } else if (actionId === 'export_pdf') {
-              window.location.href = '/transactions?export=pdf';
+              this.navigateToRoute('/transactions?export=pdf');
             } else if (actionId === 'open_route') {
-              window.location.href = '/entry';
+              this.navigateToRoute('/entry');
             } else if (actionId === 'view_dashboard') {
-              window.location.href = '/';
+              this.navigateToRoute('/');
             } else if (actionId === 'view_history') {
-              window.location.href = '/transactions';
+              this.navigateToRoute('/transactions');
+            } else {
+              this.handleNotificationDeepLink(extra);
             }
           });
         } catch (e) {

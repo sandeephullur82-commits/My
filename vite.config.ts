@@ -18,11 +18,11 @@ export default defineConfig(({ mode }) => {
         },
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg', 'notification-badge.png'],
         manifest: {
-          name: 'Pigmy App',
-          short_name: 'Pigmy',
-          description: 'Pigmy Collection App',
-          theme_color: '#ffffff',
-          background_color: '#ffffff',
+          name: 'Pigmy Pro – Smart Collection System',
+          short_name: 'Pigmy Pro',
+          description: 'Professional-grade mobile-first fintech tool for smarter daily collections with audit-safe adjustments, high-speed entry, and real-time ledger sync.',
+          theme_color: '#0f172a',
+          background_color: '#0f172a',
           display: 'fullscreen',
           icons: [
             {

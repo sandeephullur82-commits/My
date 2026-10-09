@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Pigmy App</string>
-    <string name="title_activity_main">Pigmy App</string>
-    <string name="package_name">com.pigmy.app</string>
-    <string name="custom_url_scheme">com.pigmy.app</string>
+    <string name="app_name">Pigmy Pro</string>
+    <string name="title_activity_main">Pigmy Pro</string>
+    <string name="package_name">com.pigmypro.smartcollection</string>
+    <string name="custom_url_scheme">com.pigmypro.smartcollection</string>
 </resources>

@@ -143,7 +143,17 @@ async function startServer() {
       console.warn("Firebase Messaging not available in Firebase Admin:", e);
     }
   }
-  app.use(import_express.default.json());
+  app.use(import_express.default.json({ limit: "512kb" }));
+  app.use((req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    res.setHeader("X-XSS-Protection", "1; mode=block");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    next();
+  });
+  const isValidId = (id) => {
+    return typeof id === "string" && /^[a-zA-Z0-9_\-]{1,128}$/.test(id);
+  };
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: (/* @__PURE__ */ new Date()).toISOString() });
   });
@@ -219,12 +229,15 @@ async function startServer() {
   app.post("/api/tokens", async (req, res) => {
     const { token, userId } = req.body;
     if (!token || !userId) return res.status(400).json({ error: "Missing token or userId" });
+    if (!isValidId(userId) || typeof token !== "string" || token.length > 512) {
+      return res.status(400).json({ error: "Invalid userId or token format" });
+    }
     if (!db) return res.status(503).json({ error: "Database not connected" });
     try {
       await db.collection("users").doc(userId).collection("fcmTokens").doc(token).set({
         token,
         updatedAt: import_firebase_admin.default.firestore.FieldValue.serverTimestamp(),
-        deviceInfo: req.headers["user-agent"]
+        deviceInfo: String(req.headers["user-agent"] || "").slice(0, 255)
       });
       res.json({ success: true });
     } catch (error) {
@@ -235,6 +248,9 @@ async function startServer() {
   app.post("/api/notifications/test", async (req, res) => {
     const { userId, token } = req.body;
     if (!userId) return res.status(400).json({ error: "Missing userId" });
+    if (!isValidId(userId) || token && (typeof token !== "string" || token.length > 512)) {
+      return res.status(400).json({ error: "Invalid userId or token format" });
+    }
     if (!messaging) return res.status(503).json({ error: "Messaging not configured" });
     try {
       const title = "\u{1F514} Payment Reminder Test";
@@ -285,11 +301,15 @@ async function startServer() {
             failedTokens.push(tokens[idx]);
           }
         });
-        const cleanupBatch = db.batch();
-        failedTokens.forEach((t) => {
-          cleanupBatch.delete(db.collection("users").doc(userId).collection("fcmTokens").doc(t));
-        });
-        await cleanupBatch.commit();
+        const CHUNK_SIZE = 400;
+        for (let i = 0; i < failedTokens.length; i += CHUNK_SIZE) {
+          const chunk = failedTokens.slice(i, i + CHUNK_SIZE);
+          const cleanupBatch = db.batch();
+          chunk.forEach((t) => {
+            cleanupBatch.delete(db.collection("users").doc(userId).collection("fcmTokens").doc(t));
+          });
+          await cleanupBatch.commit();
+        }
       }
     } catch (error) {
       console.error(`Error sending notification to user ${userId}:`, error);
@@ -302,10 +322,21 @@ async function startServer() {
       const usersSnap = await db.collection("users").get();
       const now = /* @__PURE__ */ new Date();
       const todayDateOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-      for (const userDoc of usersSnap.docs) {
-        const userId = userDoc.id;
-        const customersSnap = await db.collection("users").doc(userId).collection("customers").where("isDeleted", "==", false).get();
-        const customerList = customersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const userList = usersSnap.docs.map((d) => d.id);
+      if (userList.length === 0) userList.push("admin_user");
+      let cachedRootCustomers = null;
+      for (const userId of userList) {
+        let customersSnap = await db.collection("users").doc(userId).collection("customers").where("isDeleted", "==", false).get();
+        let customerList = [];
+        if (!customersSnap.empty) {
+          customerList = customersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        } else {
+          if (!cachedRootCustomers) {
+            const rootSnap = await db.collection("customers").where("isDeleted", "==", false).get();
+            cachedRootCustomers = rootSnap.docs;
+          }
+          customerList = cachedRootCustomers.map((doc) => ({ id: doc.id, ...doc.data() }));
+        }
         let prefs = {
           enabled: true,
           upcomingReminders: true,
@@ -385,12 +416,24 @@ async function startServer() {
     console.log("Running Unsettled check...");
     try {
       const usersSnap = await db.collection("users").get();
-      for (const userDoc of usersSnap.docs) {
-        const userId = userDoc.id;
-        const entriesSnap = await db.collection("users").doc(userId).collection("entries").where("status", "==", "unsettled").where("isDeleted", "==", false).get();
+      const userList = usersSnap.docs.map((d) => d.id);
+      if (userList.length === 0) userList.push("admin_user");
+      let cachedRootEntries = null;
+      for (const userId of userList) {
+        let entriesSnap = await db.collection("users").doc(userId).collection("entries").where("status", "==", "unsettled").where("isDeleted", "==", false).get();
+        let entriesList = [];
+        if (!entriesSnap.empty) {
+          entriesList = entriesSnap.docs;
+        } else {
+          if (!cachedRootEntries) {
+            const rootSnap = await db.collection("entries").where("status", "==", "unsettled").where("isDeleted", "==", false).get();
+            cachedRootEntries = rootSnap.docs;
+          }
+          entriesList = cachedRootEntries;
+        }
         let count = 0;
         let total = 0;
-        entriesSnap.docs.forEach((doc) => {
+        entriesList.forEach((doc) => {
           const tx = doc.data();
           count++;
           total += tx.amount;
@@ -437,7 +480,15 @@ async function startServer() {
     });
   } else {
     const distPath = import_path.default.join(process.cwd(), "dist");
-    app.use(import_express.default.static(distPath));
+    app.use(import_express.default.static(distPath, {
+      maxAge: "1y",
+      immutable: true,
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith(".html")) {
+          res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        }
+      }
+    }));
     app.get("*", (req, res) => {
       res.sendFile(import_path.default.join(distPath, "index.html"));
     });
