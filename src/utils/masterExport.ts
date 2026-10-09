@@ -4,6 +4,7 @@ import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
 import { Customer, Transaction } from '../services/firestoreService';
 import { safeFormat } from '../lib/utils';
+import { isAndroidApp, downloadFileForAndroid } from './capacitorDeviceHelper';
 
 export interface MasterExportMetrics {
   totalCustomers: number;
@@ -93,6 +94,11 @@ export function calculateMasterMetrics(
  * Triggers a client-side file download
  */
 function downloadFile(blob: Blob, fileName: string) {
+  if (isAndroidApp()) {
+    downloadFileForAndroid(blob, fileName, 'Master Excel Workbook');
+    return;
+  }
+  // Standard web download
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

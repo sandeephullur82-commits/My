@@ -12,6 +12,7 @@ import { sharePDF } from '../lib/pdfExport';
 import { toast } from 'sonner';
 import { useUI } from '../context/UIContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { isAndroidApp, downloadFileForAndroid, shareFileForAndroid, printFileForAndroid } from '../utils/capacitorDeviceHelper';
 
 // Configure worker for pdfjs-dist
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
@@ -166,8 +167,14 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
     };
   }, [isOpen, report, onClose]);
 
-  const handleDownload = () => {
-    if (!blobUrl || !report) return;
+  const handleDownload = async () => {
+    if (!report) return;
+    if (isAndroidApp()) {
+      await downloadFileForAndroid(report.blob, report.fileName, report.title);
+      return;
+    }
+    // Original Web application download
+    if (!blobUrl) return;
     const a = document.createElement('a');
     a.href = blobUrl;
     a.download = report.fileName;
@@ -179,6 +186,16 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
 
   const handleShare = async () => {
     if (!report) return;
+    if (isAndroidApp()) {
+      const result = await shareFileForAndroid(report.blob, report.fileName, report.title);
+      if (result === 'shared') {
+        toast.success('Report shared successfully');
+      } else if (result === 'downloaded') {
+        toast.success('Report saved to device');
+      }
+      return;
+    }
+    // Original Web application share
     const result = await sharePDF(report.blob, report.fileName, report.title);
     if (result === 'shared') {
       toast.success('Report shared successfully');
@@ -189,7 +206,13 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    if (!report) return;
+    if (isAndroidApp()) {
+      await printFileForAndroid(report.blob, report.fileName, report.title);
+      return;
+    }
+    // Original Web application print
     if (!blobUrl) return;
     const printWindow = window.open(blobUrl, '_blank');
     if (printWindow) {
@@ -295,7 +318,7 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
                 whileTap={{ scale: 0.92 }}
                 onClick={handlePrint}
                 title="Print Report"
-                className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all hidden sm:flex"
+                className={`w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all ${isAndroidApp() ? 'flex' : 'hidden sm:flex'}`}
               >
                 <Printer size={16} />
               </motion.button>

@@ -10,6 +10,7 @@ import {
   exportMasterToExcel, 
   generateMasterPDFReport 
 } from '../utils/masterExport';
+import { isAndroidApp, downloadFileForAndroid } from '../utils/capacitorDeviceHelper';
 import { BottomSheet } from './BottomSheet';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
@@ -57,19 +58,24 @@ export function MasterExportModal({
         userEmail: user?.email || undefined
       });
 
-      // Direct download
-      const url = URL.createObjectURL(report.blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = report.fileName;
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, 100);
+      if (isAndroidApp()) {
+        toast.dismiss(toastId);
+        await downloadFileForAndroid(report.blob, report.fileName, report.title);
+      } else {
+        // Standard Web application download
+        const url = URL.createObjectURL(report.blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = report.fileName;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 100);
 
-      toast.success(`Downloaded: ${report.fileName}`, { id: toastId });
+        toast.success(`Downloaded: ${report.fileName}`, { id: toastId });
+      }
     } catch (err: any) {
       console.error('Master PDF generation error', err);
       toast.error('Failed to generate PDF report.', { id: toastId });

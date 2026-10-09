@@ -22,8 +22,10 @@ import {
   shareReceiptImage, 
   ReceiptData,
   printReceipt,
-  isBluetoothPrintSupported
+  isBluetoothPrintSupported,
+  generateReceiptImage
 } from '../services/receiptImageService';
+import { isAndroidApp, printFileForAndroid } from '../utils/capacitorDeviceHelper';
 import { Customer } from '../services/firestoreService';
 import { PIGMY_LOGO_BASE64 } from '../assets/logoBase64';
 import { toast } from 'sonner';
@@ -103,6 +105,12 @@ export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: Receip
   const handlePrint = async (preferBluetooth: boolean = false) => {
     try {
       setIsPrinting(true);
+      if (isAndroidApp()) {
+        const { blob, fileName } = await generateReceiptImage(receipt);
+        await printFileForAndroid(blob, fileName, 'Payment Receipt');
+        return;
+      }
+      // Standard Web application print
       const res = await printReceipt(receipt, preferBluetooth);
       if (res === 'printed_bluetooth') {
         toast.success('Receipt printed via Bluetooth Thermal Printer');

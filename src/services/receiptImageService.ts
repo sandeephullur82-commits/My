@@ -1,6 +1,7 @@
 import { Customer, Transaction } from './firestoreService';
 import { safeFormat } from '../lib/utils';
 import { PIGMY_LOGO_BASE64 } from '../assets/logoBase64';
+import { isAndroidApp, downloadFileForAndroid, shareFileForAndroid } from '../utils/capacitorDeviceHelper';
 import { 
   printReceipt as universalPrintReceipt, 
   isBluetoothPrintSupported 
@@ -618,6 +619,12 @@ export async function downloadReceiptImage(data: ReceiptData, customFileName?: s
   const { blob, fileName } = await generateReceiptImage(data);
   const targetName = customFileName || fileName;
 
+  if (isAndroidApp()) {
+    await downloadFileForAndroid(blob, targetName, 'Payment Receipt');
+    return targetName;
+  }
+
+  // Original Web application download
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -639,11 +646,17 @@ export async function shareReceiptImage(
   data: ReceiptData
 ): Promise<'shared' | 'downloaded' | 'cancelled' | 'failed'> {
   const { blob, fileName } = await generateReceiptImage(data);
+
+  if (isAndroidApp()) {
+    const res = await shareFileForAndroid(blob, fileName, 'Payment Receipt');
+    return res;
+  }
+
+  // Original Web application share
   const imageFile = new File([blob], fileName, { type: 'image/png' });
 
   if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [imageFile] })) {
     try {
-      // Share only the image file without any accompanying text caption
       await navigator.share({
         files: [imageFile]
       });
@@ -656,7 +669,7 @@ export async function shareReceiptImage(
     }
   }
 
-  // Fallback to downloading image
+  // Fallback to downloading image on web
   await downloadReceiptImage(data);
   return 'downloaded';
 }
