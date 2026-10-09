@@ -1,0 +1,7 @@
+# Ignore Gradle build outputs and IDE files
+.gradle/
+build/
+app/build/
+.idea/
+*.iml
+.DS_Store
