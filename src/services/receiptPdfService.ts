@@ -3,6 +3,7 @@ import { Customer, Transaction } from './firestoreService';
 import { sharePDF } from '../lib/pdfExport';
 import { safeFormat } from '../lib/utils';
 import { PIGMY_LOGO_BASE64 } from '../assets/logoBase64';
+import { isAndroidApp, downloadFileForAndroid, shareFileForAndroid } from '../utils/capacitorDeviceHelper';
 import { 
   printViaSystemThermal, 
   printViaBluetoothThermal, 
@@ -301,6 +302,11 @@ export function downloadReceiptPDF(data: ReceiptData, customFileName?: string): 
   const { blob, fileName } = generateReceiptPDF(data);
   const targetName = customFileName || fileName;
   
+  if (isAndroidApp()) {
+    downloadFileForAndroid(blob, targetName, 'Payment Receipt PDF');
+    return targetName;
+  }
+
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -314,12 +320,16 @@ export function downloadReceiptPDF(data: ReceiptData, customFileName?: string): 
 }
 
 /**
- * Shares the PDF file via the Web Share API (native share sheet on mobile),
+ * Shares the PDF file via Capacitor native share on Android or Web Share API on mobile browsers,
  * with automatic fallback to download if native file sharing is unavailable.
  */
 export async function shareReceiptPDF(data: ReceiptData): Promise<'shared' | 'downloaded' | 'cancelled' | 'failed'> {
   const { blob, fileName, receiptNo } = generateReceiptPDF(data);
   const title = `Receipt ${receiptNo} - ${data.customer.name}`;
+
+  if (isAndroidApp()) {
+    return shareFileForAndroid(blob, fileName, title);
+  }
 
   const shareResult = await sharePDF(blob, fileName, title);
 

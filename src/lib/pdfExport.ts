@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
 import { Transaction, Customer } from '../services/firestoreService';
 import { safeFormat } from './utils';
+import { isAndroidApp, shareFileForAndroid } from '../utils/capacitorDeviceHelper';
 
 export async function exportTransactionsPDF(
   transactions: Transaction[], 
@@ -201,10 +202,14 @@ export async function exportTransactionsPDF(
 export const exportLedgerPDF = exportTransactionsPDF;
 
 /**
- * Specifically handles sharing a PDF Blob using the Web Share API.
+ * Specifically handles sharing a PDF Blob using Capacitor on Android or Web Share API on Web.
  * Ensures a File object is used as per modern browser requirements.
  */
 export async function sharePDF(blob: Blob, fileName: string, title: string) {
+  if (isAndroidApp()) {
+    return shareFileForAndroid(blob, fileName, title);
+  }
+
   if (!navigator.share) return 'unsupported';
 
   try {

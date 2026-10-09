@@ -52,15 +52,15 @@ export function blobToBase64(blob: Blob): Promise<string> {
 
 /**
  * Android device download and save handler.
- * On native Android: Saves the file via Filesystem and opens via Android Sharesheet with file attachment.
- * On Android mobile browser: Downloads cleanly via Blob URL anchor element.
+ * On native Android: Saves the file directly to device storage without forcing a share popup.
+ * On Android mobile browser/PWA: Downloads cleanly via Blob URL anchor element.
  */
 export async function downloadFileForAndroid(
   blob: Blob,
   fileName: string,
   title: string = 'Document'
 ): Promise<boolean> {
-  const toastId = toast.loading(`Saving ${fileName}...`);
+  const toastId = toast.loading(`Downloading ${fileName}...`);
   try {
     if (isNativeAndroidApp()) {
       const base64Data = await blobToBase64(blob);
@@ -84,22 +84,20 @@ export async function downloadFileForAndroid(
         });
       }
 
-      toast.success(`Saved to device: ${fileName}`, {
+      // Download succeeded cleanly - show toast with optional 'Open' action
+      toast.success(`Downloaded: ${fileName}`, {
         id: toastId,
-        duration: 4000,
+        duration: 5000,
+        action: {
+          label: 'Open',
+          onClick: () => {
+            Share.share({
+              dialogTitle: `Open ${title}`,
+              files: [writeResult.uri]
+            }).catch(() => {});
+          }
+        }
       });
-
-      // Prompt user with Android Sharesheet with the actual attached file
-      try {
-        await Share.share({
-          title: `Open ${title}`,
-          text: `Saved: ${fileName}`,
-          dialogTitle: `Open ${title}`,
-          files: [writeResult.uri]
-        });
-      } catch {
-        // Cancellation or dismissal is expected
-      }
 
       return true;
     }
@@ -111,6 +109,7 @@ export async function downloadFileForAndroid(
     link.download = fileName;
     link.setAttribute('download', fileName);
     link.style.display = 'none';
+    link.rel = 'noopener';
     document.body.appendChild(link);
     link.click();
 
@@ -121,20 +120,20 @@ export async function downloadFileForAndroid(
       } catch {
         // ignore
       }
-    }, 2000);
+    }, 3000);
 
     toast.success(`Downloaded: ${fileName}`, { id: toastId });
     return true;
   } catch (err: any) {
     console.error('[Android Download Error]:', err);
-    toast.error(`Could not save file: ${err?.message || 'Permission denied'}`, { id: toastId });
+    toast.error(`Could not download file: ${err?.message || 'Error'}`, { id: toastId });
     return false;
   }
 }
 
 /**
  * Android device native share handler.
- * On native Android: Writes file to cache and opens Sharesheet with files: [uri].
+ * On native Android: Writes file to cache and opens Android Sharesheet with files: [uri].
  * On Android mobile browser: Uses Web Share API Level 2 (files support) with automatic download fallback.
  */
 export async function shareFileForAndroid(
@@ -147,7 +146,7 @@ export async function shareFileForAndroid(
     if (isNativeAndroidApp()) {
       const base64Data = await blobToBase64(blob);
 
-      // Save file into Cache directory for clean sharing
+      // Save file into Cache directory for clean sharing with FileProvider
       const writeResult = await Filesystem.writeFile({
         path: fileName,
         data: base64Data,
@@ -158,7 +157,7 @@ export async function shareFileForAndroid(
       await Share.share({
         title: title,
         text: text || `Sharing ${title} from Pigmy Pro.`,
-        dialogTitle: title || 'Share',
+        dialogTitle: `Share ${title}`,
         files: [writeResult.uri]
       });
 
@@ -199,6 +198,79 @@ export async function shareFileForAndroid(
 }
 
 /**
+ * Prints rendered canvas pages cleanly via an invisible iframe.
+ * Triggers Android System Print Spooler on Chrome/Android mobile browsers.
+ */
+export function printCanvases(canvases: HTMLCanvasElement[], title: string = 'Document'): boolean {
+  try {
+    if (!canvases || canvases.length === 0) return false;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.top = '-9999px';
+    iframe.style.left = '-9999px';
+    iframe.style.width = '100%';
+    iframe.style.height = '100%';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      document.body.removeChild(iframe);
+      return false;
+    }
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            @page { size: auto; margin: 8mm; }
+            body { margin: 0; padding: 0; background: white; }
+            .page-container { page-break-after: always; width: 100%; display: flex; justify-content: center; margin-bottom: 20px; }
+            .page-container:last-child { page-break-after: avoid; margin-bottom: 0; }
+            img { max-width: 100%; height: auto; display: block; }
+            @media print {
+              .page-container { margin-bottom: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          ${canvases.map(c => `
+            <div class="page-container">
+              <img src="${c.toDataURL('image/png')}" />
+            </div>
+          `).join('')}
+        </body>
+      </html>
+    `);
+    doc.close();
+
+    setTimeout(() => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch {
+        window.print();
+      } finally {
+        setTimeout(() => {
+          try {
+            document.body.removeChild(iframe);
+          } catch {}
+        }, 5000);
+      }
+    }, 400);
+
+    return true;
+  } catch (e) {
+    console.error('Print canvases error:', e);
+    return false;
+  }
+}
+
+/**
  * Android device print handler.
  * On native Android: Writes document to cache and routes it to Android system print spoolers / print plugins via Sharesheet.
  * On Android mobile browser: Uses Web Share API to print services, hidden iframe print, or direct document access.
@@ -224,7 +296,7 @@ export async function printFileForAndroid(
       await Share.share({
         title: `Print ${title}`,
         text: `Select your printer or print spooler service.`,
-        dialogTitle: `Print ${title}`,
+        dialogTitle: `Print Document`,
         files: [writeResult.uri]
       });
 
@@ -285,7 +357,6 @@ export async function printFileForAndroid(
     }, 5000);
 
     if (!printed) {
-      // Fallback: download document so user can open in their PDF reader and tap Print
       await downloadFileForAndroid(blob, fileName, title);
     }
     return true;

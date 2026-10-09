@@ -12,7 +12,14 @@ import { sharePDF } from '../lib/pdfExport';
 import { toast } from 'sonner';
 import { useUI } from '../context/UIContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
-import { isAndroidApp, downloadFileForAndroid, shareFileForAndroid, printFileForAndroid } from '../utils/capacitorDeviceHelper';
+import { 
+  isAndroidApp, 
+  isNativeAndroidApp,
+  downloadFileForAndroid, 
+  shareFileForAndroid, 
+  printFileForAndroid,
+  printCanvases
+} from '../utils/capacitorDeviceHelper';
 
 // Configure worker for pdfjs-dist
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
@@ -208,10 +215,27 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
 
   const handlePrint = async () => {
     if (!report) return;
+
+    if (isNativeAndroidApp()) {
+      await printFileForAndroid(report.blob, report.fileName, report.title);
+      return;
+    }
+
+    // High quality canvas print via invisible iframe (opens Android System Print Spooler on Chrome/Android)
+    if (renderedPages.length > 0) {
+      const canvases = renderedPages.map(p => p.canvas);
+      const printed = printCanvases(canvases, report.title);
+      if (printed) {
+        toast.info('Opening print dialog...');
+        return;
+      }
+    }
+
     if (isAndroidApp()) {
       await printFileForAndroid(report.blob, report.fileName, report.title);
       return;
     }
+
     // Original Web application print
     if (!blobUrl) return;
     const printWindow = window.open(blobUrl, '_blank');
@@ -220,7 +244,7 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
         printWindow.print();
       }, true);
     } else {
-      toast.error('Could not open print window.');
+      window.print();
     }
   };
 
