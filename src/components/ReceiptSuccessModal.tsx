@@ -7,7 +7,6 @@ import {
   Clock, 
   Share2, 
   Printer, 
-  Download, 
   X, 
   ArrowRight,
   ArrowUpRight,
@@ -16,18 +15,19 @@ import {
   Bluetooth,
   Receipt,
   Sparkles,
-  PiggyBank
+  PiggyBank,
+  MessageCircle
 } from 'lucide-react';
 import { safeFormat } from '../lib/utils';
+import { triggerWhatsApp } from '../lib/whatsapp';
 import { 
   shareReceiptImage, 
   ReceiptData,
   printReceipt,
   isBluetoothPrintSupported,
-  generateReceiptImage,
-  downloadReceiptImage
+  generateReceiptImage
 } from '../services/receiptImageService';
-import { isAndroidApp, printFileForAndroid, downloadFileForAndroid } from '../utils/capacitorDeviceHelper';
+import { isAndroidApp, printFileForAndroid, openWhatsAppDirect } from '../utils/capacitorDeviceHelper';
 import { Customer } from '../services/firestoreService';
 import { PIGMY_LOGO_BASE64 } from '../assets/logoBase64';
 import { toast } from 'sonner';
@@ -43,7 +43,6 @@ interface ReceiptSuccessModalProps {
 
 export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: ReceiptSuccessModalProps) {
   const [isSharingImage, setIsSharingImage] = useState(false);
-  const [isDownloadingImage, setIsDownloadingImage] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const containerRef = useFocusTrap(Boolean(receipt));
 
@@ -88,6 +87,39 @@ export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: Receip
   const receiptNo = `REC-${(transaction.id || '').slice(0, 8).toUpperCase()}`;
   const hasBluetooth = isBluetoothPrintSupported();
 
+  const handleWhatsAppShare = () => {
+    try {
+      const modeText = transaction.type === 'phonepe' ? 'UPI / PhonePe' : 'Cash Deposit';
+      const receiptMsg = 
+`🧾 *PIGMY PRO PAYMENT RECEIPT*
+━━━━━━━━━━━━━━━━━━
+*Receipt No:* ${receiptNo}
+*Customer:* ${customer.name}
+*A/C No:* ${customer.displayId || customer.id}
+*Amount Paid:* ₹${transaction.amount.toLocaleString('en-IN')}
+*New Balance:* ₹${newBalance.toLocaleString('en-IN')}
+*Date & Time:* ${paidTime}
+*Payment Mode:* ${modeText}
+━━━━━━━━━━━━━━━━━━
+*Status:* Confirmed & Recorded ✓
+Thank you for banking with Pigmy Pro!`;
+
+      // 1. Direct native Android interface hook
+      if ((window as any).AndroidNativeApp?.openWhatsApp) {
+        (window as any).AndroidNativeApp.openWhatsApp(customer.phone || '', receiptMsg);
+        toast.success('Redirecting to WhatsApp...');
+        return;
+      }
+
+      // 2. Direct WhatsApp redirection without popup blockers
+      openWhatsAppDirect(customer.phone || '', receiptMsg);
+      toast.success('Opening WhatsApp...');
+    } catch (e) {
+      console.error('WhatsApp redirect error:', e);
+      toast.error('Could not redirect to WhatsApp');
+    }
+  };
+
   const handleShareImage = async () => {
     try {
       setIsSharingImage(true);
@@ -105,27 +137,10 @@ export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: Receip
     }
   };
 
-  const handleDownloadImage = async () => {
-    try {
-      setIsDownloadingImage(true);
-      const { blob, fileName } = await generateReceiptImage(receipt);
-      if (isAndroidApp()) {
-        await downloadFileForAndroid(blob, fileName, 'Payment Receipt');
-      } else {
-        await downloadReceiptImage(receipt);
-        toast.success('Receipt image downloaded');
-      }
-    } catch (error) {
-      console.error('Download receipt error:', error);
-      toast.error('Failed to download receipt image');
-    } finally {
-      setIsDownloadingImage(false);
-    }
-  };
-
   const handlePrint = async (preferBluetooth: boolean = false) => {
     try {
       setIsPrinting(true);
+      // 1. Direct Bluetooth thermal printer if supported & active
       if (preferBluetooth && isBluetoothPrintSupported()) {
         const res = await printReceipt(receipt, true);
         if (res === 'printed_bluetooth') {
@@ -134,12 +149,15 @@ export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: Receip
         }
       }
 
-      if (isAndroidApp()) {
-        const { blob, fileName } = await generateReceiptImage(receipt);
-        await printFileForAndroid(blob, fileName, 'Payment Receipt');
+      // 2. Generate crisp receipt image and dispatch to Android Print Spooler or iframe
+      const { blob, fileName } = await generateReceiptImage(receipt);
+      const printed = await printFileForAndroid(blob, fileName, `Receipt_${receiptNo}`);
+      if (printed) {
+        toast.success('Sent to printer spooler');
         return;
       }
-      // Standard Web application print
+
+      // 3. Standard print fallback
       const res = await printReceipt(receipt, preferBluetooth);
       if (res === 'printed_bluetooth') {
         toast.success('Receipt printed via Bluetooth Thermal Printer');
@@ -433,35 +451,31 @@ export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: Receip
               </button>
             )}
 
-            {/* Primary Action: Share & Download Image (WhatsApp, Messaging, Device Storage) */}
-            <div className="flex items-center gap-2">
+            {/* Primary Actions: WhatsApp Instant Redirect & Android Share Image */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={handleWhatsAppShare}
+                className="w-full py-3.5 px-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/30 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                title={`Send receipt directly to ${customer.name} on WhatsApp`}
+              >
+                <MessageCircle size={16} strokeWidth={2.5} />
+                <span>WhatsApp</span>
+              </button>
+
               <button
                 type="button"
                 disabled={isSharingImage}
                 onClick={handleShareImage}
-                className="flex-1 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/30 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
-                title="Share receipt image on WhatsApp or system share"
+                className="w-full py-3.5 px-3 rounded-2xl bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-teal-600/30 active:scale-95 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                title="Share receipt image to any app or device storage"
               >
                 {isSharingImage ? (
                   <Loader2 size={16} className="animate-spin" />
                 ) : (
                   <Share2 size={16} strokeWidth={2.5} />
                 )}
-                <span>Share Receipt Image</span>
-              </button>
-
-              <button
-                type="button"
-                disabled={isDownloadingImage}
-                onClick={handleDownloadImage}
-                className="w-12 h-12 rounded-2xl bg-card border border-border hover:bg-muted text-text-primary active:scale-95 transition-all flex items-center justify-center shadow-sm disabled:opacity-50 cursor-pointer shrink-0"
-                title="Download Receipt Image to Device"
-              >
-                {isDownloadingImage ? (
-                  <Loader2 size={16} className="animate-spin text-accent" />
-                ) : (
-                  <Download size={16} strokeWidth={2.5} />
-                )}
+                <span>Share Image</span>
               </button>
             </div>
 

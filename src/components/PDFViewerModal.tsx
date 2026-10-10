@@ -2,23 +2,19 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Download, Share2, Printer, ChevronLeft, ChevronRight,
-  ZoomIn, ZoomOut, RotateCcw, Loader2, FileText, 
-  Layers, BookOpen, AlertCircle
+  Share2, Printer, ChevronLeft, ChevronRight,
+  ZoomIn, ZoomOut, Loader2, BookOpen, Layers,
+  AlertCircle, MessageCircle
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { sharePDF } from '../lib/pdfExport';
 import { toast } from 'sonner';
 import { useUI } from '../context/UIContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { 
-  isAndroidApp, 
-  isNativeAndroidApp,
-  downloadFileForAndroid, 
-  shareFileForAndroid, 
-  printFileForAndroid,
-  printCanvases
+  shareFileForAndroid,
+  shareFileToWhatsApp,
+  printFileForAndroid
 } from '../utils/capacitorDeviceHelper';
 
 // Configure worker for pdfjs-dist
@@ -54,7 +50,6 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
   const containerRef = useRef<HTMLDivElement>(null);
   const focusTrapRef = useFocusTrap(isOpen);
   const touchStartXRef = useRef<number | null>(null);
-
 
   // Sync isModalOpen and handle Escape key for accessibility
   useEffect(() => {
@@ -174,77 +169,63 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
     };
   }, [isOpen, report, onClose]);
 
-  const handleDownload = async () => {
+  // Direct WhatsApp Share Handler (No download button needed)
+  const handleWhatsAppShare = async () => {
     if (!report) return;
-    if (isAndroidApp()) {
-      await downloadFileForAndroid(report.blob, report.fileName, report.title);
-      return;
+    try {
+      const summaryText = 
+`📊 *PIGMY PRO FINANCIAL REPORT*
+━━━━━━━━━━━━━━━━━━
+*Report:* ${report.title}
+*Document:* ${report.fileName}
+*Date:* ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+━━━━━━━━━━━━━━━━━━
+Generated from Pigmy Pro Digital Ledger.`;
+
+      const result = await shareFileToWhatsApp(report.blob, report.fileName, '', summaryText);
+      if (result === 'shared') {
+        toast.success('Report shared via WhatsApp');
+      } else {
+        toast.info('Opening WhatsApp...');
+      }
+    } catch (e) {
+      console.error('WhatsApp share error:', e);
+      toast.error('Could not share to WhatsApp');
     }
-    // Original Web application download
-    if (!blobUrl) return;
-    const a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = report.fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    toast.success('Download started');
   };
 
+  // Native System Share Sheet
   const handleShare = async () => {
     if (!report) return;
-    if (isAndroidApp()) {
-      const result = await shareFileForAndroid(report.blob, report.fileName, report.title);
+    try {
+      const result = await shareFileForAndroid(
+        report.blob, 
+        report.fileName, 
+        report.title,
+        `Pigmy Pro Audit Report: ${report.title}`
+      );
       if (result === 'shared') {
         toast.success('Report shared successfully');
       } else if (result === 'downloaded') {
         toast.success('Report saved to device');
       }
-      return;
-    }
-    // Original Web application share
-    const result = await sharePDF(report.blob, report.fileName, report.title);
-    if (result === 'shared') {
-      toast.success('Report shared successfully');
-    } else if (result === 'unsupported') {
-      toast.error('Sharing is not supported on this device');
-    } else if (result === 'failed') {
+    } catch (e) {
+      console.error('Share error:', e);
       toast.error('Sharing failed');
     }
   };
 
+  // Universal System Print Handler
   const handlePrint = async () => {
     if (!report) return;
-
-    if (isNativeAndroidApp()) {
-      await printFileForAndroid(report.blob, report.fileName, report.title);
-      return;
-    }
-
-    // High quality canvas print via invisible iframe (opens Android System Print Spooler on Chrome/Android)
-    if (renderedPages.length > 0) {
-      const canvases = renderedPages.map(p => p.canvas);
-      const printed = printCanvases(canvases, report.title);
+    try {
+      const printed = await printFileForAndroid(report.blob, report.fileName, report.title);
       if (printed) {
-        toast.info('Opening print dialog...');
-        return;
+        toast.success('Document sent to print spooler');
       }
-    }
-
-    if (isAndroidApp()) {
-      await printFileForAndroid(report.blob, report.fileName, report.title);
-      return;
-    }
-
-    // Original Web application print
-    if (!blobUrl) return;
-    const printWindow = window.open(blobUrl, '_blank');
-    if (printWindow) {
-      printWindow.addEventListener('load', () => {
-        printWindow.print();
-      }, true);
-    } else {
-      window.print();
+    } catch (e) {
+      console.error('Print error:', e);
+      toast.error('Could not open print spooler');
     }
   };
 
@@ -301,28 +282,29 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
             <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
               <button 
                 onClick={onClose}
-                className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white active:scale-95 transition-all"
+                className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white active:scale-95 transition-all cursor-pointer"
                 title="Close"
               >
                 <ChevronLeft size={22} />
               </button>
               <div className="min-w-0">
-                <h1 className="text-[13px] sm:text-[14px] font-bold text-white tracking-tight truncate max-w-[180px] sm:max-w-md">
+                <h1 className="text-[13px] sm:text-[14px] font-bold text-white tracking-tight truncate max-w-[170px] sm:max-w-md">
                   {report?.title || 'Report Preview'}
                 </h1>
                 <p className="text-[9px] font-bold text-white/50 uppercase tracking-widest leading-none mt-0.5">
                   {numPages > 0 
-                    ? `${numPages} Pages • ${viewMode === 'single' ? `Page ${currentPage}` : 'All Pages'}` 
-                    : 'Digital Ledger'}
+                    ? `${numPages} Pages • ${viewMode === 'single' ? `Page ${currentPage}` : 'Continuous'}` 
+                    : 'Digital Ledger Report'}
                 </p>
               </div>
             </div>
             
-            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {/* Streamlined Actions: View Mode, Print, WhatsApp, Native Share (Download button removed) */}
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               {/* View Mode Toggle (Single Page vs Continuous Scroll) */}
               <button
                 onClick={() => setViewMode(prev => prev === 'single' ? 'scroll' : 'single')}
-                className="h-9 px-2.5 rounded-xl bg-white/10 hover:bg-white/20 flex items-center gap-1.5 text-xs text-white/90 active:scale-95 transition-all"
+                className="h-9 px-2.5 rounded-xl bg-white/10 hover:bg-white/20 flex items-center gap-1.5 text-xs text-white/90 active:scale-95 transition-all cursor-pointer"
                 title={viewMode === 'single' ? 'Switch to Continuous Scroll' : 'Switch to One Page at a Time'}
               >
                 {viewMode === 'single' ? (
@@ -338,31 +320,34 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
                 )}
               </button>
 
+              {/* Print Button */}
               <motion.button 
                 whileTap={{ scale: 0.92 }}
                 onClick={handlePrint}
-                title="Print Report"
-                className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all"
+                title="Print Report (Thermal / Spooler)"
+                className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all cursor-pointer"
               >
                 <Printer size={16} />
               </motion.button>
 
+              {/* WhatsApp Direct Share Button */}
+              <motion.button 
+                whileTap={{ scale: 0.92 }}
+                onClick={handleWhatsAppShare}
+                title="Send via WhatsApp"
+                className="w-9 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-500 flex items-center justify-center text-white transition-all shadow-md shadow-emerald-600/30 cursor-pointer"
+              >
+                <MessageCircle size={16} strokeWidth={2.4} />
+              </motion.button>
+
+              {/* Native System Share Sheet */}
               <motion.button 
                 whileTap={{ scale: 0.92 }}
                 onClick={handleShare}
-                title="Share Report"
-                className="w-9 h-9 rounded-xl bg-accent flex items-center justify-center text-white hover:brightness-110 transition-all shadow-md shadow-accent/25"
+                title="Share Report via Android Share Sheet"
+                className="w-9 h-9 rounded-xl bg-accent flex items-center justify-center text-white hover:brightness-110 transition-all shadow-md shadow-accent/25 cursor-pointer"
               >
-                <Share2 size={16} />
-              </motion.button>
-
-              <motion.button 
-                whileTap={{ scale: 0.92 }}
-                onClick={handleDownload}
-                title="Download PDF"
-                className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all"
-              >
-                <Download size={16} />
+                <Share2 size={16} strokeWidth={2.4} />
               </motion.button>
             </div>
           </div>
@@ -378,9 +363,9 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
               <div className="my-auto flex flex-col items-center justify-center gap-3 py-16 text-center">
                 <Loader2 className="animate-spin text-accent" size={36} />
                 <p className="text-[12px] font-bold text-white/80 uppercase tracking-widest">
-                  Loading PDF Pages...
+                  Loading PDF Document...
                 </p>
-                <p className="text-[10px] text-white/40">Preparing high-resolution view</p>
+                <p className="text-[10px] text-white/40">Rendering vector resolution</p>
               </div>
             )}
 
@@ -391,12 +376,20 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
                   <h3 className="text-sm font-bold text-white mb-1">Preview Notice</h3>
                   <p className="text-xs text-white/60 mb-4">{error}</p>
                 </div>
-                <button
-                  onClick={handleDownload}
-                  className="w-full py-2.5 rounded-xl bg-accent text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95"
-                >
-                  <Download size={14} /> Download PDF
-                </button>
+                <div className="flex gap-2 w-full">
+                  <button
+                    onClick={handleShare}
+                    className="flex-1 py-2.5 rounded-xl bg-accent text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
+                  >
+                    <Share2 size={14} /> Share PDF
+                  </button>
+                  <button
+                    onClick={onClose}
+                    className="px-4 py-2.5 rounded-xl bg-zinc-800 text-white font-bold text-xs uppercase tracking-wider active:scale-95 cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
             )}
 
@@ -452,7 +445,7 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
             )}
           </div>
 
-          {/* Bottom Navigation & Zoom Toolbar (No Save Button) */}
+          {/* Bottom Navigation & Zoom Toolbar (No Save/Download Button) */}
           <div className="px-3 sm:px-6 py-2.5 bg-zinc-900 border-t border-zinc-800 flex items-center justify-between shrink-0 z-20">
             {/* Left: Page Navigation (One page at a time) */}
             {viewMode === 'single' && numPages > 1 ? (
@@ -460,7 +453,7 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
                 <button
                   onClick={handlePrevPage}
                   disabled={currentPage <= 1}
-                  className="h-8 px-2.5 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:pointer-events-none text-white text-xs font-bold flex items-center gap-1 active:scale-95 transition-all"
+                  className="h-8 px-2.5 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:pointer-events-none text-white text-xs font-bold flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
                 >
                   <ChevronLeft size={16} />
                   <span className="hidden sm:inline">Prev</span>
@@ -473,7 +466,7 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
                 <button
                   onClick={handleNextPage}
                   disabled={currentPage >= numPages}
-                  className="h-8 px-2.5 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:pointer-events-none text-white text-xs font-bold flex items-center gap-1 active:scale-95 transition-all"
+                  className="h-8 px-2.5 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:pointer-events-none text-white text-xs font-bold flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
                 >
                   <span className="hidden sm:inline">Next</span>
                   <ChevronRight size={16} />
@@ -490,14 +483,14 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
               <button 
                 onClick={zoomOut}
                 disabled={zoomLevel <= 0.6}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-white/70 hover:text-white disabled:opacity-30 active:scale-90 transition-all"
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-white/70 hover:text-white disabled:opacity-30 active:scale-90 transition-all cursor-pointer"
                 title="Zoom Out"
               >
                 <ZoomOut size={14} />
               </button>
               <button 
                 onClick={resetZoom}
-                className="px-2 text-[10px] font-mono text-white/80 hover:text-white"
+                className="px-2 text-[10px] font-mono text-white/80 hover:text-white cursor-pointer"
                 title="Reset Zoom to 100%"
               >
                 {Math.round(zoomLevel * 100)}%
@@ -505,7 +498,7 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
               <button 
                 onClick={zoomIn}
                 disabled={zoomLevel >= 2.5}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-white/70 hover:text-white disabled:opacity-30 active:scale-90 transition-all"
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-white/70 hover:text-white disabled:opacity-30 active:scale-90 transition-all cursor-pointer"
                 title="Zoom In"
               >
                 <ZoomIn size={14} />

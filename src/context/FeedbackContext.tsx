@@ -51,17 +51,22 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const saveToStore = useCallback(async (toast: Omit<FintechToastProps, 'onClose' | 'id'>) => {
-    const recordType: NotificationRecord['type'] = toast.type === 'sync' ? 'info' : (toast.type || 'info');
-    await firestoreService.addNotification({
-      type: recordType,
-      priority: toast.priority || 'medium',
-      title: toast.title || 'Notification',
-      message: toast.message,
-      amount: toast.amount,
-      customerName: toast.customerName,
-      paymentType: toast.paymentType,
-      timestamp: Date.now()
-    });
+    try {
+      const recordType: NotificationRecord['type'] = toast.type === 'sync' ? 'info' : (toast.type || 'info');
+      await firestoreService.addNotification({
+        type: recordType,
+        priority: toast.priority || 'medium',
+        title: toast.title || 'Notification',
+        message: toast.message,
+        amount: toast.amount,
+        customerName: toast.customerName,
+        paymentType: toast.paymentType,
+        timestamp: Date.now()
+      });
+    } catch (e) {
+      // Background notifications save shouldn't throw
+      console.warn('Notification history save warning:', e);
+    }
   }, []);
 
   const dismissToast = useCallback((id: string | number) => {
@@ -83,13 +88,11 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
     setHistory(prev => [newToast, ...prev].slice(0, 50)); // Keep last 50
 
     setToasts(prev => {
-      // Prioritize and limit active view
       const next = [...prev, newToast];
-      // Sort by priority (high first)
       const priorityMap = { high: 0, medium: 1, low: 2 };
       next.sort((a, b) => (priorityMap[a.priority || 'medium'] || 1) - (priorityMap[b.priority || 'medium'] || 1));
       
-      // Keep only top 2 most important or newest
+      // Keep only top 2 active toasts for a clean, non-obtrusive UI
       if (next.length > 2) return next.slice(0, 2);
       return next;
     });
@@ -103,7 +106,7 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
       priority: 'low',
       title,
       message,
-      duration: 4000
+      duration: 1800 // Ultra-fast 1.8s auto-fade
     };
     addToast({ ...toastData, id: Math.random().toString(36).substr(2, 9) });
     if (saveToHistory) saveToStore(toastData);
@@ -115,7 +118,7 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
       priority: 'high',
       title,
       message,
-      duration: 8000,
+      duration: 2800,
       action: onRetry ? {
         label: 'Retry',
         onClick: () => onRetry()
@@ -125,6 +128,10 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
     if (saveToHistory) saveToStore(toastData);
   }, [addToast, saveToStore]);
 
+  /**
+   * Instant non-blocking transaction toast with immediate persistence and quick undo.
+   * Zero waiting delay.
+   */
   const toastTransaction = useCallback((params: {
     amount: number;
     customerName: string;
@@ -133,13 +140,14 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
     onCommit?: () => void;
   }) => {
     const id = Math.random().toString(36).substr(2, 9);
-    const duration = 4000;
+    const duration = 2200; // Snappy 2.2s display window
 
+    // Commit operation IMMEDIATELY without artificial waiting delay
     if (params.onCommit) {
       params.onCommit();
     }
     
-    // Save transaction notification to history immediately
+    // Save to history immediately
     saveToStore({
       type: 'transaction',
       priority: 'medium',
@@ -157,12 +165,25 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
       customerName: params.customerName,
       paymentType: params.paymentType,
       duration,
+      action: params.onUndo ? {
+        label: 'Undo',
+        isUndo: true,
+        onClick: () => {
+          params.onUndo?.();
+          dismissToast(id);
+          if ('vibrate' in navigator) navigator.vibrate([10, 20]);
+        }
+      } : undefined
     });
 
-    if ('vibrate' in navigator) navigator.vibrate(20);
+    if ('vibrate' in navigator) navigator.vibrate(15);
     return id;
-  }, [addToast, saveToStore]);
+  }, [addToast, dismissToast, saveToStore]);
 
+  /**
+   * Action toast with immediate commit and instant undo.
+   * Eliminates the artificial 2.8s-4s countdown delay.
+   */
   const toastAction = useCallback((params: {
     title: string;
     message: string;
@@ -175,25 +196,21 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
     saveToHistory?: boolean;
   }) => {
     const id = Math.random().toString(36).substr(2, 9);
-    const duration = params.priority === 'high' ? 15000 : 6000;
-    let isCancelled = false;
+    const duration = 2200; // Compact, fast 2.2s window
 
-    const commitTimeout = setTimeout(async () => {
-      if (!isCancelled && params.onCommit) params.onCommit();
-      
-      if (!isCancelled && params.saveToHistory) {
-        await saveToStore({
-          type: params.type || 'info',
-          priority: params.priority || 'medium',
-          title: params.title,
-          message: params.message
-        });
-      }
-      
-      timeoutsMap.current.delete(id);
-    }, duration);
+    // Execute commit IMMEDIATELY - no waiting delay
+    if (params.onCommit) {
+      params.onCommit();
+    }
 
-    timeoutsMap.current.set(id, commitTimeout);
+    if (params.saveToHistory) {
+      saveToStore({
+        type: params.type || 'info',
+        priority: params.priority || 'medium',
+        title: params.title,
+        message: params.message
+      });
+    }
 
     addToast({
       id,
@@ -204,17 +221,16 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
       duration,
       action: {
         label: params.label,
-        isUndo: params.isUndo,
+        isUndo: params.isUndo ?? true,
         onClick: () => {
-          isCancelled = true;
           if (params.onUndo) params.onUndo();
           dismissToast(id);
-          if ('vibrate' in navigator) navigator.vibrate([10, 30, 10]); 
+          if ('vibrate' in navigator) navigator.vibrate([10, 20]); 
         }
       }
     });
 
-    if ('vibrate' in navigator) navigator.vibrate(20);
+    if ('vibrate' in navigator) navigator.vibrate(15);
     return id;
   }, [addToast, dismissToast, saveToStore]);
 
@@ -252,11 +268,11 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
     }}>
       {children}
 
-      {/* Top-Floating Visual Toast Portal */}
+      {/* Floating Visual Toast Portal: positioned above bottom nav so it never blocks top search & filters */}
       {typeof document !== 'undefined' && createPortal(
         <div 
           aria-live="polite" 
-          className="fixed top-3 left-1/2 -translate-x-1/2 z-[9999] w-full max-w-md px-3 pointer-events-none flex flex-col gap-2"
+          className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-[9999] w-full max-w-md px-3 pointer-events-none flex flex-col gap-2"
         >
           <AnimatePresence mode="popLayout">
             {toasts.map((toast) => (

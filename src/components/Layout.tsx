@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Home, Users, PlusCircle, Settings as SettingsIcon, Activity, X, Plus, UserPlus, Sun, Moon } from 'lucide-react';
+import { Home, Users, PlusCircle, Settings as SettingsIcon, Activity, X, Plus, UserPlus, Sun, Moon, Smartphone } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSync } from '../context/SyncContext';
 import { useUI } from '../context/UIContext';
@@ -13,6 +13,8 @@ import { CollectionMode } from '../pages/CollectionMode';
 import { CustomerForm } from './CustomerForm';
 import { BottomSheet } from './BottomSheet';
 import { firestoreService } from '../services/firestoreService';
+import { PWAInstallBanner } from './PWAInstallBanner';
+import { usePWAInstall } from '../hooks/usePWAInstall';
 
 const navItems = [
   { id: 'dashboard', icon: Home, label: 'Dashboard' },
@@ -28,6 +30,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
   const { isSyncing } = useSync();
   const { setCenterOpen, history } = useFeedback();
   const { theme, toggleTheme } = useTheme();
+  const { isInstallable, promptInstall } = usePWAInstall();
   const contentRef = useRef<HTMLDivElement>(null);
 
   const { customers, transactions } = useRealtimeData();
@@ -151,6 +154,20 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
           {/* Top Quick Actions */}
           <div className="flex items-center gap-1.5 sm:gap-2">
             
+            {/* Install App Button when available in browser */}
+            {isInstallable && (
+              <button
+                type="button"
+                onClick={promptInstall}
+                className="h-9 px-2.5 rounded-xl bg-indigo-600/15 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/30 font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-xs"
+                title="Install Progressive Web App"
+                aria-label="Install Pigmy Pro PWA"
+              >
+                <Smartphone size={14} strokeWidth={2.3} />
+                <span className="hidden md:inline">Install</span>
+              </button>
+            )}
+
             {/* Quick New Customer Button */}
             <button
               type="button"
@@ -190,6 +207,9 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
           </div>
         </div>
       </header>
+
+      {/* PWA Smart Install Banner (Only renders when running in browser and installable) */}
+      <PWAInstallBanner />
 
       {/* Main Content Viewport */}
       <main 

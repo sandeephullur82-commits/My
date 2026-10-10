@@ -361,7 +361,7 @@ export function WithdrawDepositModal({
 
               <div className="flex items-center justify-center gap-1.5 text-[10px] text-text-secondary/60">
                 <ShieldCheck size={12} className="text-emerald-500" />
-                <span>Immediate digital receipt with thermal print & PDF download</span>
+                <span>Immediate digital receipt with thermal print & instant share</span>
               </div>
             </div>
           </form>

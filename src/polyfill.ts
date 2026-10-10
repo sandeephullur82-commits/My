@@ -11,4 +11,33 @@ if (typeof Promise.withResolvers === 'undefined') {
   };
 }
 
+// Suppress and swallow Vite dev WebSocket connection failure events in preview/iframe environment
+if (typeof window !== 'undefined') {
+  window.addEventListener('unhandledrejection', (event) => {
+    const msg = event.reason?.message || String(event.reason || '');
+    if (
+      msg.includes('WebSocket') ||
+      msg.includes('websocket') ||
+      msg.includes('closed without opened') ||
+      msg.includes('failed to connect')
+    ) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  });
+
+  window.addEventListener('error', (event) => {
+    const msg = event.message || '';
+    if (
+      msg.includes('WebSocket') ||
+      msg.includes('websocket') ||
+      msg.includes('closed without opened') ||
+      msg.includes('failed to connect')
+    ) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  });
+}
+
 export {};

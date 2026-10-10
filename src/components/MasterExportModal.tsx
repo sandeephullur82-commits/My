@@ -237,10 +237,10 @@ export function MasterExportModal({
               onClick={handlePDFPreview}
               disabled={isExportingPDF}
               className="h-11 px-4 rounded-xl bg-card border border-border/60 hover:border-accent/40 text-text-secondary hover:text-accent font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer shrink-0"
-              title="Preview & Print Report"
+              title="Preview PDF Report"
             >
               <Eye size={16} />
-              <span className="hidden sm:inline">Preview / Print</span>
+              <span className="hidden sm:inline">Preview</span>
             </button>
           </div>
         </div>

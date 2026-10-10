@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Calendar, FileText, Download, Filter, 
   ChevronRight, ArrowUpRight, Clock, User, Check, AlertCircle,
-  ShieldCheck, Printer, Eye
+  ShieldCheck, Eye
 } from 'lucide-react';
 import { format, subDays, startOfMonth, endOfMonth, startOfYear } from 'date-fns';
 import { Transaction, Customer } from '../services/firestoreService';

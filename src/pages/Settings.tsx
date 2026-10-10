@@ -1,16 +1,21 @@
 import React from 'react';
 import { 
   User, Palette, LayoutDashboard, ShieldCheck, 
-  ToggleLeft, ToggleRight, CheckCircle, Moon, Sun
+  ToggleLeft, ToggleRight, CheckCircle, Moon, Sun,
+  Smartphone, Download
 } from 'lucide-react';
 import { useTheme } from '../components/ThemeProvider';
 import { useUI } from '../context/UIContext';
 import { useAuth } from '../context/AuthContext';
+import { getPlatformDetails } from '../utils/capacitorDeviceHelper';
+import { usePWAInstall } from '../hooks/usePWAInstall';
 
 export function Settings() {
   const { theme, toggleTheme } = useTheme();
   const { isCompact, toggleCompact } = useUI();
   const { user } = useAuth();
+  const { isInstallable, promptInstall } = usePWAInstall();
+  const platform = getPlatformDetails();
 
 
 
@@ -83,7 +88,78 @@ export function Settings() {
 
 
 
-        {/* Account Section */}
+        {/* Application & Hybrid Platform Section */}
+        <div>
+          <h3 className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] px-4 mb-3">Hybrid Platform & App Mode</h3>
+          <div className="bg-card rounded-[24px] border border-border/50 shadow-sm overflow-hidden p-4 flex flex-col gap-3">
+            <div className="flex items-center gap-4">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                platform.isNative 
+                  ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
+                  : platform.isPWA 
+                    ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' 
+                    : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+              }`}>
+                <Smartphone size={20} />
+              </div>
+              <div className="text-left flex-1 min-w-0">
+                <p className="font-bold text-sm text-text-primary tracking-tight">
+                  {platform.label}
+                </p>
+                <p className="text-[10px] font-medium text-text-secondary opacity-70 uppercase tracking-widest leading-none mt-1">
+                  {platform.isNative
+                    ? 'Capacitor Android Native Container • Hardware Print & Share Active'
+                    : platform.isPWA
+                      ? 'Standalone Web App • Offline Collection Cache Active'
+                      : 'Browser Preview • Installable as Progressive Web App'}
+                </p>
+              </div>
+            </div>
+
+            {/* Install PWA Button if running in browser */}
+            {isInstallable && (
+              <div className="pt-2 border-t border-border/40 flex items-center justify-between gap-3">
+                <div className="text-left min-w-0">
+                  <p className="text-xs font-bold text-text-primary">Install to Home Screen</p>
+                  <p className="text-[10px] text-text-secondary">Run full-screen without address bars</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={promptInstall}
+                  className="py-2 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-indigo-600/25 active:scale-95 transition-all cursor-pointer shrink-0"
+                >
+                  <Download size={13} strokeWidth={2.5} />
+                  <span>Install PWA</span>
+                </button>
+              </div>
+            )}
+
+            {/* Direct Android APK Download Button */}
+            <div className="pt-3 border-t border-border/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-emerald-500/5 to-teal-500/5 -mx-4 -mb-4 p-4 mt-1">
+              <div className="text-left min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-black text-text-primary uppercase tracking-tight">Android Application Package (APK)</p>
+                  <span className="text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+                    v1.0.0
+                  </span>
+                </div>
+                <p className="text-[10px] text-text-secondary mt-0.5">
+                  Download PigmyPro.apk for direct install on Android mobile phones or POS devices
+                </p>
+              </div>
+              <a
+                href="/api/download-apk"
+                download="PigmyPro.apk"
+                className="py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md shadow-emerald-600/25 active:scale-95 transition-all cursor-pointer shrink-0"
+              >
+                <Download size={14} strokeWidth={2.5} />
+                <span>Download APK</span>
+              </a>
+            </div>
+          </div>
+        </div>
+
+        {/* Database Section */}
         <div>
           <h3 className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] px-4 mb-3">Database Mode</h3>
           <div className="bg-card rounded-[24px] border border-border/50 shadow-sm overflow-hidden p-4">

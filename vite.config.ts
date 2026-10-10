@@ -16,14 +16,14 @@ export default defineConfig(({ mode }) => {
           maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
           importScripts: ['/firebase-messaging-sw.js'],
         },
-        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg', 'notification-badge.png'],
+        includeAssets: ['favicon.png', 'apple-touch-icon.png', 'notification-badge.png'],
         manifest: {
           name: 'Pigmy Pro – Smart Collection System',
           short_name: 'Pigmy Pro',
           description: 'Professional-grade mobile-first fintech tool for smarter daily collections with audit-safe adjustments, high-speed entry, and real-time ledger sync.',
           theme_color: '#0f172a',
           background_color: '#0f172a',
-          display: 'fullscreen',
+          display: 'standalone',
           icons: [
             {
               src: 'pwa-192x192.png',

@@ -264,23 +264,13 @@ export function printViaSystemThermal(data: ReceiptData): void {
 
   const paymentModeLabel = isUpi ? 'UPI / PhonePe' : isNP ? 'NP' : wasNP ? 'Cash (Settled from NP)' : 'Cash Deposit';
 
-  // Create an invisible iframe for isolated printing
-  const iframe = document.createElement('iframe');
-  iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
-  iframe.style.border = '0';
-  iframe.style.visibility = 'hidden';
-
-  document.body.appendChild(iframe);
-
-  const doc = iframe.contentWindow?.document;
-  if (!doc) {
-    window.print();
+  // 1. Direct native Android PrintManager hook
+  if ((window as any).AndroidNativeApp?.printCurrentPage) {
+    (window as any).AndroidNativeApp.printCurrentPage(`Receipt_${receiptNo}`);
     return;
   }
+
+  // Create isolated print content
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -504,6 +494,45 @@ export function printViaSystemThermal(data: ReceiptData): void {
     </html>
   `;
 
+  const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  if (isMobile) {
+    const printWin = window.open('', '_blank');
+    if (printWin) {
+      printWin.document.open();
+      printWin.document.write(htmlContent);
+      printWin.document.close();
+      printWin.focus();
+      setTimeout(() => {
+        try {
+          printWin.print();
+        } catch {
+          window.print();
+        }
+      }, 350);
+      return;
+    }
+    window.print();
+    return;
+  }
+
+  // Desktop print via isolated iframe
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  iframe.style.visibility = 'hidden';
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow?.document;
+  if (!doc) {
+    window.print();
+    return;
+  }
+
   doc.open();
   doc.write(htmlContent);
   doc.close();
@@ -514,10 +543,8 @@ export function printViaSystemThermal(data: ReceiptData): void {
       iframe.contentWindow?.focus();
       iframe.contentWindow?.print();
     } catch (e) {
-      console.warn('Iframe print error, falling back to window.print():', e);
       window.print();
     } finally {
-      // Remove iframe after print dialog completes
       setTimeout(() => {
         try {
           document.body.removeChild(iframe);
