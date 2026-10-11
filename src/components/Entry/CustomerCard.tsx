@@ -382,18 +382,15 @@ export const CustomerCard = React.memo(function CustomerCard({
             resetSwipe();
           }
         }}
-        className={`relative overflow-hidden rounded-[24px] bg-card border transition-colors duration-300 z-10 touch-pan-y ${
+        className={`relative overflow-hidden rounded-2xl bg-card border transition-colors duration-300 z-10 touch-pan-y ${
           isHighlighted 
-            ? 'border-accent ring-8 ring-accent/10 scale-[1.03] shadow-2xl' 
-            : 'border-border shadow-sm'
+            ? 'border-accent ring-4 ring-accent/20 scale-[1.01] shadow-xl' 
+            : overdueInfo.isOverdue
+              ? 'border-danger/40 shadow-xs'
+              : 'border-border/80 shadow-xs'
         }`}
       >
-        {/* Overdue Top Strip */}
-        {overdueInfo.isOverdue && (
-          <div className="absolute top-0 left-0 right-0 h-1.5 bg-danger z-20" />
-        )}
-
-        <div className="relative z-10 p-5 bg-card">
+        <div className="relative z-10 p-4 sm:p-5 bg-card">
           {/* Row 1: Profile + Status */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
@@ -483,8 +480,8 @@ export const CustomerCard = React.memo(function CustomerCard({
                   )}
                 </div>
               ) : (
-                <p className="text-[10px] font-bold text-text-secondary opacity-40 uppercase tracking-widest leading-none">
-                  Bal: <span className="text-accent underline font-black">₹{balance.toLocaleString()}</span>
+                <p className="text-[10px] font-bold text-text-secondary opacity-60 uppercase tracking-widest leading-none">
+                  Bal: <span className="text-accent font-mono tabular-nums font-black">₹{balance.toLocaleString('en-IN')}</span>
                 </p>
               )}
             </div>
@@ -507,7 +504,7 @@ export const CustomerCard = React.memo(function CustomerCard({
                     )}
                   </div>
                   <div className="flex items-baseline gap-1.5 mt-0.5">
-                    <span className="text-2xl font-black text-text-primary tracking-tight">
+                    <span className="text-2xl font-black font-mono tabular-nums text-text-primary tracking-tight">
                       ₹{currentNPAmount.toLocaleString('en-IN')}
                     </span>
                   </div>

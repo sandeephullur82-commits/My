@@ -41,17 +41,17 @@
     --text-primary: #0F172A;
     --text-secondary: #475569;
     --accent: #2563EB;
-    --success: #10B981;
-    --warning: #F59E0B;
-    --danger: #EF4444;
+    --success: #059669;
+    --warning: #D97706;
+    --danger: #DC2626;
   }
 
   .dark {
-    --bg: #0B1120;
-    --card: #151F32;
+    --bg: #090D16;
+    --card: #111827;
     --border: rgba(255, 255, 255, 0.08);
-    --muted: rgba(255, 255, 255, 0.04);
-    --text-primary: #F8FAFC;
+    --muted: rgba(255, 255, 255, 0.05);
+    --text-primary: #F9FAFB;
     --text-secondary: #94A3B8;
     --accent: #3B82F6;
     --success: #10B981;
@@ -68,14 +68,27 @@
   body {
     background-color: var(--bg);
     color: var(--text-primary);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overscroll-behavior-y: contain;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  code, kbd, samp, pre, .font-mono {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-feature-settings: 'tnum';
+  }
+
+  /* Mandatory Tabular Figures for All Numerical Data */
+  .tabular-nums, [data-amount="true"], .font-mono {
+    font-variant-numeric: tabular-nums;
   }
 
   h1, h2, h3, h4 {
-    @apply font-semibold tracking-tight;
+    @apply font-bold tracking-tight;
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    text-wrap: balance;
   }
 
   button {

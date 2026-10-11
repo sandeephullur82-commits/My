@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Share2, Printer, ChevronLeft, ChevronRight,
   ZoomIn, ZoomOut, Loader2, BookOpen, Layers,
-  AlertCircle, MessageCircle
+  AlertCircle
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -13,7 +13,6 @@ import { useUI } from '../context/UIContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { 
   shareFileForAndroid,
-  shareFileToWhatsApp,
   printFileForAndroid
 } from '../utils/capacitorDeviceHelper';
 
@@ -169,31 +168,6 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
     };
   }, [isOpen, report, onClose]);
 
-  // Direct WhatsApp Share Handler (No download button needed)
-  const handleWhatsAppShare = async () => {
-    if (!report) return;
-    try {
-      const summaryText = 
-`📊 *PIGMY PRO FINANCIAL REPORT*
-━━━━━━━━━━━━━━━━━━
-*Report:* ${report.title}
-*Document:* ${report.fileName}
-*Date:* ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-━━━━━━━━━━━━━━━━━━
-Generated from Pigmy Pro Digital Ledger.`;
-
-      const result = await shareFileToWhatsApp(report.blob, report.fileName, '', summaryText);
-      if (result === 'shared') {
-        toast.success('Report shared via WhatsApp');
-      } else {
-        toast.info('Opening WhatsApp...');
-      }
-    } catch (e) {
-      console.error('WhatsApp share error:', e);
-      toast.error('Could not share to WhatsApp');
-    }
-  };
-
   // Native System Share Sheet
   const handleShare = async () => {
     if (!report) return;
@@ -299,7 +273,7 @@ Generated from Pigmy Pro Digital Ledger.`;
               </div>
             </div>
             
-            {/* Streamlined Actions: View Mode, Print, WhatsApp, Native Share (Download button removed) */}
+            {/* Streamlined Actions: View Mode, Print, Native Share */}
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               {/* View Mode Toggle (Single Page vs Continuous Scroll) */}
               <button
@@ -328,16 +302,6 @@ Generated from Pigmy Pro Digital Ledger.`;
                 className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all cursor-pointer"
               >
                 <Printer size={16} />
-              </motion.button>
-
-              {/* WhatsApp Direct Share Button */}
-              <motion.button 
-                whileTap={{ scale: 0.92 }}
-                onClick={handleWhatsAppShare}
-                title="Send via WhatsApp"
-                className="w-9 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-500 flex items-center justify-center text-white transition-all shadow-md shadow-emerald-600/30 cursor-pointer"
-              >
-                <MessageCircle size={16} strokeWidth={2.4} />
               </motion.button>
 
               {/* Native System Share Sheet */}

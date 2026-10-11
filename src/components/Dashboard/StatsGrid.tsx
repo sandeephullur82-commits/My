@@ -21,18 +21,18 @@ export function StatsGrid({ stats, onNavigate, onTotalClick }: StatsGridProps) {
   const cards = [
     { 
       id: 'total', 
-      title: "Today's Total Collected", 
+      title: "Total Collected", 
       value: stats.total, 
       count: stats.cashCount + stats.phonepeCount,
       icon: TrendingUp, 
       color: 'text-accent', 
-      bg: 'bg-card border-border hover:border-accent/40', 
-      fullWidth: true,
+      bg: 'bg-card border-border/80 hover:border-accent/40', 
+      iconBg: 'bg-accent/10 text-accent',
       onClick: () => {
         if (onTotalClick) onTotalClick();
         else onNavigate('transactions', 'ALL');
       },
-      subtitle: `${stats.cashCount} Cash + ${stats.phonepeCount} UPI transactions completed`
+      subtitle: `${stats.cashCount} Cash + ${stats.phonepeCount} UPI today`
     },
     { 
       id: 'cash', 
@@ -41,7 +41,8 @@ export function StatsGrid({ stats, onNavigate, onTotalClick }: StatsGridProps) {
       count: stats.cashCount,
       icon: Banknote, 
       color: 'text-emerald-600 dark:text-emerald-400', 
-      bg: 'bg-emerald-500/5 dark:bg-emerald-500/10 border-emerald-500/20 hover:border-emerald-500/40', 
+      bg: 'bg-card border-border/80 hover:border-emerald-500/40', 
+      iconBg: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
       onClick: () => onNavigate('entry', 'CASH', undefined, 'PAID', 'TODAY'),
       subtitle: `${stats.cashCount} cash deposits`
     },
@@ -52,27 +53,28 @@ export function StatsGrid({ stats, onNavigate, onTotalClick }: StatsGridProps) {
       count: stats.phonepeCount,
       icon: Smartphone, 
       color: 'text-blue-600 dark:text-blue-400', 
-      bg: 'bg-blue-500/5 dark:bg-blue-500/10 border-blue-500/20 hover:border-blue-500/40', 
+      bg: 'bg-card border-border/80 hover:border-blue-500/40', 
+      iconBg: 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
       onClick: () => onNavigate('entry', 'PHONEPE', undefined, 'PAID', 'TODAY'),
       subtitle: `${stats.phonepeCount} UPI entries`
     },
     { 
       id: 'notPaid', 
-      title: 'Unsettled / To Collect', 
+      title: 'To Collect / Due', 
       value: stats.notPaid, 
       count: stats.notPaidCount,
       icon: AlertCircle, 
       color: 'text-amber-600 dark:text-amber-400', 
-      bg: 'bg-amber-500/5 dark:bg-amber-500/10 border-amber-500/20 hover:border-amber-500/40', 
-      fullWidth: true,
+      bg: 'bg-card border-border/80 hover:border-amber-500/40', 
+      iconBg: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
       onClick: () => onNavigate('entry', 'NOT_PAID', undefined, 'UNPAID', 'ALL'),
-      subtitle: `${stats.notPaidCount} borrowers marked not paid or pending settlement`
+      subtitle: `${stats.notPaidCount} borrowers with dues`
     },
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3.5">
-      {cards.map((card, index) => {
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      {cards.map((card) => {
         const Icon = card.icon;
 
         return (
@@ -83,57 +85,47 @@ export function StatsGrid({ stats, onNavigate, onTotalClick }: StatsGridProps) {
             whileTap={{ scale: 0.98 }}
             onClick={card.onClick}
             className={cn(
-              "relative overflow-hidden rounded-2xl border flex flex-col justify-between transition-all p-4.5 cursor-pointer shadow-sm group",
-              card.bg,
-              card.fullWidth ? "col-span-2 min-h-[105px]" : "col-span-1 min-h-[115px]"
+              "relative overflow-hidden rounded-2xl border flex flex-col justify-between transition-all p-4 cursor-pointer shadow-xs group min-h-[120px]",
+              card.bg
             )}
           >
             {/* Top row: Icon + Count tag + Arrow */}
             <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <div className={cn(
-                  "w-9 h-9 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105",
-                  card.id === 'total' 
-                    ? 'bg-accent/10 text-accent' 
-                    : card.id === 'cash'
-                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                    : card.id === 'phonepe'
-                    ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
-                    : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                  "w-9 h-9 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105 shrink-0",
+                  card.iconBg
                 )}>
-                  <Icon size={19} strokeWidth={2.5} />
+                  <Icon size={18} strokeWidth={2.5} />
                 </div>
-                <span className="text-xs font-bold text-text-secondary tracking-tight">
+                <span className="text-xs font-bold text-text-secondary tracking-tight truncate">
                   {card.title}
                 </span>
               </div>
 
-              <div className="flex items-center gap-1.5">
-                {card.count > 0 && (
-                  <span className="text-[11px] font-semibold text-text-secondary px-2 py-0.5 rounded-md bg-muted/80">
-                    {card.count} {card.count === 1 ? 'entry' : 'entries'}
-                  </span>
-                )}
-                <ArrowUpRight size={14} className="text-text-secondary opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+              <div className="flex items-center gap-1.5 shrink-0">
+                <ArrowUpRight size={15} className="text-text-secondary opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
               </div>
             </div>
 
             {/* Bottom row: Value + Subtitle */}
             <div className="mt-3">
               <div className="flex items-baseline gap-1">
-                <span className="text-sm font-bold text-text-secondary">₹</span>
-                <span className={cn(
-                  "font-black tracking-tight text-text-primary",
-                  card.fullWidth ? "text-2xl sm:text-3xl" : "text-xl sm:text-2xl"
-                )}>
+                <span className="text-xs font-bold text-text-secondary font-sans">₹</span>
+                <span className="text-xl sm:text-2xl font-black font-mono tabular-nums tracking-tight text-text-primary">
                   {card.value.toLocaleString('en-IN')}
                 </span>
               </div>
-              {card.subtitle && (
-                <p className="text-[11px] font-medium text-text-secondary mt-0.5 truncate">
+              <div className="flex items-center justify-between gap-2 mt-1">
+                <p className="text-[11px] font-medium text-text-secondary truncate">
                   {card.subtitle}
                 </p>
-              )}
+                {card.count > 0 && (
+                  <span className="text-[10px] font-mono font-bold text-text-secondary px-1.5 py-0.2 rounded-md bg-muted/80 shrink-0">
+                    {card.count}
+                  </span>
+                )}
+              </div>
             </div>
           </motion.div>
         );

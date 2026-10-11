@@ -390,6 +390,20 @@ export function Customers({ onNavigate }: CustomersProps) {
                 {sortOptions.find(o => o.value === sortOrder)?.label.replace(' ', ': ')}
               </span>
             </button>
+
+            {/* Quick Add Customer Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (navigator.vibrate) navigator.vibrate(8);
+                setShowAdd(true);
+              }}
+              className="h-10 px-3 bg-accent hover:brightness-110 text-white rounded-xl flex items-center gap-1.5 text-xs font-bold transition-all active:scale-95 shadow-sm shadow-accent/25 shrink-0 cursor-pointer"
+              title="Add New Customer"
+            >
+              <Plus size={15} strokeWidth={2.5} />
+              <span className="hidden sm:inline">Add Customer</span>
+            </button>
           </div>
 
           {/* Segmented Filter Control with Active Badges */}
@@ -407,7 +421,7 @@ export function Customers({ onNavigate }: CustomersProps) {
               }`}
             >
               <span>All</span>
-              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md ${
+              <span className={`text-[10px] font-mono tabular-nums px-1.5 py-0.2 rounded-md ${
                 filter === 'all' ? 'bg-accent/15 text-accent font-bold' : 'bg-card/50 text-text-secondary'
               }`}>
                 {counts.all}
@@ -427,7 +441,7 @@ export function Customers({ onNavigate }: CustomersProps) {
               }`}
             >
               <span>Pending</span>
-              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md ${
+              <span className={`text-[10px] font-mono tabular-nums px-1.5 py-0.2 rounded-md ${
                 filter === 'pending' ? 'bg-warning/20 text-warning font-bold' : 'bg-card/50 text-text-secondary'
               }`}>
                 {counts.pending}
@@ -447,7 +461,7 @@ export function Customers({ onNavigate }: CustomersProps) {
               }`}
             >
               <span>Overdue</span>
-              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md ${
+              <span className={`text-[10px] font-mono tabular-nums px-1.5 py-0.2 rounded-md ${
                 filter === 'overdue' ? 'bg-danger/20 text-danger font-bold' : 'bg-card/50 text-text-secondary'
               }`}>
                 {counts.overdue}
@@ -467,7 +481,7 @@ export function Customers({ onNavigate }: CustomersProps) {
               }`}
             >
               <span>Settled</span>
-              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md ${
+              <span className={`text-[10px] font-mono tabular-nums px-1.5 py-0.2 rounded-md ${
                 filter === 'paid' ? 'bg-success/20 text-success font-bold' : 'bg-card/50 text-text-secondary'
               }`}>
                 {counts.paid}

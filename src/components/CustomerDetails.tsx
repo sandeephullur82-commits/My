@@ -276,15 +276,15 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
             <p className="text-sm text-text-secondary mb-1">
               {isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'Advance Savings Held' : 'Pending Amount'}
             </p>
-            <p className={`text-4xl font-bold font-mono ${
+            <p className={`text-4xl font-bold font-mono tabular-nums ${
               isFullyPaid && (customer.advanceBalance || 0) > 0 
                 ? 'text-sky-500' 
                 : isOverdue ? 'text-danger' : isFullyPaid ? 'text-success' : 'text-warning'
             }`}>
-              ₹{(isFullyPaid && (customer.advanceBalance || 0) > 0 ? (customer.advanceBalance || 0) : pendingAmount).toLocaleString()}
+              ₹{(isFullyPaid && (customer.advanceBalance || 0) > 0 ? (customer.advanceBalance || 0) : pendingAmount).toLocaleString('en-IN')}
             </p>
-            <p className="text-sm text-success font-medium mt-2">
-              Total Paid: ₹{paidAmount.toLocaleString()}
+            <p className="text-sm text-success font-medium font-mono tabular-nums mt-2">
+              Total Paid: ₹{paidAmount.toLocaleString('en-IN')}
             </p>
 
             {/* Direct Action Buttons (Replaces Floating Action Button) */}

@@ -213,9 +213,9 @@ export function Settings() {
         </div>
       </div>
 
-      <div className="text-center pb-8 opacity-20">
-         <p className="text-[9px] font-black uppercase tracking-[0.5em] select-none cursor-default">
-           Pigmy Pro PWA Engine v1.2.0
+      <div className="text-center pb-8 opacity-40">
+         <p className="text-xs font-semibold text-text-secondary select-none">
+           Pigmy Pro · Smart Collection System
          </p>
       </div>
     </div>

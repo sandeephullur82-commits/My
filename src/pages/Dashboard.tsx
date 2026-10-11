@@ -109,12 +109,12 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
           {/* Card 1: Today Collected */}
           <div 
             onClick={() => onNavigate('entry', 'ALL', undefined, 'PAID', 'ALL')}
-            className="flex flex-col items-center justify-center p-3 sm:p-4 bg-card border border-border hover:border-success/40 rounded-2xl shadow-xs cursor-pointer active:scale-95 transition-all group text-center"
+            className="flex flex-col items-center justify-center p-3 sm:p-4 bg-card border border-border/80 hover:border-success/40 rounded-2xl shadow-xs cursor-pointer active:scale-95 transition-all group text-center"
           >
             <div className="w-8 h-8 rounded-xl bg-success/10 text-success flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
               <CheckCircle2 size={16} strokeWidth={2.5} />
             </div>
-            <span className="text-lg sm:text-2xl font-black text-text-primary tracking-tight leading-none">
+            <span className="text-lg sm:text-2xl font-black font-mono tabular-nums text-text-primary tracking-tight leading-none">
               {todayEntriesCount}
             </span>
             <span className="text-[11px] font-bold text-text-secondary mt-1">
@@ -125,12 +125,12 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
           {/* Card 2: Pending Today */}
           <div 
             onClick={() => onNavigate('entry', 'ALL', undefined, 'PENDING', 'ALL')}
-            className="flex flex-col items-center justify-center p-3 sm:p-4 bg-card border border-border hover:border-warning/40 rounded-2xl shadow-xs cursor-pointer active:scale-95 transition-all group text-center"
+            className="flex flex-col items-center justify-center p-3 sm:p-4 bg-card border border-border/80 hover:border-warning/40 rounded-2xl shadow-xs cursor-pointer active:scale-95 transition-all group text-center"
           >
             <div className="w-8 h-8 rounded-xl bg-warning/10 text-warning flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
               <Clock size={16} strokeWidth={2.5} />
             </div>
-            <span className="text-lg sm:text-2xl font-black text-warning tracking-tight leading-none">
+            <span className="text-lg sm:text-2xl font-black font-mono tabular-nums text-warning tracking-tight leading-none">
               {pendingCustomers.length}
             </span>
             <span className="text-[11px] font-bold text-text-secondary mt-1">
@@ -141,16 +141,16 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
           {/* Card 3: Total Accounts */}
           <div 
             onClick={() => onNavigate('customers')}
-            className="flex flex-col items-center justify-center p-3 sm:p-4 bg-card border border-border hover:border-accent/40 rounded-2xl shadow-xs cursor-pointer active:scale-95 transition-all group text-center"
+            className="flex flex-col items-center justify-center p-3 sm:p-4 bg-card border border-border/80 hover:border-accent/40 rounded-2xl shadow-xs cursor-pointer active:scale-95 transition-all group text-center"
           >
             <div className="w-8 h-8 rounded-xl bg-accent/10 text-accent flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
               <Users size={16} strokeWidth={2.5} />
             </div>
-            <span className="text-lg sm:text-2xl font-black text-accent tracking-tight leading-none">
+            <span className="text-lg sm:text-2xl font-black font-mono tabular-nums text-accent tracking-tight leading-none">
               {customers.length}
             </span>
             <span className="text-[11px] font-bold text-text-secondary mt-1">
-              Total Accounts
+              Total Customers
             </span>
           </div>
         </div>

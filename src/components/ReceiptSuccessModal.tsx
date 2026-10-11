@@ -15,11 +15,9 @@ import {
   Bluetooth,
   Receipt,
   Sparkles,
-  PiggyBank,
-  MessageCircle
+  PiggyBank
 } from 'lucide-react';
 import { safeFormat } from '../lib/utils';
-import { triggerWhatsApp } from '../lib/whatsapp';
 import { 
   shareReceiptImage, 
   ReceiptData,
@@ -27,7 +25,7 @@ import {
   isBluetoothPrintSupported,
   generateReceiptImage
 } from '../services/receiptImageService';
-import { isAndroidApp, printFileForAndroid, openWhatsAppDirect } from '../utils/capacitorDeviceHelper';
+import { isAndroidApp, printFileForAndroid } from '../utils/capacitorDeviceHelper';
 import { Customer } from '../services/firestoreService';
 import { PIGMY_LOGO_BASE64 } from '../assets/logoBase64';
 import { toast } from 'sonner';
@@ -86,39 +84,6 @@ export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: Receip
   );
   const receiptNo = `REC-${(transaction.id || '').slice(0, 8).toUpperCase()}`;
   const hasBluetooth = isBluetoothPrintSupported();
-
-  const handleWhatsAppShare = () => {
-    try {
-      const modeText = transaction.type === 'phonepe' ? 'UPI / PhonePe' : 'Cash Deposit';
-      const receiptMsg = 
-`🧾 *PIGMY PRO PAYMENT RECEIPT*
-━━━━━━━━━━━━━━━━━━
-*Receipt No:* ${receiptNo}
-*Customer:* ${customer.name}
-*A/C No:* ${customer.displayId || customer.id}
-*Amount Paid:* ₹${transaction.amount.toLocaleString('en-IN')}
-*New Balance:* ₹${newBalance.toLocaleString('en-IN')}
-*Date & Time:* ${paidTime}
-*Payment Mode:* ${modeText}
-━━━━━━━━━━━━━━━━━━
-*Status:* Confirmed & Recorded ✓
-Thank you for banking with Pigmy Pro!`;
-
-      // 1. Direct native Android interface hook
-      if ((window as any).AndroidNativeApp?.openWhatsApp) {
-        (window as any).AndroidNativeApp.openWhatsApp(customer.phone || '', receiptMsg);
-        toast.success('Redirecting to WhatsApp...');
-        return;
-      }
-
-      // 2. Direct WhatsApp redirection without popup blockers
-      openWhatsAppDirect(customer.phone || '', receiptMsg);
-      toast.success('Opening WhatsApp...');
-    } catch (e) {
-      console.error('WhatsApp redirect error:', e);
-      toast.error('Could not redirect to WhatsApp');
-    }
-  };
 
   const handleShareImage = async () => {
     try {
@@ -255,7 +220,7 @@ Thank you for banking with Pigmy Pro!`;
                     ? 'Advance Savings Deposit Recorded' 
                     : 'Payment Recorded Successfully'}
             </p>
-            <h2 className="text-3xl font-black tracking-tight drop-shadow-xs">
+            <h2 className="text-3xl font-black font-mono tabular-nums tracking-tight drop-shadow-xs">
               ₹{transaction.amount.toLocaleString('en-IN')}
             </h2>
 
@@ -451,33 +416,21 @@ Thank you for banking with Pigmy Pro!`;
               </button>
             )}
 
-            {/* Primary Actions: WhatsApp Instant Redirect & Android Share Image */}
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={handleWhatsAppShare}
-                className="w-full py-3.5 px-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/30 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                title={`Send receipt directly to ${customer.name} on WhatsApp`}
-              >
-                <MessageCircle size={16} strokeWidth={2.5} />
-                <span>WhatsApp</span>
-              </button>
-
-              <button
-                type="button"
-                disabled={isSharingImage}
-                onClick={handleShareImage}
-                className="w-full py-3.5 px-3 rounded-2xl bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-teal-600/30 active:scale-95 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
-                title="Share receipt image to any app or device storage"
-              >
-                {isSharingImage ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <Share2 size={16} strokeWidth={2.5} />
-                )}
-                <span>Share Image</span>
-              </button>
-            </div>
+            {/* Primary Action: Share Receipt Image (WhatsApp removed) */}
+            <button
+              type="button"
+              disabled={isSharingImage}
+              onClick={handleShareImage}
+              className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-teal-600 via-emerald-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-teal-600/25 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+              title="Share receipt image to any app or device storage"
+            >
+              {isSharingImage ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Share2 size={16} strokeWidth={2.5} />
+              )}
+              <span>Share Receipt Image</span>
+            </button>
 
             {/* Secondary Actions: Print & Done */}
             <div className="flex items-center gap-2">

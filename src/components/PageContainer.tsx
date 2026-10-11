@@ -35,8 +35,9 @@ export const PageContainer = forwardRef<HTMLDivElement, PageContainerProps>(({ c
       className={cn(
         "h-full w-full overflow-y-auto scroll-smooth overscroll-contain",
         "[-webkit-overflow-scrolling:touch] isolate",
-        "pb-[calc(80px+env(safe-area-inset-bottom))]", 
-        isCompact ? 'px-gap pt-gap' : 'px-base pt-base',
+        "pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-14", 
+        isCompact ? 'px-3 sm:px-5 md:px-8 pt-3 sm:pt-4' : 'px-4 sm:px-6 md:px-8 pt-4 sm:pt-6',
+        "max-w-7xl mx-auto",
         className
       )}
     >

@@ -18,7 +18,7 @@ import { usePWAInstall } from '../hooks/usePWAInstall';
 
 const navItems = [
   { id: 'dashboard', icon: Home, label: 'Dashboard' },
-  { id: 'customers', icon: Users, label: 'Borrowers' },
+  { id: 'customers', icon: Users, label: 'Customer' },
   { id: 'entry', icon: PlusCircle, label: 'Collection' },
   { id: 'transactions', icon: Activity, label: 'Ledger' },
 ];
@@ -41,10 +41,10 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
     try {
       if (navigator.vibrate) navigator.vibrate(10);
       await firestoreService.saveCustomer(customer);
-      toast.success('Borrower registered successfully');
+      toast.success('Customer registered successfully');
       setShowGlobalAddCustomer(false);
     } catch (e) {
-      toast.error('Failed to register borrower');
+      toast.error('Failed to register customer');
     }
   };
 
@@ -94,7 +94,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
   const getPageTitle = (tab: string) => {
     switch (tab) {
       case 'dashboard': return 'Financial Overview';
-      case 'customers': return 'Borrowers Directory';
+      case 'customers': return 'Customer Directory';
       case 'entry': return 'Daily Collection';
       case 'transactions': return 'Audit Ledger';
       case 'notifications': return 'Alerts & Reminders';
@@ -115,7 +115,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
       
       {/* Top Universal App Header across all screens */}
       <header className="flex-shrink-0 sticky top-0 pt-[env(safe-area-inset-top)] bg-card/95 backdrop-blur-md border-b border-border/80 z-[990] transition-colors" role="banner">
-        <div className="h-14 max-w-4xl mx-auto flex items-center justify-between px-4 sm:px-6">
+        <div className="h-14 max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 md:px-8">
           
           {/* Brand & Context */}
           <div className="flex items-center gap-3 min-w-0">
@@ -151,6 +151,36 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
             </button>
           </div>
 
+          {/* Desktop Navigation Links */}
+          <nav className="hidden md:flex items-center gap-1.5 mx-4" aria-label="Desktop Navigation" role="tablist">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = currentTab === item.id;
+              const isEntry = item.id === 'entry';
+
+              return (
+                <button
+                  key={item.id}
+                  role="tab"
+                  aria-selected={isActive}
+                  aria-label={`${item.label} tab`}
+                  onClick={() => handleTabClick(item.id)}
+                  className={cn(
+                    "h-9 px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer active:scale-95",
+                    isActive
+                      ? isEntry
+                        ? "bg-accent text-white shadow-sm shadow-accent/25 font-black"
+                        : "bg-accent/15 text-accent font-black"
+                      : "text-text-secondary hover:text-text-primary hover:bg-muted/70"
+                  )}
+                >
+                  <Icon size={15} strokeWidth={isActive ? 2.5 : 2} aria-hidden="true" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+
           {/* Top Quick Actions */}
           <div className="flex items-center gap-1.5 sm:gap-2">
             
@@ -167,21 +197,6 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
                 <span className="hidden md:inline">Install</span>
               </button>
             )}
-
-            {/* Quick New Customer Button */}
-            <button
-              type="button"
-              onClick={() => {
-                if (navigator.vibrate) navigator.vibrate(8);
-                setShowGlobalAddCustomer(true);
-              }}
-              className="h-9 px-3 rounded-xl bg-accent hover:brightness-110 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm shadow-accent/25 transition-all cursor-pointer min-w-[36px]"
-              title="Add New Borrower"
-              aria-label="Register new borrower"
-            >
-              <Plus size={15} strokeWidth={2.5} aria-hidden="true" />
-              <span className="hidden sm:inline">Add Customer</span>
-            </button>
 
             {/* Theme Toggle Button */}
             <button
@@ -262,7 +277,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="fixed inset-x-0 bottom-0 top-[8%] bg-card border-t border-border rounded-t-[32px] z-[99995] shadow-2xl overflow-hidden flex flex-col"
+              className="fixed inset-x-0 bottom-0 top-[8%] md:top-auto md:bottom-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-2xl md:h-[84vh] bg-card border-t md:border border-border rounded-t-[32px] md:rounded-[28px] z-[99995] shadow-2xl overflow-hidden flex flex-col"
             >
               <div className="h-14 flex items-center justify-between px-6 border-b border-border/80 shrink-0 bg-card">
                 <div className="flex items-center gap-2">
@@ -294,7 +309,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
         <BottomSheet
           isOpen={showGlobalAddCustomer}
           onClose={() => setShowGlobalAddCustomer(false)}
-          title="Register New Borrower"
+          title="Register New Customer"
           subtitle="Add loan amount, daily installment terms and contact"
         >
           <CustomerForm 
@@ -327,54 +342,152 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
         </AnimatePresence>
       </main>
 
-      {/* Bottom Navigation Bar */}
+      {/* Bottom Navigation Bar (Mobile Viewports Only) */}
       {!showGlobalCollection && !isModalOpen && !isCustomerDetailsOpen && (
         <nav 
           aria-label="Main Navigation"
-          className="flex-shrink-0 sticky bottom-0 left-0 right-0 z-[980] bg-card/95 backdrop-blur-lg border-t border-border shadow-[0_-4px_24px_rgba(0,0,0,0.06)] pb-[env(safe-area-inset-bottom)]"
+          className="md:hidden flex-shrink-0 sticky bottom-0 left-0 right-0 z-[980] bg-card/95 backdrop-blur-lg border-t border-border shadow-[0_-4px_24px_rgba(0,0,0,0.06)] pb-[env(safe-area-inset-bottom)]"
         >
-          <div className="max-w-xl mx-auto flex justify-around items-center h-16 px-3" role="tablist" aria-label="Application tabs">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = currentTab === item.id;
-              const isEntry = item.id === 'entry';
+          <div className="max-w-xl mx-auto flex items-center justify-around h-16 px-1.5" role="tablist" aria-label="Application tabs">
+            {/* Tab 1: Dashboard */}
+            <button
+              role="tab"
+              aria-selected={currentTab === 'dashboard'}
+              aria-current={currentTab === 'dashboard' ? "page" : undefined}
+              aria-label="Dashboard tab"
+              onClick={() => handleTabClick('dashboard')}
+              className={cn(
+                "relative flex flex-col items-center justify-center flex-1 h-full py-1 transition-all outline-none group cursor-pointer min-h-[44px]",
+                currentTab === 'dashboard' ? "text-accent" : "text-text-secondary hover:text-text-primary"
+              )}
+            >
+              <div
+                className={cn(
+                  "p-1.5 rounded-xl transition-all duration-200 flex items-center justify-center",
+                  currentTab === 'dashboard' ? "text-accent bg-accent/15 scale-105" : "opacity-60 group-hover:opacity-100"
+                )}
+                aria-hidden="true"
+              >
+                <Home size={19} strokeWidth={currentTab === 'dashboard' ? 2.5 : 2} />
+              </div>
+              <span className={cn(
+                "text-[10px] font-bold tracking-tight transition-colors mt-0.5",
+                currentTab === 'dashboard' ? "text-accent font-black" : "opacity-70 group-hover:opacity-100"
+              )}>
+                Dashboard
+              </span>
+            </button>
 
-              return (
-                <button
-                  key={item.id}
-                  role="tab"
-                  aria-selected={isActive}
-                  aria-current={isActive ? "page" : undefined}
-                  aria-label={`${item.label} tab`}
-                  onClick={() => handleTabClick(item.id)}
-                  className={cn(
-                    "relative flex flex-col items-center justify-center flex-1 h-full py-1 transition-all outline-none group cursor-pointer min-h-[44px]",
-                    isActive ? "text-accent" : "text-text-secondary hover:text-text-primary"
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "p-1.5 rounded-xl transition-all duration-200 flex items-center justify-center",
-                      isEntry && !isActive ? "bg-accent/10 text-accent font-black" : "",
-                      isActive 
-                        ? isEntry 
-                          ? "bg-accent text-white shadow-md shadow-accent/30 scale-105" 
-                          : "text-accent bg-accent/15 scale-105" 
-                        : "opacity-60 group-hover:opacity-100"
-                    )}
-                    aria-hidden="true"
-                  >
-                    <Icon size={isEntry ? 22 : 19} strokeWidth={isActive ? 2.5 : 2} />
-                  </div>
-                  <span className={cn(
-                    "text-[11px] font-bold tracking-tight transition-colors mt-0.5",
-                    isActive ? "text-accent font-black" : "opacity-70 group-hover:opacity-100"
-                  )}>
-                    {item.label}
-                  </span>
-                </button>
-              );
-            })}
+            {/* Tab 2: Customer */}
+            <button
+              role="tab"
+              aria-selected={currentTab === 'customers'}
+              aria-current={currentTab === 'customers' ? "page" : undefined}
+              aria-label="Customer tab"
+              onClick={() => handleTabClick('customers')}
+              className={cn(
+                "relative flex flex-col items-center justify-center flex-1 h-full py-1 transition-all outline-none group cursor-pointer min-h-[44px]",
+                currentTab === 'customers' ? "text-accent" : "text-text-secondary hover:text-text-primary"
+              )}
+            >
+              <div
+                className={cn(
+                  "p-1.5 rounded-xl transition-all duration-200 flex items-center justify-center",
+                  currentTab === 'customers' ? "text-accent bg-accent/15 scale-105" : "opacity-60 group-hover:opacity-100"
+                )}
+                aria-hidden="true"
+              >
+                <Users size={19} strokeWidth={currentTab === 'customers' ? 2.5 : 2} />
+              </div>
+              <span className={cn(
+                "text-[10px] font-bold tracking-tight transition-colors mt-0.5",
+                currentTab === 'customers' ? "text-accent font-black" : "opacity-70 group-hover:opacity-100"
+              )}>
+                Customer
+              </span>
+            </button>
+
+            {/* Center Action: Add Customer Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (navigator.vibrate) navigator.vibrate(8);
+                setShowGlobalAddCustomer(true);
+              }}
+              className="relative flex flex-col items-center justify-center flex-1 h-full py-0.5 transition-all outline-none group cursor-pointer min-h-[44px]"
+              title="Add New Customer"
+              aria-label="Add New Customer"
+            >
+              <div 
+                className="w-10 h-10 -mt-2 rounded-2xl bg-accent hover:brightness-110 text-white shadow-md shadow-accent/35 flex items-center justify-center active:scale-90 transition-transform cursor-pointer"
+                aria-hidden="true"
+              >
+                <UserPlus size={19} strokeWidth={2.5} />
+              </div>
+              <span className="text-[10px] font-black tracking-tight text-accent mt-0.5 whitespace-nowrap">
+                Add Customer
+              </span>
+            </button>
+
+            {/* Tab 3: Collection */}
+            <button
+              role="tab"
+              aria-selected={currentTab === 'entry'}
+              aria-current={currentTab === 'entry' ? "page" : undefined}
+              aria-label="Collection tab"
+              onClick={() => handleTabClick('entry')}
+              className={cn(
+                "relative flex flex-col items-center justify-center flex-1 h-full py-1 transition-all outline-none group cursor-pointer min-h-[44px]",
+                currentTab === 'entry' ? "text-accent" : "text-text-secondary hover:text-text-primary"
+              )}
+            >
+              <div
+                className={cn(
+                  "p-1.5 rounded-xl transition-all duration-200 flex items-center justify-center",
+                  currentTab === 'entry' 
+                    ? "bg-accent text-white shadow-md shadow-accent/30 scale-105" 
+                    : "bg-accent/10 text-accent font-black opacity-60 group-hover:opacity-100"
+                )}
+                aria-hidden="true"
+              >
+                <PlusCircle size={20} strokeWidth={currentTab === 'entry' ? 2.5 : 2} />
+              </div>
+              <span className={cn(
+                "text-[10px] font-bold tracking-tight transition-colors mt-0.5",
+                currentTab === 'entry' ? "text-accent font-black" : "opacity-70 group-hover:opacity-100"
+              )}>
+                Collection
+              </span>
+            </button>
+
+            {/* Tab 4: Ledger */}
+            <button
+              role="tab"
+              aria-selected={currentTab === 'transactions'}
+              aria-current={currentTab === 'transactions' ? "page" : undefined}
+              aria-label="Ledger tab"
+              onClick={() => handleTabClick('transactions')}
+              className={cn(
+                "relative flex flex-col items-center justify-center flex-1 h-full py-1 transition-all outline-none group cursor-pointer min-h-[44px]",
+                currentTab === 'transactions' ? "text-accent" : "text-text-secondary hover:text-text-primary"
+              )}
+            >
+              <div
+                className={cn(
+                  "p-1.5 rounded-xl transition-all duration-200 flex items-center justify-center",
+                  currentTab === 'transactions' ? "text-accent bg-accent/15 scale-105" : "opacity-60 group-hover:opacity-100"
+                )}
+                aria-hidden="true"
+              >
+                <Activity size={19} strokeWidth={currentTab === 'transactions' ? 2.5 : 2} />
+              </div>
+              <span className={cn(
+                "text-[10px] font-bold tracking-tight transition-colors mt-0.5",
+                currentTab === 'transactions' ? "text-accent font-black" : "opacity-70 group-hover:opacity-100"
+              )}>
+                Ledger
+              </span>
+            </button>
           </div>
         </nav>
       )}

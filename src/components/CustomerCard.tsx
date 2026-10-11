@@ -175,11 +175,8 @@ export const CustomerCard = React.memo(function CustomerCard({
           }
         }}
       >
-        {/* Left Border Strip */}
-        <div className={`absolute left-0 top-0 bottom-0 w-1 ${statusColor}`} />
-
         {/* Avatar & Status */}
-        <div className="relative ml-2">
+        <div className="relative">
           <div className={`${isCompact ? 'w-9 h-9 text-sm' : 'w-11 h-11 text-base'} rounded-full bg-accent/10 text-accent flex items-center justify-center font-black uppercase tracking-tight`}>
             {customer.name ? customer.name.charAt(0) : '👤'}
           </div>
@@ -242,10 +239,10 @@ export const CustomerCard = React.memo(function CustomerCard({
                     {isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'Advance' : 'Pending'}
                   </p>
                 )}
-                <p className={`font-black tracking-tight leading-none ${
+                <p className={`font-mono tabular-nums font-black tracking-tight leading-none ${
                   isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'text-sky-600 dark:text-sky-400' : statusText
                 } ${isCompact ? 'text-base' : 'text-lg'}`}>
-                  <span className="text-xs mr-0.5 opacity-60 font-bold">₹</span>
+                  <span className="text-xs mr-0.5 opacity-60 font-bold font-sans">₹</span>
                   {isFullyPaid && (customer.advanceBalance || 0) > 0 
                     ? (customer.advanceBalance || 0).toLocaleString('en-IN')
                     : pendingAmount.toLocaleString('en-IN')}

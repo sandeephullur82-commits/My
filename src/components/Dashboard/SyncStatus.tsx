@@ -29,11 +29,10 @@ export function SyncStatus({
         <button
           type="button"
           onClick={onOpenNotifications}
-          className="p-2.5 rounded-xl bg-card hover:bg-muted border border-border text-text-secondary hover:text-accent flex items-center justify-center transition-all active:scale-95 shadow-xs relative cursor-pointer"
+          className="p-2.5 rounded-xl bg-card hover:bg-muted border border-border/80 text-text-secondary hover:text-accent flex items-center justify-center transition-all active:scale-95 shadow-xs relative cursor-pointer"
           title="Alerts and notifications"
         >
           <Bell size={16} />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-accent animate-pulse" />
         </button>
       )}
     </div>

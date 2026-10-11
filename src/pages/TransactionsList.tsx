@@ -290,7 +290,7 @@ export function TransactionsList() {
                   }`}
                 >
                   <span>{label}</span>
-                  <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md ${
+                  <span className={`text-[10px] font-mono tabular-nums px-1.5 py-0.2 rounded-md ${
                     isActive ? 'bg-accent/15 text-accent font-bold' : 'bg-card/50 text-text-secondary'
                   }`}>
                     {filterCounts[f]}
@@ -375,8 +375,8 @@ export function TransactionsList() {
                       </div>
                       
                       <div className="flex flex-col items-end">
-                        <span className="text-[16px] font-black text-text-primary tracking-tighter">
-                          ₹{group.total.toLocaleString()}
+                        <span className="text-[16px] font-black font-mono tabular-nums text-text-primary tracking-tighter">
+                          ₹{group.total.toLocaleString('en-IN')}
                         </span>
                         <span className="text-[8px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] leading-none">
                           Total Amount
@@ -410,7 +410,7 @@ export function TransactionsList() {
                                   animate={{ opacity: 1, y: 0 }}
                                   whileTap={{ scale: 0.98 }}
                                   onClick={() => handleOpenReceipt(tx)}
-                                  className="group relative flex items-center justify-between p-4 bg-card border border-border/10 rounded-2xl transition-all shadow-2xs cursor-pointer hover:border-accent/40 active:bg-muted/40 hover:shadow-xs"
+                                  className="group relative flex items-center justify-between p-4 bg-card border border-border/80 rounded-2xl transition-all shadow-2xs cursor-pointer hover:border-accent/40 active:bg-muted/40 hover:shadow-xs"
                                 >
                                   <div className="flex items-center gap-4">
                                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
@@ -428,7 +428,7 @@ export function TransactionsList() {
                                         {customer?.name || 'Unknown'}
                                       </p>
                                       <div className="flex items-center gap-2 mt-1">
-                                        <span className="text-[9px] font-bold text-text-secondary opacity-40 uppercase tracking-wider">
+                                        <span className="text-[9px] font-bold text-text-secondary opacity-60 uppercase tracking-wider font-mono tabular-nums">
                                           {safeFormat(tx.timestamp, 'hh:mm a')}
                                         </span>
                                         <div className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-[0.1em] ${
@@ -444,7 +444,7 @@ export function TransactionsList() {
 
                                   <div className="flex items-center gap-2.5 shrink-0">
                                     <div className="flex flex-col items-end">
-                                      <p className="text-[15px] font-black text-text-primary tracking-tighter">
+                                      <p className="text-[15px] font-black font-mono tabular-nums text-text-primary tracking-tighter">
                                         ₹{tx.amount.toLocaleString('en-IN')}
                                       </p>
                                       <span className="text-[8px] font-bold text-accent uppercase tracking-wider flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
