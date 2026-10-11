@@ -147,7 +147,6 @@ async function startServer() {
 
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("X-Frame-Options", "SAMEORIGIN");
     res.setHeader("X-XSS-Protection", "1; mode=block");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     next();
@@ -532,25 +531,6 @@ async function startServer() {
   // Hourly Check for Upcoming and Overdue Payments
   cron.schedule("0 * * * *", async () => {
     await checkPaymentsAndRemind();
-  });
-
-  // Endpoint to serve generated Android APK for direct mobile install/download
-  app.get("/api/download-apk", (_req, res) => {
-    const apkLocations = [
-      path.join(process.cwd(), "public", "pigmy-pro.apk"),
-      path.join(process.cwd(), "android", "app", "build", "outputs", "apk", "debug", "app-debug.apk"),
-      path.join(process.cwd(), "dist", "pigmy-pro.apk"),
-    ];
-
-    for (const loc of apkLocations) {
-      if (fs.existsSync(loc)) {
-        res.setHeader("Content-Disposition", 'attachment; filename="PigmyPro.apk"');
-        res.setHeader("Content-Type", "application/vnd.android.package-archive");
-        return res.sendFile(loc);
-      }
-    }
-
-    res.status(404).json({ error: "APK is being prepared or not yet built." });
   });
 
   // Vite Middleware

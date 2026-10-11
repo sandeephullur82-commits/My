@@ -146,7 +146,6 @@ async function startServer() {
   app.use(import_express.default.json({ limit: "512kb" }));
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("X-Frame-Options", "SAMEORIGIN");
     res.setHeader("X-XSS-Protection", "1; mode=block");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     next();
@@ -461,7 +460,10 @@ async function startServer() {
   });
   if (process.env.NODE_ENV !== "production") {
     const vite = await (0, import_vite.createServer)({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: false
+      },
       appType: "spa"
     });
     app.use(vite.middlewares);

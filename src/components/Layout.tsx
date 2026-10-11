@@ -13,7 +13,7 @@ import { CollectionMode } from '../pages/CollectionMode';
 import { CustomerForm } from './CustomerForm';
 import { BottomSheet } from './BottomSheet';
 import { firestoreService } from '../services/firestoreService';
-import { PWAInstallBanner } from './PWAInstallBanner';
+import { PWAInstallPrompt } from './PWAInstallPrompt';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 
 const navItems = [
@@ -208,8 +208,8 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
         </div>
       </header>
 
-      {/* PWA Smart Install Banner (Only renders when running in browser and installable) */}
-      <PWAInstallBanner />
+      {/* Non-intrusive PWA Install Prompt (detects uninstalled state & triggers beforeinstallprompt) */}
+      <PWAInstallPrompt />
 
       {/* Main Content Viewport */}
       <main 
