@@ -86,7 +86,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
   if (!isReady) {
     return (
       <PageContainer>
-        <div className="flex flex-col gap-5 max-w-4xl mx-auto">
+        <div className="flex flex-col gap-5 max-w-7xl mx-auto">
           <SyncStatus />
           <StatsSkeleton />
           <div className="flex flex-col gap-4">
@@ -99,25 +99,25 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
 
   return (
     <PageContainer>
-      <div className="flex flex-col gap-5 max-w-4xl mx-auto animate-in fade-in duration-300 pb-4">
+      <div className="flex flex-col gap-6 max-w-7xl mx-auto animate-in fade-in duration-300 pb-4">
         {/* Top Header */}
         <SyncStatus />
 
         {/* Quick Summary Metrics Strip */}
-        <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+        <div className="grid grid-cols-3 gap-2.5 sm:gap-4 lg:gap-6">
           
           {/* Card 1: Today Collected */}
           <div 
             onClick={() => onNavigate('entry', 'ALL', undefined, 'PAID', 'ALL')}
-            className="flex flex-col items-center justify-center p-3 sm:p-4 bg-card border border-border/80 hover:border-success/40 rounded-2xl shadow-xs cursor-pointer active:scale-95 transition-all group text-center"
+            className="flex flex-col items-center justify-center p-3.5 sm:p-5 bg-card border border-border/80 hover:border-success/40 rounded-2xl shadow-xs cursor-pointer active:scale-95 transition-all group text-center"
           >
-            <div className="w-8 h-8 rounded-xl bg-success/10 text-success flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
-              <CheckCircle2 size={16} strokeWidth={2.5} />
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-success/10 text-success flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
+              <CheckCircle2 size={18} strokeWidth={2.5} />
             </div>
-            <span className="text-lg sm:text-2xl font-black font-mono tabular-nums text-text-primary tracking-tight leading-none">
+            <span className="text-xl sm:text-3xl font-black font-mono tabular-nums text-text-primary tracking-tight leading-none">
               {todayEntriesCount}
             </span>
-            <span className="text-[11px] font-bold text-text-secondary mt-1">
+            <span className="text-[11px] sm:text-xs font-bold text-text-secondary mt-1.5">
               Collected Today
             </span>
           </div>
@@ -125,15 +125,15 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
           {/* Card 2: Pending Today */}
           <div 
             onClick={() => onNavigate('entry', 'ALL', undefined, 'PENDING', 'ALL')}
-            className="flex flex-col items-center justify-center p-3 sm:p-4 bg-card border border-border/80 hover:border-warning/40 rounded-2xl shadow-xs cursor-pointer active:scale-95 transition-all group text-center"
+            className="flex flex-col items-center justify-center p-3.5 sm:p-5 bg-card border border-border/80 hover:border-warning/40 rounded-2xl shadow-xs cursor-pointer active:scale-95 transition-all group text-center"
           >
-            <div className="w-8 h-8 rounded-xl bg-warning/10 text-warning flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
-              <Clock size={16} strokeWidth={2.5} />
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-warning/10 text-warning flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
+              <Clock size={18} strokeWidth={2.5} />
             </div>
-            <span className="text-lg sm:text-2xl font-black font-mono tabular-nums text-warning tracking-tight leading-none">
+            <span className="text-xl sm:text-3xl font-black font-mono tabular-nums text-warning tracking-tight leading-none">
               {pendingCustomers.length}
             </span>
-            <span className="text-[11px] font-bold text-text-secondary mt-1">
+            <span className="text-[11px] sm:text-xs font-bold text-text-secondary mt-1.5">
               Pending Today
             </span>
           </div>
@@ -141,52 +141,57 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
           {/* Card 3: Total Accounts */}
           <div 
             onClick={() => onNavigate('customers')}
-            className="flex flex-col items-center justify-center p-3 sm:p-4 bg-card border border-border/80 hover:border-accent/40 rounded-2xl shadow-xs cursor-pointer active:scale-95 transition-all group text-center"
+            className="flex flex-col items-center justify-center p-3.5 sm:p-5 bg-card border border-border/80 hover:border-accent/40 rounded-2xl shadow-xs cursor-pointer active:scale-95 transition-all group text-center"
           >
-            <div className="w-8 h-8 rounded-xl bg-accent/10 text-accent flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
-              <Users size={16} strokeWidth={2.5} />
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-accent/10 text-accent flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
+              <Users size={18} strokeWidth={2.5} />
             </div>
-            <span className="text-lg sm:text-2xl font-black font-mono tabular-nums text-accent tracking-tight leading-none">
+            <span className="text-xl sm:text-3xl font-black font-mono tabular-nums text-accent tracking-tight leading-none">
               {customers.length}
             </span>
-            <span className="text-[11px] font-bold text-text-secondary mt-1">
+            <span className="text-[11px] sm:text-xs font-bold text-text-secondary mt-1.5">
               Total Customers
             </span>
           </div>
         </div>
 
-        {/* Financial Highlights & Breakdown */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-text-secondary">
-              Collection Breakdown
-            </h2>
-            <button
-              onClick={() => onNavigate('transactions', 'ALL')}
-              className="text-xs font-bold text-accent hover:underline flex items-center gap-1"
-            >
-              <span>Full Ledger</span>
-              <ArrowRight size={13} />
-            </button>
+        {/* Responsive Multi-Column Layout on Tablets (md: 768px+) and Desktops (lg: 1024px+) */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+          {/* Main Left Column: Financial Breakdown */}
+          <div className="md:col-span-7 xl:col-span-8 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-text-secondary">
+                Collection Breakdown
+              </h2>
+              <button
+                onClick={() => onNavigate('transactions', 'ALL')}
+                className="text-xs font-bold text-accent hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <span>Full Ledger</span>
+                <ArrowRight size={13} />
+              </button>
+            </div>
+
+            <StatsGrid 
+              stats={stats} 
+              onNavigate={(tab, filter, custId, et, df) => {
+                if (filter === 'CASH' || filter === 'PHONEPE') {
+                  onNavigate('transactions', filter);
+                } else if (filter === 'NOT_PAID' || filter === 'unsettled') {
+                  onNavigate('transactions', 'UNSETTLED');
+                } else {
+                  onNavigate(tab, filter, custId, et, df);
+                }
+              }} 
+              onTotalClick={handleTotalClick}
+            />
           </div>
 
-          <StatsGrid 
-            stats={stats} 
-            onNavigate={(tab, filter, custId, et, df) => {
-              if (filter === 'CASH' || filter === 'PHONEPE') {
-                onNavigate('transactions', filter);
-              } else if (filter === 'NOT_PAID' || filter === 'unsettled') {
-                onNavigate('transactions', 'UNSETTLED');
-              } else {
-                onNavigate(tab, filter, custId, et, df);
-              }
-            }} 
-            onTotalClick={handleTotalClick}
-          />
+          {/* Secondary Right Column: Matured Loan Renewals */}
+          <div className="md:col-span-5 xl:col-span-4 space-y-4">
+            <DashboardRenewalSection customers={customers} onNavigate={onNavigate} />
+          </div>
         </div>
-
-        {/* Matured Loan Renewals Section */}
-        <DashboardRenewalSection customers={customers} onNavigate={onNavigate} />
       </div>
     </PageContainer>
   );

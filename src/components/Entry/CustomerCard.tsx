@@ -129,6 +129,10 @@ export const CustomerCard = React.memo(function CustomerCard({
 
   const currentNPAmount = currentPendingNP?.amount || standardDaily;
   
+  const isTouchDevice = useMemo(() => {
+    return typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  }, []);
+
   const {
     x,
     leftActionOpacity,
@@ -370,7 +374,7 @@ export const CustomerCard = React.memo(function CustomerCard({
       <motion.div
         layout="position"
         style={{ x }}
-        drag="x"
+        drag={isTouchDevice ? "x" : false}
         dragConstraints={{ left: -140, right: 140 }}
         dragElastic={0.05}
         dragMomentum={false}

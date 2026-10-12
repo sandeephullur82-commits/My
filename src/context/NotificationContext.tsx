@@ -250,24 +250,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           });
         }
 
-        // 2. Dispatch In-App Alert and record to Firestore Notification Center
+        // 2. Dispatch In-App Alert (in-memory toast only, notifications are not stored)
         if (preferences.notifyChannels.inApp) {
-          if (user) {
-            firestoreService.addNotification(user.uid, {
-              type: alert.urgency === 'high' ? 'critical' : 'warning',
-              priority: alert.urgency,
-              title: alert.title,
-              message: alert.message,
-              amount: alert.pendingAmount,
-              customerName: alert.customerName,
-              customerPhone: alert.customerPhone,
-              customerId: alert.customerId,
-              alertCategory: alert.alertType,
-              dueDate: alert.endDate,
-              diffDays: alert.diffDays,
-              timestamp: Date.now(),
-            });
-          }
 
           toastAction({
             title: alert.title,
@@ -328,19 +312,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     if (preferences.enableSound) playNotificationChime('test');
     if (preferences.enableVibration && navigator.vibrate) navigator.vibrate([80, 40, 80]);
 
-    // 3. In-App Toast & Store
+    // 3. In-App Toast (Transient only, notifications are not stored)
     toastSuccess('Notification Dispatched', 'Test alert sent! Check your system notification banner.');
 
-    if (user) {
-      firestoreService.addNotification(user.uid, {
-        type: 'info',
-        priority: 'medium',
-        title: testTitle,
-        message: testBody,
-        alertCategory: 'general',
-        timestamp: Date.now(),
-      });
-    }
 
     // 4. Also trigger server push if FCM token is registered
     if (fcmToken && user) {

@@ -171,13 +171,24 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
   };
 
   const content = (
-    <motion.div
-      initial={{ x: '100%' }}
-      animate={{ x: 0 }}
-      exit={{ x: '100%' }}
-      transition={{ type: 'spring', damping: 20, stiffness: 260 }}
-      className="fixed inset-0 z-[9999] bg-bg flex flex-col"
-    >
+    <>
+      {/* Desktop/Tablet backdrop overlay */}
+      <motion.div
+        key="customer-details-backdrop"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9998] hidden md:block cursor-pointer"
+        aria-hidden="true"
+      />
+      <motion.div
+        initial={{ x: '100%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '100%' }}
+        transition={{ type: 'spring', damping: 24, stiffness: 280 }}
+        className="fixed inset-0 md:inset-y-0 md:right-0 md:left-auto md:w-[640px] lg:w-[720px] z-[9999] bg-bg flex flex-col md:border-l md:border-border md:shadow-2xl overflow-hidden"
+      >
       {/* Standardized Header */}
       <div className="flex items-center justify-between gap-3 p-3.5 sm:p-4 pt-[max(0.875rem,env(safe-area-inset-top))] bg-card border-b border-border sticky top-0 z-20 shadow-xs">
         <div className="flex items-center gap-2.5 min-w-0">
@@ -886,6 +897,7 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
         />
       </BottomSheet>
     </motion.div>
+    </>
   );
 
   return typeof document !== 'undefined' ? createPortal(content, document.body) : null;

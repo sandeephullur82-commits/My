@@ -19,7 +19,6 @@ import { Customers } from './pages/Customers';
 import { Entry } from './pages/Entry';
 import { TransactionsList } from './pages/TransactionsList';
 import { Settings } from './pages/Settings';
-import { Notifications } from './pages/Notifications';
 import { WhatsAppCallback } from './pages/WhatsAppCallback';
 import { FeedbackProvider } from './context/FeedbackContext';
 import { NotificationProvider } from './context/NotificationContext';
@@ -170,7 +169,6 @@ function AppContent() {
                   <Route path="/customers" element={<Customers onNavigate={handleNavigate} />} />
                   <Route path="/entry" element={<Entry />} />
                   <Route path="/transactions" element={<TransactionsList />} />
-                  <Route path="/notifications" element={<Notifications />} />
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/whatsapp/callback" element={<WhatsAppCallback onNavigate={handleNavigate} />} />
                   <Route path="/whatsapp-callback" element={<WhatsAppCallback onNavigate={handleNavigate} />} />

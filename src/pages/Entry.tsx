@@ -797,7 +797,7 @@ export function Entry() {
                 </div>
               </motion.div>
             ) : (
-              <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 gap-3 md:gap-4">
                 {visiblePendingCustomers.map((customer) => {
                   const data = customerDataMap.get(customer.id);
                   return (
@@ -842,13 +842,15 @@ export function Entry() {
                 })}
 
                 {pendingCustomers.length > displayLimit && (
-                  <button
-                    type="button"
-                    onClick={() => setDisplayLimit(prev => prev + 30)}
-                    className="w-full py-3.5 my-2 rounded-2xl bg-card border border-border/80 text-xs font-bold text-accent hover:bg-accent/5 transition-all active:scale-[0.98] shadow-xs cursor-pointer flex items-center justify-center gap-2"
-                  >
-                    <span>Load More Borrowers ({pendingCustomers.length - displayLimit} remaining)</span>
-                  </button>
+                  <div className="col-span-full">
+                    <button
+                      type="button"
+                      onClick={() => setDisplayLimit(prev => prev + 30)}
+                      className="w-full py-3.5 my-2 rounded-2xl bg-card border border-border/80 text-xs font-bold text-accent hover:bg-accent/5 transition-all active:scale-[0.98] shadow-xs cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <span>Load More Borrowers ({pendingCustomers.length - displayLimit} remaining)</span>
+                    </button>
+                  </div>
                 )}
               </div>
             )}
@@ -956,7 +958,7 @@ export function Entry() {
                 </div>
               </motion.div>
             ) : (
-              <div className="flex flex-col gap-2.5">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 gap-3">
                 {todayPaidEntries.map((tx) => {
                   const customer = customerMap.get(tx.customerId);
                   const isUpi = tx.type === 'phonepe';
@@ -1182,7 +1184,7 @@ export function Entry() {
                 </div>
               </motion.div>
             ) : (
-              <div className="flex flex-col gap-2.5">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 gap-3">
                 {displayedUnpaidEntries.map((tx) => {
                   const customer = customerMap.get(tx.customerId) || {
                     id: tx.customerId,
@@ -1614,6 +1616,7 @@ export function Entry() {
         onClose={() => setNewLoanCustomer(null)}
         title={`New Loan • Cycle #${(newLoanCustomer?.currentCycle || 1) + 1}`}
         subtitle={`Issue new loan cycle for ${newLoanCustomer?.name || ''}`}
+        maxWidth="max-w-2xl lg:max-w-3xl"
       >
         {newLoanCustomer && (
           <CustomerForm

@@ -395,7 +395,7 @@ export function TransactionsList() {
                           transition={{ duration: 0.3, ease: 'easeInOut' }}
                           className="overflow-hidden"
                         >
-                          <div className="flex flex-col p-3 gap-2">
+                          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 p-3 gap-2 sm:gap-2.5">
                             {group.transactions.map((tx) => {
                               const customer = customerMap.get(tx.customerId);
                               const isCash = tx.type === 'cash';

@@ -43,30 +43,9 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
   const [isCenterOpen, setCenterOpen] = useState(false);
   const timeoutsMap = useRef<Map<string | number, NodeJS.Timeout>>(new Map());
 
-  useEffect(() => {
-    const unsubNotify = firestoreService.subscribeNotifications((data) => {
-      setHistory(data);
-    });
-    return () => unsubNotify();
-  }, []);
-
-  const saveToStore = useCallback(async (toast: Omit<FintechToastProps, 'onClose' | 'id'>) => {
-    try {
-      const recordType: NotificationRecord['type'] = toast.type === 'sync' ? 'info' : (toast.type || 'info');
-      await firestoreService.addNotification({
-        type: recordType,
-        priority: toast.priority || 'medium',
-        title: toast.title || 'Notification',
-        message: toast.message,
-        amount: toast.amount,
-        customerName: toast.customerName,
-        paymentType: toast.paymentType,
-        timestamp: Date.now()
-      });
-    } catch (e) {
-      // Background notifications save shouldn't throw
-      console.warn('Notification history save warning:', e);
-    }
+  // Notifications are transient and NOT stored to database or disk per user requirement
+  const saveToStore = useCallback(async () => {
+    // No-op: do not store notifications
   }, []);
 
   const dismissToast = useCallback((id: string | number) => {
@@ -239,16 +218,16 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
     return addToast({ ...params, id });
   }, [addToast]);
 
-  const deleteNotification = useCallback(async (id: string) => {
-    await firestoreService.deleteNotification(id);
+  const deleteNotification = useCallback((id: string) => {
+    setHistory(prev => prev.filter(n => n.id !== id));
   }, []);
 
-  const markAsRead = useCallback(async (id: string) => {
-    await firestoreService.markNotificationRead(id);
+  const markAsRead = useCallback((id: string) => {
+    setHistory(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
   }, []);
 
-  const clearHistory = useCallback(async () => {
-    await firestoreService.clearNotifications();
+  const clearHistory = useCallback(() => {
+    setHistory([]);
   }, []);
 
   return (

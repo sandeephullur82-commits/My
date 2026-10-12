@@ -423,13 +423,11 @@ class NotificationService {
 
   private loadHistory() {
     try {
-      const stored = localStorage.getItem(HISTORY_KEY);
-      if (stored) {
-        this.history = JSON.parse(stored).slice(0, 30);
-      }
+      localStorage.removeItem(HISTORY_KEY);
     } catch (e) {
-      console.warn('Failed to load notification history:', e);
+      // ignore
     }
+    this.history = [];
   }
 
   private loadCachedToken() {
@@ -506,12 +504,8 @@ class NotificationService {
       type,
       data
     };
+    // Kept strictly in-memory during active session — do not persist or store notifications
     this.history = [log, ...this.history].slice(0, 30);
-    try {
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(this.history));
-    } catch (e) {
-      console.warn('Failed to save notification history:', e);
-    }
   }
 
   public resolveDeepLink(data: Record<string, any> = {}): string {

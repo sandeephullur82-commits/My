@@ -5,11 +5,14 @@ import { notificationService } from '../services/notificationService';
 import { toast } from 'sonner';
 import { format, addDays, differenceInDays, parseISO, isValid } from 'date-fns';
 import { safeFormat, safeDifferenceInDays } from '../lib/utils';
-import { Calendar, Loader2, Trash2, Clock, Check, Lock, Sparkles, IndianRupee, RotateCcw, CheckCircle2, Percent, History } from 'lucide-react';
+import { Calendar, Loader2, Trash2, Clock, Check, Lock, Sparkles, IndianRupee, RotateCcw, CheckCircle2, Percent, History, AlertTriangle } from 'lucide-react';
 
 interface CustomerFormProps {
   customer?: Customer; // if provided, we are in Edit mode, New Loan mode, or Renewal mode
   mode?: 'create' | 'edit' | 'new_loan' | 'renewal';
+  initialAccountType?: 'loan' | 'saving';
+  initialName?: string;
+  initialPhone?: string;
   onSave?: (
     customer: Partial<Customer> & { id: string },
     openingBalance?: { amount: number; note?: string; timestamp?: number }
@@ -19,7 +22,17 @@ interface CustomerFormProps {
   onSuccess?: (updatedCustomer: Customer) => void;
 }
 
-export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuccess }: CustomerFormProps) {
+export function CustomerForm({ 
+  customer, 
+  mode, 
+  initialAccountType = 'loan', 
+  initialName = '', 
+  initialPhone = '', 
+  onSave, 
+  onCancel, 
+  onDelete, 
+  onSuccess 
+}: CustomerFormProps) {
   const isRenewal = mode === 'renewal';
   const isNewLoan = mode === 'new_loan' || isRenewal;
   const isEdit = !isNewLoan && !isRenewal && !!customer;
@@ -39,6 +52,7 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
       return {
         name: customer.name || '',
         phone: customer.phone || '',
+        accountType: (customer.accountType || 'loan') as 'loan' | 'saving',
         loan: defaultLoanAmt,
         notes: isRenewal
           ? `Cycle #${nextCycle} Renewal`
@@ -59,7 +73,8 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
       return {
         name: customer.name || '',
         phone: customer.phone || '',
-        loan: customer.loanAmount || customer.loan || 0,
+        accountType: (customer.accountType || 'loan') as 'loan' | 'saving',
+        loan: customer.accountType === 'saving' ? (customer.targetDeposit || customer.loan || 0) : (customer.loanAmount || customer.loan || 0),
         notes: customer.notes || '',
         startDate: safeFormat(customer.startDate, 'yyyy-MM-dd', format(new Date(), 'yyyy-MM-dd')),
         duration: dur,
@@ -74,6 +89,9 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
         const parsed = JSON.parse(saved);
         return {
           ...parsed,
+          name: initialName || parsed.name || '',
+          phone: initialPhone || parsed.phone || '',
+          accountType: (initialAccountType || parsed.accountType || 'loan') as 'loan' | 'saving',
           frequency: parsed.frequency || 'daily',
           frequencyDays: parsed.frequencyDays || 1,
         };
@@ -82,8 +100,9 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
       }
     }
     return { 
-      name: '', 
-      phone: '', 
+      name: initialName || '', 
+      phone: initialPhone || '', 
+      accountType: initialAccountType as 'loan' | 'saving',
       loan: '', 
       notes: '',
       startDate: format(new Date(), 'yyyy-MM-dd'),
@@ -204,6 +223,45 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
       localStorage.setItem('pigmy_draft_new_customer', JSON.stringify(formData));
     }
   }, [formData, isEdit, isNewLoan]);
+
+  const [duplicateLoanError, setDuplicateLoanError] = useState<{ exists: boolean; existingLoanId?: string; reason?: string } | null>(null);
+  const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
+
+  useEffect(() => {
+    if (isNewLoan || isEdit) return;
+    const cleanPhone = formData.phone.replace(/\D/g, '').slice(-10);
+    const cleanName = formData.name.trim();
+
+    if (formData.accountType === 'loan' && cleanName.length >= 2 && cleanPhone.length === 10) {
+      setIsCheckingDuplicate(true);
+      const timer = setTimeout(async () => {
+        try {
+          const result = await firestoreService.checkDuplicateCustomer(
+            cleanName,
+            cleanPhone,
+            'loan'
+          );
+          if (!result.allowed) {
+            setDuplicateLoanError({
+              exists: true,
+              existingLoanId: result.existingLoanId,
+              reason: result.reason
+            });
+          } else {
+            setDuplicateLoanError(null);
+          }
+        } catch (e) {
+          setDuplicateLoanError(null);
+        } finally {
+          setIsCheckingDuplicate(false);
+        }
+      }, 300);
+      return () => clearTimeout(timer);
+    } else {
+      setDuplicateLoanError(null);
+      setIsCheckingDuplicate(false);
+    }
+  }, [formData.name, formData.phone, formData.accountType, isNewLoan, isEdit]);
 
   const quickAmounts = [10000, 15000, 20000, 25000, 50000];
   const quickInterestRates = [1, 2, 3, 5, 10];
@@ -437,7 +495,7 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
     const cleanPhone = formData.phone.replace(/\D/g, '').slice(-10);
     if (!formData.name || !formData.loan || (!isIdUnique && !isEdit) || cleanPhone.length !== 10 || Number(formData.loan) <= 0) {
       if (cleanPhone.length !== 10) toast.error('Enter valid 10-digit phone number');
-      if (Number(formData.loan) <= 0) toast.error('Enter valid amount (> ₹0)');
+      if (Number(formData.loan) <= 0) toast.error(formData.accountType === 'saving' ? 'Enter valid target savings (> ₹0)' : 'Enter valid loan amount (> ₹0)');
       if (!isIdUnique && !isEdit) toast.error('ID already used');
       return;
     }
@@ -445,10 +503,15 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
     const normalizedName = formData.name.trim();
     const normalizedPhone = cleanPhone;
     
-    if (!isEdit || normalizedName !== customer?.name || normalizedPhone !== customer?.phone) {
-      const isUnique = await firestoreService.checkDuplicateCustomer(normalizedName, normalizedPhone);
-      if (!isUnique) {
-        toast.error('Customer already exists (same name & phone)');
+    if (!isEdit || normalizedName !== customer?.name || normalizedPhone !== customer?.phone || formData.accountType !== (customer?.accountType || 'loan')) {
+      const checkResult = await firestoreService.checkDuplicateCustomer(
+        normalizedName, 
+        normalizedPhone, 
+        formData.accountType,
+        customer?.id
+      );
+      if (!checkResult.allowed) {
+        toast.error(checkResult.reason || 'Dual loan not allowed for same name and phone number.');
         return;
       }
       const phoneCheck = await firestoreService.checkPhoneExists(normalizedPhone);
@@ -457,10 +520,14 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
       }
     }
 
-    const finalLoanAmt = totalLoanWithInterest;
+    const isSaving = formData.accountType === 'saving';
+    const finalLoanAmt = isSaving ? 0 : totalLoanWithInterest;
+    const targetDepositAmt = isSaving ? totalLoanWithInterest : undefined;
     const startMs = parseISO(formData.startDate).getTime();
     const endMs = parseISO(endDate).getTime();
-    const uniqueKey = `${normalizedName.toLowerCase()}_${normalizedPhone}`;
+    const uniqueKey = isSaving
+      ? `${normalizedName.toLowerCase()}_${normalizedPhone}_saving_${isEdit && customer ? customer.id : fullId}`
+      : `${normalizedName.toLowerCase()}_${normalizedPhone}_loan`;
     
     setIsSubmitting(true);
     try {
@@ -470,9 +537,12 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
             id: customer.id,
             name: normalizedName,
             phone: normalizedPhone,
+            accountType: formData.accountType,
+            targetDeposit: targetDepositAmt,
             loanAmount: finalLoanAmt,
             loan: finalLoanAmt,
-            pending: finalLoanAmt - customer.paid,
+            pending: isSaving ? 0 : Math.max(0, finalLoanAmt - (customer.paid || 0)),
+            advanceBalance: isSaving ? (customer.paid || 0) : customer.advanceBalance,
             startDate: startMs,
             endDate: endMs,
             frequency: formData.frequency,
@@ -485,11 +555,13 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
         onCancel();
       } else {
         const priorPaidAmount = isExistingLoan ? existingPaidNum : 0;
-        const initialPendingAmt = isExistingLoan ? existingPendingNum : finalLoanAmt;
+        const initialPendingAmt = isSaving ? 0 : (isExistingLoan ? existingPendingNum : finalLoanAmt);
 
         const openingBalanceData = (isExistingLoan && priorPaidAmount > 0) ? {
           amount: priorPaidAmount,
-          note: openingBalanceNote.trim() || `Opening Balance: Prior loan collections (${priorInstallmentsPaid} days @ ₹${estimatedInstallment || 1}/day)`,
+          note: openingBalanceNote.trim() || (isSaving
+            ? `Opening Savings Deposit: Prior collected savings (${priorInstallmentsPaid} days @ ₹${estimatedInstallment || 1}/day)`
+            : `Opening Balance: Prior loan collections (${priorInstallmentsPaid} days @ ₹${estimatedInstallment || 1}/day)`),
           timestamp: startMs
         } : undefined;
 
@@ -498,10 +570,13 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
             id: fullId,
             name: normalizedName,
             phone: normalizedPhone,
+            accountType: formData.accountType,
+            targetDeposit: targetDepositAmt,
             loan: finalLoanAmt,
             loanAmount: finalLoanAmt,
             paid: priorPaidAmount,
             pending: initialPendingAmt,
+            advanceBalance: isSaving ? priorPaidAmount : 0,
             startDate: startMs,
             endDate: endMs,
             frequency: formData.frequency,
@@ -514,15 +589,17 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
           }, openingBalanceData);
         }
         toast.success(
-          isExistingLoan && priorPaidAmount > 0
-            ? `${normalizedName} (${fullId}) registered with ₹${priorPaidAmount.toLocaleString('en-IN')} opening collections`
-            : `${normalizedName} (${fullId}) created`
+          isSaving
+            ? `🐷 ${normalizedName} (${fullId}) Saving Account created!`
+            : (isExistingLoan && priorPaidAmount > 0
+              ? `${normalizedName} (${fullId}) registered with ₹${priorPaidAmount.toLocaleString('en-IN')} opening collections`
+              : `${normalizedName} (${fullId}) created`)
         );
         localStorage.removeItem('pigmy_draft_new_customer');
         onCancel();
       }
-    } catch (err) {
-      toast.error(`Failed to ${isEdit ? 'update' : 'create'} customer.`);
+    } catch (err: any) {
+      toast.error(err?.message || `Failed to ${isEdit ? 'update' : 'create'} customer.`);
     } finally {
       setIsSubmitting(false);
     }
@@ -666,9 +743,11 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
         <div className="grid grid-cols-3 gap-2 border-t border-border/40 pt-4 mt-1">
           <div>
             <p className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] mb-1">
-              {isExistingLoan && existingPaidNum > 0
-                ? 'Pending Due'
-                : (hasInterest && interestAmount > 0 ? 'Total Due' : (isNewLoan && effectiveAdvanceToApply > 0 ? 'Opening Due' : 'Total Loan'))}
+              {formData.accountType === 'saving'
+                ? 'Target Savings'
+                : (isExistingLoan && existingPaidNum > 0
+                  ? 'Pending Due'
+                  : (hasInterest && interestAmount > 0 ? 'Total Due' : (isNewLoan && effectiveAdvanceToApply > 0 ? 'Opening Due' : 'Total Loan')))}
             </p>
             <p className="text-lg font-black text-text-primary tracking-tighter font-mono">
               ₹{(isExistingLoan && existingPaidNum > 0
@@ -676,16 +755,19 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
                 : (isNewLoan && effectiveAdvanceToApply > 0 ? netOpeningPending : totalLoanWithInterest)
               ).toLocaleString()}
             </p>
-            {hasInterest && interestAmount > 0 && (
+            {formData.accountType === 'saving' ? (
+              <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                Pigmy Savings
+              </p>
+            ) : hasInterest && interestAmount > 0 ? (
               <p className="text-[10px] font-bold text-accent font-mono">
                 incl. ₹{interestAmount.toLocaleString()} ({interestRate}%)
               </p>
-            )}
-            {isExistingLoan && existingPaidNum > 0 && (
+            ) : isExistingLoan && existingPaidNum > 0 ? (
               <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 font-mono">
                 ₹{existingPaidNum.toLocaleString()} already paid
               </p>
-            )}
+            ) : null}
           </div>
           <div className="text-center">
             <p className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] mb-1">Tenure</p>
@@ -699,13 +781,97 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
             )}
           </div>
           <div className="text-right">
-            <p className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] mb-1">Est. Installment</p>
+            <p className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] mb-1">
+              {formData.accountType === 'saving' ? 'Daily Target' : 'Est. Installment'}
+            </p>
             <p className="text-lg font-black text-accent tracking-tighter font-mono">
               ₹{estimatedInstallment.toLocaleString()}
             </p>
           </div>
         </div>
       </div>
+
+      {/* Account Type Selector for New Accounts (Loan vs Saving) */}
+      {!isNewLoan && !isEdit && (
+        <div className="bg-card/70 p-1.5 rounded-2xl border border-border/70 flex items-center gap-2 mx-1 shadow-xs">
+          <button
+            type="button"
+            onClick={() => {
+              setFormData(prev => ({ ...prev, accountType: 'loan' }));
+            }}
+            className={`flex-1 py-2.5 px-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              formData.accountType === 'loan'
+                ? 'bg-accent text-white shadow-md shadow-accent/25'
+                : 'text-text-secondary hover:text-text-primary hover:bg-muted/60'
+            }`}
+          >
+            <span>💳 Loan Account</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setFormData(prev => ({ ...prev, accountType: 'saving' }));
+              setDuplicateLoanError(null);
+            }}
+            className={`flex-1 py-2.5 px-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              formData.accountType === 'saving'
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25'
+                : 'text-text-secondary hover:text-text-primary hover:bg-muted/60'
+            }`}
+          >
+            <span>🐷 Saving Account</span>
+          </button>
+        </div>
+      )}
+
+      {/* Real-time Dual Loan Warning Banner */}
+      {duplicateLoanError?.exists && formData.accountType === 'loan' && (
+        <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex flex-col gap-3 mx-1">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-500 flex items-center justify-center shrink-0 mt-0.5">
+              <Lock size={16} />
+            </div>
+            <div className="min-w-0">
+              <h5 className="text-xs font-black text-rose-600 dark:text-rose-400 uppercase tracking-wider">
+                Dual Loan Not Allowed
+              </h5>
+              <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">
+                An active loan already exists for <strong>{formData.name}</strong> (+91 {formData.phone.replace(/\D/g, '').slice(-10)}) under ID <strong>{duplicateLoanError.existingLoanId}</strong>. You cannot create a dual loan using the same name and phone number.
+              </p>
+            </div>
+          </div>
+          <div className="pt-2 border-t border-rose-500/20 flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-[11px] font-semibold text-text-secondary">
+              Borrower can create a Saving account with these details:
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setFormData(prev => ({ ...prev, accountType: 'saving' }));
+                setDuplicateLoanError(null);
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all cursor-pointer shadow-xs active:scale-95"
+            >
+              🐷 Switch to Saving Account
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Pigmy Saving Account Confirmation Banner */}
+      {formData.accountType === 'saving' && !isNewLoan && (
+        <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex items-center gap-3 mx-1">
+          <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-lg shrink-0">
+            🐷
+          </div>
+          <div className="text-xs text-emerald-800 dark:text-emerald-300 min-w-0">
+            <p className="font-black uppercase tracking-wider">Pigmy Saving Account</p>
+            <p className="text-[11px] opacity-80 mt-0.5">
+              Using the same name and phone number to create a Saving account is fully allowed alongside their loan account.
+            </p>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto space-y-8 px-1">
         {/* Section 1: Core Identity (Disabled & Uneditable for New Loan & Renewal) */}
@@ -722,8 +888,8 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
             )}
           </div>
 
-          <div className="space-y-4">
-            <div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-1">
               <label htmlFor="customer-input-name" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] ml-1 mb-1.5 flex items-center justify-between">
                 <span>Full Name</span>
                 {isNewLoan && <span className="text-[9px] font-bold lowercase opacity-70">(uneditable for {isRenewal ? 'renewal' : 'new loan'})</span>}
@@ -751,7 +917,7 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
               </div>
             </div>
 
-            <div>
+            <div className="md:col-span-1">
               <label htmlFor="customer-input-phone" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] ml-1 mb-1.5 flex items-center justify-between">
                 <span>Phone Number</span>
                 {isNewLoan && <span className="text-[9px] font-bold lowercase opacity-70">(uneditable for {isRenewal ? 'renewal' : 'new loan'})</span>}
@@ -780,7 +946,7 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
               </div>
             </div>
 
-            <div>
+            <div className="md:col-span-2">
               <div className="flex justify-between items-end mb-1.5 ml-1">
                 <label htmlFor="customer-input-id-suffix" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em]">
                   Account ID
@@ -838,12 +1004,14 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
             <span className="w-1.5 h-1.5 rounded-full bg-accent" /> Financials & Schedule
           </h4>
           <div className="space-y-5">
-            {/* Principal / Loan Amount */}
+            {/* Principal / Loan Amount or Target Savings */}
             <div>
               <label htmlFor="customer-input-loan" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] ml-1 mb-1.5 block">
-                {isRenewal 
-                  ? `Renewal Principal (Cycle #${nextCycle})` 
-                  : (isNewLoan ? `New Loan Principal (Cycle #${nextCycle})` : 'Loan Amount')}
+                {formData.accountType === 'saving'
+                  ? 'Target Savings Goal (₹)'
+                  : (isRenewal 
+                      ? `Renewal Principal (Cycle #${nextCycle})` 
+                      : (isNewLoan ? `New Loan Principal (Cycle #${nextCycle})` : 'Loan Amount'))}
               </label>
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-bold text-text-secondary opacity-40" aria-hidden="true">₹</span>
@@ -854,7 +1022,7 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
                   step="500"
                   required
                   aria-required="true"
-                  aria-label="Loan principal amount in Rupees"
+                  aria-label={formData.accountType === 'saving' ? "Target savings goal in Rupees" : "Loan principal amount in Rupees"}
                   value={formData.loan}
                   onChange={e => handlePrincipalChange(e.target.value)}
                   className="w-full bg-bg border border-border/60 rounded-2xl h-14 pl-10 pr-4 focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/5 transition-all text-[15px] font-bold font-mono"
@@ -862,13 +1030,13 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
                 />
               </div>
 
-              {/* Quick loan amounts */}
-              <div className="flex items-center gap-1.5 flex-wrap pt-2" role="group" aria-label="Preset loan amounts">
+              {/* Quick preset amounts */}
+              <div className="flex items-center gap-1.5 flex-wrap pt-2" role="group" aria-label="Preset amounts">
                 {quickAmounts.map(amount => (
                   <button
                     key={amount}
                     type="button"
-                    aria-label={`Set loan amount to ₹${amount.toLocaleString('en-IN')}`}
+                    aria-label={`Set amount to ₹${amount.toLocaleString('en-IN')}`}
                     onClick={() => handlePrincipalChange(amount.toString())}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold font-mono border transition-all active:scale-95 cursor-pointer ${
                       principalAmountNum === amount
@@ -882,7 +1050,8 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
               </div>
             </div>
 
-            {/* Interest Section: Default 3% & Interest Amount, Both Editable */}
+            {/* Interest Section: Only applicable for Loans */}
+            {formData.accountType !== 'saving' && (
             <div className="p-4 rounded-2xl bg-card border border-border/60 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1004,6 +1173,7 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
                 </div>
               )}
             </div>
+            )}
 
             {/* Collection Frequency (Daily 1d, Weekly 7d, Monthly 30d, or Custom Days) */}
             <div className="p-4 rounded-2xl bg-card border border-border/50 space-y-3">
@@ -1472,21 +1642,33 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
               isSubmitting ||
               (isNewLoan 
                 ? (totalLoanWithInterest <= 0 || (formData.duration || 0) < 1)
-                : ((!isIdUnique && !isEdit) || formData.phone.replace(/\D/g, '').slice(-10).length !== 10 || Number(formData.loan) <= 0))
+                : ((!isIdUnique && !isEdit) || formData.phone.replace(/\D/g, '').slice(-10).length !== 10 || Number(formData.loan) <= 0 || (duplicateLoanError?.exists && formData.accountType === 'loan')))
             }
-            className="flex-[2] h-14 rounded-2xl bg-accent text-white font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all shadow-xl shadow-accent/20 disabled:opacity-50 disabled:shadow-none cursor-pointer flex items-center justify-center gap-2"
+            className={`flex-[2] h-14 rounded-2xl font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all shadow-xl disabled:opacity-50 disabled:shadow-none cursor-pointer flex items-center justify-center gap-2 ${
+              duplicateLoanError?.exists && formData.accountType === 'loan'
+                ? 'bg-rose-600 text-white shadow-rose-600/20'
+                : formData.accountType === 'saving'
+                  ? 'bg-emerald-600 text-white shadow-emerald-600/25'
+                  : 'bg-accent text-white shadow-accent/20'
+            }`}
           >
             {isSubmitting ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
                 <span>Processing...</span>
               </>
+            ) : duplicateLoanError?.exists && formData.accountType === 'loan' ? (
+              <span>Dual Loan Prohibited</span>
+            ) : isRenewal ? (
+              `Renew Loan (Cycle #${nextCycle})`
+            ) : isNewLoan ? (
+              `Issue New Loan (Cycle #${nextCycle})`
+            ) : isEdit ? (
+              'Save Changes'
+            ) : formData.accountType === 'saving' ? (
+              'Create Saving Account'
             ) : (
-              isRenewal 
-                ? `Renew Loan (Cycle #${nextCycle})`
-                : (isNewLoan 
-                    ? `Issue New Loan (Cycle #${nextCycle})` 
-                    : (isEdit ? 'Save Changes' : 'Create Account'))
+              'Create Loan Account'
             )}
           </button>
         </div>

@@ -43,11 +43,12 @@ export function Customers({ onNavigate }: CustomersProps) {
     }
   }, [loading]);
 
-  const [filter, setFilter] = useState<'all' | 'pending' | 'paid' | 'overdue' | 'high_amount'>(() => {
+  const [filter, setFilter] = useState<'all' | 'loans' | 'savings' | 'pending' | 'paid' | 'overdue' | 'high_amount'>(() => {
     return (location.state?.filter as any) || 'all';
   });
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'pending_desc' | 'last_payment' | 'name_asc' | 'name_desc'>('asc');
   const [showAdd, setShowAdd] = useState(false);
+  const [addCustomerDefaults, setAddCustomerDefaults] = useState<{ accountType?: 'loan' | 'saving'; name?: string; phone?: string } | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [newLoanCustomer, setNewLoanCustomer] = useState<Customer | null>(null);
   const [withdrawCustomer, setWithdrawCustomer] = useState<Customer | null>(null);
@@ -78,9 +79,11 @@ export function Customers({ onNavigate }: CustomersProps) {
 
   const filterOptions = [
     { value: 'all', label: 'All Accounts' },
-    { value: 'pending', label: 'Pending' },
+    { value: 'loans', label: 'Loans' },
+    { value: 'savings', label: 'Savings' },
+    { value: 'pending', label: 'Pending Loans' },
     { value: 'paid', label: 'Fully Paid' },
-    { value: 'overdue', label: 'Overdue' },
+    { value: 'overdue', label: 'Overdue Loans' },
     { value: 'high_amount', label: 'Large Amounts' }
   ];
 
@@ -127,18 +130,27 @@ export function Customers({ onNavigate }: CustomersProps) {
     let pending = 0;
     let overdue = 0;
     let paid = 0;
+    let loans = 0;
+    let savings = 0;
     const now = Date.now();
     customers.forEach(c => {
       if (c.isDeleted || localDeletedIds.includes(c.id)) return;
-      const loanAmount = c.loanAmount || c.loan || 0;
-      const paidAmount = c.paid || 0;
-      const pendingAmount = c.pending !== undefined ? c.pending : (loanAmount - paidAmount);
-      if (pendingAmount <= 0) paid++;
-      else if (c.endDate < now) overdue++;
-      else pending++;
+      if (c.accountType === 'saving') {
+        savings++;
+      } else {
+        loans++;
+        const loanAmount = c.loanAmount || c.loan || 0;
+        const paidAmount = c.paid || 0;
+        const pendingAmount = c.pending !== undefined ? c.pending : (loanAmount - paidAmount);
+        if (pendingAmount <= 0) paid++;
+        else if (c.endDate < now) overdue++;
+        else pending++;
+      }
     });
     return {
       all: customers.filter(c => !c.isDeleted && !localDeletedIds.includes(c.id)).length,
+      loans,
+      savings,
       pending,
       overdue,
       paid
@@ -174,18 +186,21 @@ export function Customers({ onNavigate }: CustomersProps) {
     let result = customers.filter(c => {
       if (c.isDeleted || localDeletedIds.includes(c.id)) return false;
 
+      const isSaving = c.accountType === 'saving';
       const loanAmount = c.loanAmount || c.loan || 0;
       const paidAmount = c.paid || 0;
       const pendingAmount = c.pending !== undefined ? c.pending : (loanAmount - paidAmount);
-      const isOverdue = c.endDate < now && pendingAmount > 0;
-      const isFullyPaid = pendingAmount <= 0;
+      const isOverdue = !isSaving && c.endDate < now && pendingAmount > 0;
+      const isFullyPaid = !isSaving && pendingAmount <= 0;
 
       // Filter chips
       let matchesFilter = true;
-      if (filter === 'paid') matchesFilter = isFullyPaid;
+      if (filter === 'loans') matchesFilter = !isSaving;
+      else if (filter === 'savings') matchesFilter = isSaving;
+      else if (filter === 'paid') matchesFilter = isFullyPaid;
       else if (filter === 'overdue') matchesFilter = isOverdue;
-      else if (filter === 'pending') matchesFilter = !isFullyPaid && !isOverdue;
-      else if (filter === 'high_amount') matchesFilter = loanAmount >= 20000;
+      else if (filter === 'pending') matchesFilter = !isSaving && !isFullyPaid && !isOverdue;
+      else if (filter === 'high_amount') matchesFilter = loanAmount >= 20000 || (c.targetDeposit || 0) >= 20000;
 
       if (!matchesFilter) return false;
 
@@ -261,25 +276,31 @@ export function Customers({ onNavigate }: CustomersProps) {
     openingBalanceData?: { amount: number; note?: string; timestamp?: number }
   ) => {
     const isUpdating = customers.some(c => c.id === newCustomer.id);
+    const targetAccountType = newCustomer.accountType || 'loan';
+    const cleanName = String(newCustomer.name || '').trim().toLowerCase();
+    const cleanPhone = String(newCustomer.phone || '').trim().replace(/\D/g, '').slice(-10);
 
     if (isUpdating) {
-      // Check if duplicate on a DIFFERENT customer
-      const isDuplicate = customers.some(c => 
-        c.id !== newCustomer.id &&
-        c.name.trim().toLowerCase() === String(newCustomer.name || '').trim().toLowerCase() && 
-        c.phone.trim() === String(newCustomer.phone || '').trim()
-      );
-      if (isDuplicate) {
-        toastError('Duplicate Found', 'Another customer already exists with this name and phone');
-        return;
+      if (targetAccountType === 'loan') {
+        const hasDualLoan = customers.some(c => 
+          c.id !== newCustomer.id &&
+          !c.isDeleted &&
+          c.name.trim().toLowerCase() === cleanName && 
+          c.phone.trim().replace(/\D/g, '').slice(-10) === cleanPhone &&
+          c.accountType !== 'saving'
+        );
+        if (hasDualLoan) {
+          toastError('Dual Loan Not Allowed', 'Another active loan already exists with this name and phone number. Dual loans are not permitted.');
+          return;
+        }
       }
 
       try {
         await firestoreService.saveCustomer(newCustomer);
         toastSuccess('Customer Updated', `${newCustomer.name} has been updated.`);
         setEditCustomer(null);
-      } catch (error) {
-        toastError('Update Failed', 'Failed to update customer record');
+      } catch (error: any) {
+        toastError('Update Failed', error?.message || 'Failed to update customer record');
       }
       return;
     }
@@ -291,22 +312,34 @@ export function Customers({ onNavigate }: CustomersProps) {
       return;
     }
 
-    // 2. Check Name + Phone Duplicate
-    const isDuplicate = customers.some(c => 
-      c.name.trim().toLowerCase() === String(newCustomer.name || '').trim().toLowerCase() && 
-      c.phone.trim() === String(newCustomer.phone || '').trim()
-    );
-    if (isDuplicate) {
-      toastError('Duplicate Found', 'Customer already exists (same name & phone)');
-      return;
+    // 2. Dual Loan check vs Saving check
+    if (targetAccountType === 'loan') {
+      const existingLoan = customers.find(c => 
+        !c.isDeleted &&
+        c.name.trim().toLowerCase() === cleanName && 
+        c.phone.trim().replace(/\D/g, '').slice(-10) === cleanPhone &&
+        c.accountType !== 'saving'
+      );
+      if (existingLoan) {
+        toastError(
+          'Dual Loan Not Allowed', 
+          `An active loan already exists for ${newCustomer.name} (+91 ${cleanPhone}) under ID ${existingLoan.displayId || existingLoan.id}. You cannot create a second loan with the same name and phone, but you can create a Saving account.`
+        );
+        return;
+      }
     }
+    // If targetAccountType === 'saving': creating saving with the same name and phone number IS ALLOWED!
 
-    // 3. Check Phone warning
-    const phoneInUse = customers.find(c => c.phone.trim() === newCustomer.phone?.trim());
+    // 3. Check Phone warning for different name
+    const phoneInUse = customers.find(c => 
+      !c.isDeleted &&
+      c.phone.trim().replace(/\D/g, '').slice(-10) === cleanPhone &&
+      c.name.trim().toLowerCase() !== cleanName
+    );
     if (phoneInUse) {
       toastAction({
         title: 'Phone in Use',
-        message: `This number is already used by ${phoneInUse.name}. Proceed?`,
+        message: `This phone number is also registered to ${phoneInUse.name}. Proceed?`,
         label: 'Okay',
       });
     }
@@ -317,11 +350,15 @@ export function Customers({ onNavigate }: CustomersProps) {
         toastSuccess('Registration Successful', `${newCustomer.name} registered with ₹${openingBalanceData.amount.toLocaleString('en-IN')} opening collections.`);
       } else {
         await firestoreService.saveCustomer(newCustomer);
-        toastSuccess('Registration Successful', `${newCustomer.name} is now active.`);
+        toastSuccess(
+          targetAccountType === 'saving' ? 'Saving Account Created' : 'Loan Registered',
+          `${newCustomer.name} (${newCustomer.id}) is now active.`
+        );
       }
       setShowAdd(false);
-    } catch (error) {
-      toastError('Registration Failed', 'Failed to create customer record');
+      setAddCustomerDefaults(null);
+    } catch (error: any) {
+      toastError('Registration Failed', error?.message || 'Failed to create customer record');
     }
   };
 
@@ -422,7 +459,7 @@ export function Customers({ onNavigate }: CustomersProps) {
                 if (navigator.vibrate) navigator.vibrate(5);
                 setFilter('all');
               }}
-              className={`flex-1 min-w-[70px] py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              className={`flex-1 min-w-[65px] py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 filter === 'all'
                   ? 'bg-card text-text-primary shadow-xs border border-border/80 font-black'
                   : 'text-text-secondary hover:text-text-primary'
@@ -440,9 +477,49 @@ export function Customers({ onNavigate }: CustomersProps) {
               type="button"
               onClick={() => {
                 if (navigator.vibrate) navigator.vibrate(5);
+                setFilter('loans');
+              }}
+              className={`flex-1 min-w-[70px] py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                filter === 'loans'
+                  ? 'bg-card text-text-primary shadow-xs border border-border/80 font-black'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              <span>Loans</span>
+              <span className={`text-[10px] font-mono tabular-nums px-1.5 py-0.2 rounded-md ${
+                filter === 'loans' ? 'bg-accent/15 text-accent font-bold' : 'bg-card/50 text-text-secondary'
+              }`}>
+                {counts.loans}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (navigator.vibrate) navigator.vibrate(5);
+                setFilter('savings');
+              }}
+              className={`flex-1 min-w-[75px] py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                filter === 'savings'
+                  ? 'bg-card text-emerald-600 dark:text-emerald-400 shadow-xs border border-emerald-500/30 font-black'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              <span>Savings</span>
+              <span className={`text-[10px] font-mono tabular-nums px-1.5 py-0.2 rounded-md ${
+                filter === 'savings' ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold' : 'bg-card/50 text-text-secondary'
+              }`}>
+                {counts.savings}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (navigator.vibrate) navigator.vibrate(5);
                 setFilter('pending');
               }}
-              className={`flex-1 min-w-[80px] py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              className={`flex-1 min-w-[75px] py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 filter === 'pending'
                   ? 'bg-card text-text-primary shadow-xs border border-border/80 font-black'
                   : 'text-text-secondary hover:text-text-primary'
@@ -462,7 +539,7 @@ export function Customers({ onNavigate }: CustomersProps) {
                 if (navigator.vibrate) navigator.vibrate(5);
                 setFilter('overdue');
               }}
-              className={`flex-1 min-w-[80px] py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              className={`flex-1 min-w-[75px] py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 filter === 'overdue'
                   ? 'bg-card text-danger shadow-xs border border-danger/30 font-black'
                   : 'text-text-secondary hover:text-text-primary'
@@ -482,7 +559,7 @@ export function Customers({ onNavigate }: CustomersProps) {
                 if (navigator.vibrate) navigator.vibrate(5);
                 setFilter('paid');
               }}
-              className={`flex-1 min-w-[80px] py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              className={`flex-1 min-w-[75px] py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 filter === 'paid'
                   ? 'bg-card text-success shadow-xs border border-success/30 font-black'
                   : 'text-text-secondary hover:text-text-primary'
@@ -534,19 +611,29 @@ export function Customers({ onNavigate }: CustomersProps) {
 
         <BottomSheet
           isOpen={showAdd}
-          onClose={() => setShowAdd(false)}
-          title="New Customer"
-          subtitle="Register a new borrower"
+          onClose={() => {
+            setShowAdd(false);
+            setAddCustomerDefaults(null);
+          }}
+          title={addCustomerDefaults?.accountType === 'saving' ? "Open Saving Account" : "Register Account"}
+          subtitle={addCustomerDefaults?.accountType === 'saving' ? "Pigmy daily savings deposit" : "Register a loan or saving account"}
+          maxWidth="max-w-2xl lg:max-w-3xl"
         >
           <CustomerForm 
+            initialAccountType={addCustomerDefaults?.accountType || 'loan'}
+            initialName={addCustomerDefaults?.name || ''}
+            initialPhone={addCustomerDefaults?.phone || ''}
             onSave={handleSaveCustomer} 
-            onCancel={() => setShowAdd(false)} 
+            onCancel={() => {
+              setShowAdd(false);
+              setAddCustomerDefaults(null);
+            }} 
           />
         </BottomSheet>
 
-        <div className="flex flex-col gap-3 pb-24">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4 pb-24">
           {error ? (
-            <div className="flex flex-col items-center justify-center py-16 px-6 bg-red-500/10 border border-red-500/20 rounded-[32px] text-center animate-in zoom-in-95 duration-500">
+            <div className="col-span-full flex flex-col items-center justify-center py-16 px-6 bg-red-500/10 border border-red-500/20 rounded-[32px] text-center animate-in zoom-in-95 duration-500">
               <div className="w-16 h-16 bg-red-500/20 text-red-500 rounded-2xl flex items-center justify-center mb-4">
                 <X size={32} />
               </div>
@@ -557,14 +644,14 @@ export function Customers({ onNavigate }: CustomersProps) {
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => refreshData()}
-                className="mt-6 px-6 py-3 rounded-xl bg-accent text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-accent/20"
+                className="mt-6 px-6 py-3 rounded-xl bg-accent text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-accent/20 cursor-pointer"
               >
                 Retry Connection
               </motion.button>
             </div>
           ) : !isReady ? (
-            <div className="flex flex-col gap-3">
-              {[1, 2, 3, 4, 5].map(i => (
+            <div className="col-span-full grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
+              {[1, 2, 3, 4, 5, 6].map(i => (
                 <div key={i} className="bg-card rounded-2xl p-4 border border-border flex items-center gap-4">
                   <Skeleton className="w-12 h-12 rounded-full" />
                   <div className="flex-1 flex flex-col gap-2">
@@ -575,7 +662,7 @@ export function Customers({ onNavigate }: CustomersProps) {
               ))}
             </div>
           ) : customers.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-24 px-6 bg-card/50 rounded-[32px] border border-dashed border-border/20 text-center animate-in zoom-in-95 duration-500">
+            <div className="col-span-full flex flex-col items-center justify-center py-24 px-6 bg-card/50 rounded-[32px] border border-dashed border-border/20 text-center animate-in zoom-in-95 duration-500">
               <div className="w-20 h-20 bg-accent/10 text-accent rounded-3xl flex items-center justify-center mb-6">
                 <User size={40} className="animate-pulse" />
               </div>
@@ -586,13 +673,13 @@ export function Customers({ onNavigate }: CustomersProps) {
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowAdd(true)}
-                className="mt-8 px-8 py-4 rounded-2xl bg-accent text-white text-[11px] font-black uppercase tracking-widest shadow-lg shadow-accent/25 flex items-center gap-2"
+                className="mt-8 px-8 py-4 rounded-2xl bg-accent text-white text-[11px] font-black uppercase tracking-widest shadow-lg shadow-accent/25 flex items-center gap-2 cursor-pointer"
               >
                 <Plus size={16} strokeWidth={3} /> Register First Customer
               </motion.button>
             </div>
           ) : filteredAndSorted.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 px-6 bg-card/40 rounded-[32px] border border-dashed border-border/10 text-center animate-in zoom-in-95 duration-500">
+            <div className="col-span-full flex flex-col items-center justify-center py-20 px-6 bg-card/40 rounded-[32px] border border-dashed border-border/10 text-center animate-in zoom-in-95 duration-500">
               <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mb-4 opacity-50">
                 <User size={32} className="text-text-secondary" />
               </div>
@@ -606,7 +693,7 @@ export function Customers({ onNavigate }: CustomersProps) {
                   setSearchTerm('');
                   setFilter('all');
                 }}
-                className="mt-6 px-6 py-3 rounded-xl bg-accent text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-accent/20"
+                className="mt-6 px-6 py-3 rounded-xl bg-accent text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-accent/20 cursor-pointer"
               >
                 Clear All Filters
               </motion.button>
@@ -688,6 +775,7 @@ export function Customers({ onNavigate }: CustomersProps) {
           onClose={() => setEditCustomer(null)}
           title="Edit Customer"
           subtitle={`ID: ${editCustomer?.displayId || editCustomer?.id || ''}`}
+          maxWidth="max-w-2xl lg:max-w-3xl"
         >
           {editCustomer && (
             <CustomerForm 
@@ -705,6 +793,7 @@ export function Customers({ onNavigate }: CustomersProps) {
           onClose={() => setNewLoanCustomer(null)}
           title={`New Loan • Cycle #${(newLoanCustomer?.currentCycle || 1) + 1}`}
           subtitle={`Issue new loan cycle for ${newLoanCustomer?.name || ''}`}
+          maxWidth="max-w-2xl lg:max-w-3xl"
         >
           {newLoanCustomer && (
             <CustomerForm

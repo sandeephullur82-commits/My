@@ -44,6 +44,17 @@ export function BottomSheet({
   }, [isOpen, setIsModalOpen, onClose]);
 
 
+  const [isDesktop, setIsDesktop] = React.useState(false);
+
+  React.useEffect(() => {
+    const checkDesktop = () => {
+      setIsDesktop(window.innerWidth >= 768);
+    };
+    checkDesktop();
+    window.addEventListener('resize', checkDesktop);
+    return () => window.removeEventListener('resize', checkDesktop);
+  }, []);
+
   const content = (
     <AnimatePresence>
       {isOpen && (
@@ -63,26 +74,26 @@ export function BottomSheet({
           role="dialog"
           aria-modal="true"
           aria-labelledby={title ? "bottom-sheet-title" : undefined}
-          className="fixed inset-0 z-[99995] flex items-end justify-center pointer-events-none"
+          className="fixed inset-0 z-[99995] flex items-end md:items-center justify-center pointer-events-none p-0 md:p-6"
         >
           <motion.div
             ref={containerRef as any}
             tabIndex={-1}
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 20, stiffness: 260 }}
-            drag="y"
+            initial={{ y: isDesktop ? 20 : '100%', opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: isDesktop ? 20 : '100%', opacity: 0 }}
+            transition={{ type: 'spring', damping: 26, stiffness: 300 }}
+            drag={isDesktop ? false : "y"}
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={0.2}
             onDragEnd={(_, info) => {
-              if (info.offset.y > 100 || info.velocity.y > 500) onClose();
+              if (!isDesktop && (info.offset.y > 100 || info.velocity.y > 500)) onClose();
             }}
-            className={`w-full ${maxWidth} bg-card rounded-t-[32px] shadow-2xl flex flex-col pointer-events-auto max-h-[90vh] border-t border-border/50 relative overflow-hidden outline-none`}
+            className={`w-full ${maxWidth} bg-card rounded-t-[32px] md:rounded-[28px] shadow-2xl flex flex-col pointer-events-auto max-h-[90vh] md:max-h-[85vh] border-t md:border border-border/80 relative overflow-hidden outline-none`}
           >
-            {/* Handle */}
+            {/* Handle - Visible on mobile, hidden on tablet & desktop */}
             <div className="flex flex-col items-center pt-3 pb-2 shrink-0">
-              <div className="w-10 h-1 bg-border rounded-full mb-4 opacity-30" />
+              <div className="w-10 h-1 bg-border rounded-full mb-4 opacity-30 md:hidden" />
               
               {(title || showCloseButton) && (
                 <div className="flex items-center justify-between w-full px-6 mb-2">

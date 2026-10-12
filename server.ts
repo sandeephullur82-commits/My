@@ -91,35 +91,19 @@ let firebaseAdmin: admin.app.App | null = null;
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   try {
     const serviceAccount = parseFirebaseServiceAccount(process.env.FIREBASE_SERVICE_ACCOUNT);
-    if (serviceAccount && serviceAccount.project_id) {
+    if (serviceAccount && serviceAccount.project_id && (serviceAccount.private_key || serviceAccount.client_email)) {
       firebaseAdmin = admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
       });
-      console.log("Firebase Admin Initialized with Service Account");
+      console.log(`Firebase Admin Initialized with Service Account for project: ${serviceAccount.project_id}`);
     } else {
-      console.warn("FIREBASE_SERVICE_ACCOUNT could not be resolved into a valid credentials object. Falling back to default credentials.");
-      try {
-        firebaseAdmin = admin.initializeApp();
-      } catch (err) {
-        console.warn("Firebase Admin default initialization failed:", err);
-      }
+      console.warn("FIREBASE_SERVICE_ACCOUNT does not contain a valid project_id and credentials. Backend admin features will remain dormant.");
     }
   } catch (e: any) {
     console.warn("Failed to initialize Firebase Admin with service account:", e?.message || e);
-    try {
-      firebaseAdmin = admin.initializeApp(); 
-    } catch (err) {
-      console.warn("Firebase Admin default initialization failed:", err);
-    }
   }
 } else {
-  // Basic initialization if no service account
-  try {
-    firebaseAdmin = admin.initializeApp();
-    console.log("Firebase Admin Initialized with Default Credentials");
-  } catch (e) {
-    console.warn("Firebase Admin credentials not provided. Most backend admin features will be dormant until configured.");
-  }
+  console.log("FIREBASE_SERVICE_ACCOUNT not configured. Backend admin features and background scans will remain dormant.");
 }
 
 async function startServer() {
@@ -128,15 +112,17 @@ async function startServer() {
 
   let db: admin.firestore.Firestore | null = null;
   let messaging: admin.messaging.Messaging | null = null;
+  let isFirestoreAvailable = false;
 
-  if (admin.apps.length > 0) {
+  if (firebaseAdmin) {
     try {
-      db = admin.firestore();
+      db = firebaseAdmin.firestore();
+      isFirestoreAvailable = true;
     } catch (e) {
       console.warn("Firestore not available in Firebase Admin:", e);
     }
     try {
-      messaging = admin.messaging();
+      messaging = firebaseAdmin.messaging();
     } catch (e) {
       console.warn("Firebase Messaging not available in Firebase Admin:", e);
     }
@@ -245,7 +231,9 @@ async function startServer() {
     if (!isValidId(userId) || typeof token !== "string" || token.length > 512) {
       return res.status(400).json({ error: "Invalid userId or token format" });
     }
-    if (!db) return res.status(503).json({ error: "Database not connected" });
+    if (!db || !isFirestoreAvailable) {
+      return res.status(503).json({ error: "Database not connected or Firestore API not enabled" });
+    }
 
     try {
       await db.collection("users").doc(userId).collection("fcmTokens").doc(token).set({
@@ -254,8 +242,13 @@ async function startServer() {
         deviceInfo: String(req.headers["user-agent"] || "").slice(0, 255)
       });
       res.json({ success: true });
-    } catch (error) {
-      console.error("Error storing token:", error);
+    } catch (error: any) {
+      const errMsg = error?.message || String(error);
+      if (error?.code === 7 || errMsg.includes("PERMISSION_DENIED") || errMsg.includes("Cloud Firestore API has not been used") || errMsg.includes("disabled")) {
+        isFirestoreAvailable = false;
+        return res.status(503).json({ error: "Firestore API not enabled in backend project" });
+      }
+      console.warn("Notice storing token:", errMsg);
       res.status(500).json({ error: "Failed to store token" });
     }
   });
@@ -290,15 +283,15 @@ async function startServer() {
       }
 
       res.json({ success: true, message: "Test notification dispatched" });
-    } catch (error) {
-      console.error("Error sending test notification:", error);
+    } catch (error: any) {
+      console.warn("Notice sending test notification:", error?.message || error);
       res.status(500).json({ error: "Failed to send test notification" });
     }
   });
 
   // Helper to send notifications to a user
   const sendNotificationToUser = async (userId: string, title: string, body: string, data = {}) => {
-    if (!db || !messaging) return;
+    if (!db || !isFirestoreAvailable || !messaging) return;
     try {
       const tokensSnap = await db.collection("users").doc(userId).collection("fcmTokens").get();
       const tokens = tokensSnap.docs.map(d => d.id);
@@ -338,14 +331,18 @@ async function startServer() {
           await cleanupBatch.commit();
         }
       }
-    } catch (error) {
-      console.error(`Error sending notification to user ${userId}:`, error);
+    } catch (error: any) {
+      const errMsg = error?.message || String(error);
+      if (error?.code === 7 || errMsg.includes("PERMISSION_DENIED") || errMsg.includes("Cloud Firestore API has not been used") || errMsg.includes("disabled")) {
+        isFirestoreAvailable = false;
+      }
+      console.warn(`Notice sending notification to user ${userId}:`, errMsg);
     }
   };
 
   // Triggers Logic: Evaluates upcoming due dates and overdue payments based on customer 'endDate' and 'pending'
   const checkPaymentsAndRemind = async () => {
-    if (!db) return;
+    if (!db || !isFirestoreAvailable) return;
     console.log("Running Payment Reminders & Due Date Check...");
     try {
       const usersSnap = await db.collection("users").get();
@@ -450,14 +447,22 @@ async function startServer() {
           });
         }
       }
-    } catch (err) {
-      console.error("Error in checkPaymentsAndRemind:", err);
+    } catch (err: any) {
+      const errMsg = err?.message || String(err);
+      if (err?.code === 7 || errMsg.includes("PERMISSION_DENIED") || errMsg.includes("Cloud Firestore API has not been used") || errMsg.includes("disabled")) {
+        console.warn("[Backend Reminders] Cloud Firestore API is disabled or inaccessible in target project. Disabling automated background scans.");
+        isFirestoreAvailable = false;
+        return;
+      }
+      console.warn("Notice in checkPaymentsAndRemind:", errMsg);
     }
   };
 
   // Manual Trigger Endpoint
   app.post("/api/notifications/scan-and-trigger", async (req, res) => {
-    if (!db) return res.status(503).json({ error: "Database not connected" });
+    if (!db || !isFirestoreAvailable) {
+      return res.status(503).json({ error: "Database not connected or Firestore API not enabled in backend project" });
+    }
     try {
       await checkPaymentsAndRemind();
       res.json({ success: true, message: "Payment check completed" });
@@ -467,7 +472,7 @@ async function startServer() {
   });
 
   const checkUnsettledAndRemind = async () => {
-    if (!db) return;
+    if (!db || !isFirestoreAvailable) return;
     console.log("Running Unsettled check...");
     try {
       const usersSnap = await db.collection("users").get();
@@ -511,25 +516,34 @@ async function startServer() {
           await sendNotificationToUser(userId, title, body, { type: 'unsettled' });
         }
       }
-    } catch (err) {
-      console.error("Error in checkUnsettledAndRemind:", err);
+    } catch (err: any) {
+      const errMsg = err?.message || String(err);
+      if (err?.code === 7 || errMsg.includes("PERMISSION_DENIED") || errMsg.includes("Cloud Firestore API has not been used") || errMsg.includes("disabled")) {
+        console.warn("[Backend Reminders] Cloud Firestore API is disabled or inaccessible in target project. Disabling automated background scans.");
+        isFirestoreAvailable = false;
+        return;
+      }
+      console.warn("Notice in checkUnsettledAndRemind:", errMsg);
     }
   };
 
   // Morning Reminder: 9:00 AM (Checks payments and sends daily reminders)
   cron.schedule("0 9 * * *", async () => {
+    if (!db || !isFirestoreAvailable) return;
     console.log("Morning reminder trigger");
     await checkPaymentsAndRemind();
   }, { timezone: "Asia/Kolkata" });
 
   // Evening Summary: 7:00 PM
   cron.schedule("0 19 * * *", async () => {
+    if (!db || !isFirestoreAvailable) return;
     console.log("Evening summary trigger");
     await checkUnsettledAndRemind();
   }, { timezone: "Asia/Kolkata" });
 
   // Hourly Check for Upcoming and Overdue Payments
   cron.schedule("0 * * * *", async () => {
+    if (!db || !isFirestoreAvailable) return;
     await checkPaymentsAndRemind();
   });
 

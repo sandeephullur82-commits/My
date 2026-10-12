@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Home, Users, PlusCircle, Settings as SettingsIcon, Activity, X, Plus, UserPlus, Sun, Moon, Smartphone } from 'lucide-react';
+import { Home, Users, PlusCircle, Settings as SettingsIcon, Activity, X, Plus, UserPlus, Sun, Moon, Smartphone, Keyboard } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSync } from '../context/SyncContext';
 import { useUI } from '../context/UIContext';
@@ -9,7 +9,6 @@ import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { Settings as SettingsPage } from '../pages/Settings';
 import { useRealtimeData } from '../hooks/useRealtimeData';
-import { CollectionMode } from '../pages/CollectionMode';
 import { CustomerForm } from './CustomerForm';
 import { BottomSheet } from './BottomSheet';
 import { firestoreService } from '../services/firestoreService';
@@ -17,16 +16,17 @@ import { PWAInstallPrompt } from './PWAInstallPrompt';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 
 const navItems = [
-  { id: 'dashboard', icon: Home, label: 'Dashboard' },
-  { id: 'customers', icon: Users, label: 'Customer' },
-  { id: 'entry', icon: PlusCircle, label: 'Collection' },
-  { id: 'transactions', icon: Activity, label: 'Ledger' },
+  { id: 'dashboard', icon: Home, label: 'Dashboard', shortcut: '1' },
+  { id: 'customers', icon: Users, label: 'Customer', shortcut: '2' },
+  { id: 'entry', icon: PlusCircle, label: 'Collection', shortcut: '3' },
+  { id: 'transactions', icon: Activity, label: 'Ledger', shortcut: '4' },
 ];
 
 export function Layout({ children, currentTab, setCurrentTab }: { children: React.ReactNode, currentTab: string, setCurrentTab: (t: string) => void }) {
   const { isCompact, isModalOpen, isCustomerDetailsOpen } = useUI();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const { isSyncing } = useSync();
   const { setCenterOpen, history } = useFeedback();
   const { theme, toggleTheme } = useTheme();
@@ -35,7 +35,6 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
 
   const { customers, transactions } = useRealtimeData();
   const [showGlobalAddCustomer, setShowGlobalAddCustomer] = useState(false);
-  const [showGlobalCollection, setShowGlobalCollection] = useState(false);
 
   const handleGlobalAddCustomerSave = async (customer: any) => {
     try {
@@ -82,14 +81,65 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
       } else if (showGlobalAddCustomer) {
         e.preventDefault();
         setShowGlobalAddCustomer(false);
-      } else if (showGlobalCollection) {
-        e.preventDefault();
-        setShowGlobalCollection(false);
       }
     };
     window.addEventListener('pigmy-android-back', handleAndroidBack);
     return () => window.removeEventListener('pigmy-android-back', handleAndroidBack);
-  }, [isSettingsOpen, showGlobalAddCustomer, showGlobalCollection]);
+  }, [isSettingsOpen, showGlobalAddCustomer]);
+
+  // Desktop Keyboard Shortcuts
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target?.tagName === 'INPUT' || 
+        target?.tagName === 'TEXTAREA' || 
+        target?.tagName === 'SELECT' || 
+        target?.isContentEditable
+      ) {
+        return;
+      }
+
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      switch (e.key) {
+        case '1':
+        case 'd':
+        case 'D':
+          handleTabClick('dashboard');
+          break;
+        case '2':
+        case 'c':
+        case 'C':
+          handleTabClick('customers');
+          break;
+        case '3':
+        case 'e':
+        case 'E':
+          handleTabClick('entry');
+          break;
+        case '4':
+        case 'l':
+        case 'L':
+          handleTabClick('transactions');
+          break;
+        case 'n':
+        case 'N':
+          e.preventDefault();
+          setShowGlobalAddCustomer(true);
+          break;
+        case '?':
+          e.preventDefault();
+          setShowShortcutsHelp(prev => !prev);
+          break;
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [currentTab]);
 
   const getPageTitle = (tab: string) => {
     switch (tab) {
@@ -97,7 +147,6 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
       case 'customers': return 'Customer Directory';
       case 'entry': return 'Daily Collection';
       case 'transactions': return 'Audit Ledger';
-      case 'notifications': return 'Alerts & Reminders';
       case 'settings': return 'System Settings';
       default: return 'Pigmy Pro';
     }
@@ -152,7 +201,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
           </div>
 
           {/* Desktop Navigation Links */}
-          <nav className="hidden md:flex items-center gap-1.5 mx-4" aria-label="Desktop Navigation" role="tablist">
+          <nav className="hidden md:flex items-center gap-1 lg:gap-1.5 mx-2 lg:mx-4" aria-label="Desktop Navigation" role="tablist">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentTab === item.id;
@@ -166,7 +215,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
                   aria-label={`${item.label} tab`}
                   onClick={() => handleTabClick(item.id)}
                   className={cn(
-                    "h-9 px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer active:scale-95",
+                    "h-9 px-3 lg:px-3.5 rounded-xl font-bold text-xs flex items-center gap-1.5 lg:gap-2 transition-all cursor-pointer active:scale-95 relative",
                     isActive
                       ? isEntry
                         ? "bg-accent text-white shadow-sm shadow-accent/25 font-black"
@@ -176,6 +225,9 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
                 >
                   <Icon size={15} strokeWidth={isActive ? 2.5 : 2} aria-hidden="true" />
                   <span>{item.label}</span>
+                  <span className="hidden xl:inline text-[9px] opacity-40 font-mono font-bold">
+                    {item.shortcut}
+                  </span>
                 </button>
               );
             })}
@@ -184,6 +236,32 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
           {/* Top Quick Actions */}
           <div className="flex items-center gap-1.5 sm:gap-2">
             
+            {/* Quick Add Customer Trigger on Desktop */}
+            <button
+              type="button"
+              onClick={() => {
+                if (navigator.vibrate) navigator.vibrate(8);
+                setShowGlobalAddCustomer(true);
+              }}
+              className="hidden lg:flex h-9 px-3 rounded-xl bg-accent hover:brightness-110 text-white font-bold text-xs items-center gap-1.5 shadow-sm shadow-accent/25 transition-all active:scale-95 cursor-pointer"
+              title="Register New Customer (Press N)"
+            >
+              <UserPlus size={14} strokeWidth={2.5} />
+              <span>Add Customer</span>
+              <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-white/20 text-white font-bold">N</span>
+            </button>
+
+            {/* Keyboard Shortcuts Trigger on Desktop */}
+            <button
+              type="button"
+              onClick={() => setShowShortcutsHelp(true)}
+              className="hidden md:flex w-9 h-9 rounded-xl bg-card hover:bg-muted border border-border/80 text-text-secondary hover:text-text-primary items-center justify-center active:scale-95 transition-all cursor-pointer"
+              title="Keyboard Shortcuts (Press ?)"
+              aria-label="View Keyboard Shortcuts"
+            >
+              <Keyboard size={16} aria-hidden="true" />
+            </button>
+
             {/* Install App Button when available in browser */}
             {isInstallable && (
               <button
@@ -311,6 +389,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
           onClose={() => setShowGlobalAddCustomer(false)}
           title="Register New Customer"
           subtitle="Add loan amount, daily installment terms and contact"
+          maxWidth="max-w-2xl lg:max-w-3xl"
         >
           <CustomerForm 
             onSave={handleGlobalAddCustomerSave} 
@@ -318,32 +397,77 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
           />
         </BottomSheet>
 
-        {/* Global Full-Screen CollectionMode overlay */}
+        {/* Keyboard Shortcuts Help Dialog (Desktop & Tablets) */}
         <AnimatePresence>
-          {showGlobalCollection && (
+          {showShortcutsHelp && (
             <motion.div
-              key="global-collection"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Collection Mode"
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 26, stiffness: 260 }}
-              className="fixed inset-0 z-[1200] overflow-hidden"
+              key="shortcuts-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowShortcutsHelp(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[99990] flex items-center justify-center p-4 cursor-pointer"
             >
-              <CollectionMode
-                customers={customers}
-                transactions={transactions}
-                onClose={() => setShowGlobalCollection(false)}
-              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-card border border-border/80 rounded-3xl shadow-2xl max-w-md w-full p-6 text-left cursor-default overflow-hidden"
+              >
+                <div className="flex items-center justify-between pb-4 border-b border-border/80 mb-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-accent/15 text-accent flex items-center justify-center">
+                      <Keyboard size={16} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-text-primary uppercase tracking-wider">Keyboard Shortcuts</h3>
+                      <p className="text-[10px] text-text-secondary">Fast desktop and tablet navigation</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowShortcutsHelp(false)}
+                    className="w-8 h-8 rounded-full bg-muted hover:bg-muted/80 flex items-center justify-center text-text-secondary cursor-pointer"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+
+                <div className="space-y-2.5 text-xs">
+                  <div className="flex items-center justify-between py-1.5 border-b border-border/30">
+                    <span className="text-text-secondary">Dashboard</span>
+                    <kbd className="px-2 py-0.5 rounded bg-muted font-mono font-bold text-text-primary text-[11px] border border-border/60">1 or D</kbd>
+                  </div>
+                  <div className="flex items-center justify-between py-1.5 border-b border-border/30">
+                    <span className="text-text-secondary">Customer Directory</span>
+                    <kbd className="px-2 py-0.5 rounded bg-muted font-mono font-bold text-text-primary text-[11px] border border-border/60">2 or C</kbd>
+                  </div>
+                  <div className="flex items-center justify-between py-1.5 border-b border-border/30">
+                    <span className="text-text-secondary">Daily Collection Entry</span>
+                    <kbd className="px-2 py-0.5 rounded bg-muted font-mono font-bold text-text-primary text-[11px] border border-border/60">3 or E</kbd>
+                  </div>
+                  <div className="flex items-center justify-between py-1.5 border-b border-border/30">
+                    <span className="text-text-secondary">Audit Ledger</span>
+                    <kbd className="px-2 py-0.5 rounded bg-muted font-mono font-bold text-text-primary text-[11px] border border-border/60">4 or L</kbd>
+                  </div>
+                  <div className="flex items-center justify-between py-1.5 border-b border-border/30">
+                    <span className="text-text-secondary">Add New Borrower</span>
+                    <kbd className="px-2 py-0.5 rounded bg-muted font-mono font-bold text-text-primary text-[11px] border border-border/60">N</kbd>
+                  </div>
+                  <div className="flex items-center justify-between py-1.5">
+                    <span className="text-text-secondary">Toggle Shortcuts Help</span>
+                    <kbd className="px-2 py-0.5 rounded bg-muted font-mono font-bold text-text-primary text-[11px] border border-border/60">?</kbd>
+                  </div>
+                </div>
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
       </main>
 
       {/* Bottom Navigation Bar (Mobile Viewports Only) */}
-      {!showGlobalCollection && !isModalOpen && !isCustomerDetailsOpen && (
+      {!isModalOpen && !isCustomerDetailsOpen && (
         <nav 
           aria-label="Main Navigation"
           className="md:hidden flex-shrink-0 sticky bottom-0 left-0 right-0 z-[980] bg-card/95 backdrop-blur-lg border-t border-border shadow-[0_-4px_24px_rgba(0,0,0,0.06)] pb-[env(safe-area-inset-bottom)]"

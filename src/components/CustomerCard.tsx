@@ -2,7 +2,8 @@ import React, { useRef, useMemo } from 'react';
 import { motion, PanInfo } from 'motion/react';
 import { Customer, Transaction } from '../services/firestoreService';
 import { safeDistanceToNow, safeDifferenceInDays } from '../lib/utils';
-import { Plus, CheckCircle2, RotateCcw, ArrowUpRight } from 'lucide-react';
+import { Plus, CheckCircle2, RotateCcw, ArrowUpRight, MessageSquare, Phone, Pin } from 'lucide-react';
+import { triggerWhatsApp } from '../lib/whatsapp';
 import { format } from 'date-fns';
 import { useUI } from '../context/UIContext';
 import { useSwipeActions } from '../hooks/useSwipeActions';
@@ -97,21 +98,23 @@ export const CustomerCard = React.memo(function CustomerCard({
     return paid[0];
   }, [propLastActivity, transactions, customer.id]);
 
+  const isSaving = customer.accountType === 'saving';
   const displayId = String(customer.displayId || customer.id);
-  const loanAmount = customer.loanAmount || customer.loan || 0;
-  const pendingAmount = customer.pending !== undefined ? customer.pending : (loanAmount - (customer.paid || 0));
+  const loanAmount = isSaving ? (customer.targetDeposit || 0) : (customer.loanAmount || customer.loan || 0);
+  const pendingAmount = isSaving ? 0 : (customer.pending !== undefined ? customer.pending : (loanAmount - (customer.paid || 0)));
   const paidAmount = customer.paid || 0;
+  const savedBalance = customer.advanceBalance || customer.paid || 0;
 
-  const isOverdue = customer.endDate < Date.now() && pendingAmount > 0;
-  const isFullyPaid = pendingAmount <= 0;
+  const isOverdue = !isSaving && customer.endDate < Date.now() && pendingAmount > 0;
+  const isFullyPaid = !isSaving && pendingAmount <= 0;
   const currentCycle = customer.currentCycle || 1;
 
-  let statusColor = 'bg-warning';
-  let statusText = 'text-warning';
-  if (isFullyPaid) {
+  let statusColor = isSaving ? 'bg-emerald-500' : 'bg-warning';
+  let statusText = isSaving ? 'text-emerald-600 dark:text-emerald-400' : 'text-warning';
+  if (!isSaving && isFullyPaid) {
     statusColor = 'bg-success';
     statusText = 'text-success';
-  } else if (isOverdue) {
+  } else if (!isSaving && isOverdue) {
     statusColor = 'bg-danger';
     statusText = 'text-danger';
   }
@@ -126,7 +129,7 @@ export const CustomerCard = React.memo(function CustomerCard({
     );
   }, [propIsPaidToday, transactions, customer.id]);
 
-  const isEntryDisabled = isPaidToday || isFullyPaid;
+  const isEntryDisabled = isPaidToday || (!isSaving && isFullyPaid);
   const progress = loanAmount > 0 ? Math.min(100, Math.max(0, (paidAmount / loanAmount) * 100)) : 0;
 
   const tag = useMemo(() => {
@@ -144,9 +147,13 @@ export const CustomerCard = React.memo(function CustomerCard({
     return 'Daily';
   }, [customer.frequency, customer.frequencyDays, customer.endDate, customer.startDate]);
 
+  const isTouchDevice = useMemo(() => {
+    return typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  }, []);
+
   return (
-    <div className="relative w-full overflow-hidden rounded-2xl mb-2.5" ref={containerRef}>
-      {/* Background Actions */}
+    <div className="relative w-full overflow-hidden rounded-2xl mb-2.5 group/card" ref={containerRef}>
+      {/* Background Actions (Touch Swipe) */}
       <SwipeActionBackground
         leftActionOpacity={leftActionOpacity}
         rightActionOpacity={rightActionOpacity}
@@ -158,7 +165,7 @@ export const CustomerCard = React.memo(function CustomerCard({
       {/* Foreground Card */}
       <motion.div
         id={`customer-card-${customer.id}`}
-        drag="x"
+        drag={isTouchDevice ? "x" : false}
         dragConstraints={{ left: -140, right: 120 }}
         dragElastic={0.05}
         dragMomentum={false}
@@ -189,8 +196,12 @@ export const CustomerCard = React.memo(function CustomerCard({
             <h3 className={`font-black tracking-tight text-text-primary truncate pr-2 ${isCompact ? 'text-[14px]' : 'text-base'}`}>
               <Highlight text={String(customer.name)} highlight={searchTerm} />
             </h3>
-            <div className="flex items-center gap-1.5 shrink-0">
-              {currentCycle > 1 && (
+              {isSaving && (
+                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                  🐷 Saving
+                </span>
+              )}
+              {currentCycle > 1 && !isSaving && (
                 <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
                   C#{currentCycle}
                 </span>
@@ -234,18 +245,26 @@ export const CustomerCard = React.memo(function CustomerCard({
               <div className="text-right">
                 {!isCompact && (
                   <p className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${
-                    isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'text-sky-600 dark:text-sky-400' : 'text-text-secondary'
+                    isSaving
+                      ? 'text-emerald-600 dark:text-emerald-400 font-black'
+                      : (isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'text-sky-600 dark:text-sky-400' : 'text-text-secondary')
                   }`}>
-                    {isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'Advance' : 'Pending'}
+                    {isSaving
+                      ? 'Total Saved'
+                      : (isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'Advance' : 'Pending')}
                   </p>
                 )}
                 <p className={`font-mono tabular-nums font-black tracking-tight leading-none ${
-                  isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'text-sky-600 dark:text-sky-400' : statusText
+                  isSaving
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : (isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'text-sky-600 dark:text-sky-400' : statusText)
                 } ${isCompact ? 'text-base' : 'text-lg'}`}>
                   <span className="text-xs mr-0.5 opacity-60 font-bold font-sans">₹</span>
-                  {isFullyPaid && (customer.advanceBalance || 0) > 0 
-                    ? (customer.advanceBalance || 0).toLocaleString('en-IN')
-                    : pendingAmount.toLocaleString('en-IN')}
+                  {isSaving
+                    ? savedBalance.toLocaleString('en-IN')
+                    : (isFullyPaid && (customer.advanceBalance || 0) > 0 
+                      ? (customer.advanceBalance || 0).toLocaleString('en-IN')
+                      : pendingAmount.toLocaleString('en-IN'))}
                 </p>
               </div>
 
@@ -329,6 +348,54 @@ export const CustomerCard = React.memo(function CustomerCard({
                   )}
                 </button>
               )}
+
+              {/* Desktop / Tablet Quick Actions (Direct Click without swipe) */}
+              <div className="hidden md:flex items-center gap-1 shrink-0 ml-1">
+                {customer.phone && (
+                  <>
+                    <button
+                      type="button"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (navigator.vibrate) navigator.vibrate(10);
+                        triggerWhatsApp(customer.phone, customer.name, undefined, customer.id);
+                      }}
+                      title={`WhatsApp ${customer.name}`}
+                      className="w-7 h-7 rounded-lg bg-emerald-500/10 hover:bg-emerald-600 text-emerald-600 hover:text-white flex items-center justify-center transition-all cursor-pointer"
+                    >
+                      <MessageSquare size={13} strokeWidth={2.3} />
+                    </button>
+                    <a
+                      href={`tel:${customer.phone}`}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                      title={`Call ${customer.name}`}
+                      className="w-7 h-7 rounded-lg bg-blue-500/10 hover:bg-blue-600 text-blue-600 hover:text-white flex items-center justify-center transition-all cursor-pointer"
+                    >
+                      <Phone size={13} strokeWidth={2.3} />
+                    </a>
+                  </>
+                )}
+                {onTogglePin && (
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onTogglePin();
+                    }}
+                    title={customer.isPinned ? "Unpin borrower" : "Pin borrower"}
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+                      customer.isPinned 
+                        ? 'bg-accent/15 text-accent' 
+                        : 'bg-muted/80 text-text-secondary hover:text-text-primary hover:bg-muted'
+                    }`}
+                  >
+                    <Pin size={13} className={customer.isPinned ? 'fill-accent' : ''} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
