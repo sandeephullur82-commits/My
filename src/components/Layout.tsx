@@ -7,7 +7,7 @@ import { useFeedback } from '../context/FeedbackContext';
 import { useTheme } from './ThemeProvider';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
-import { Settings as SettingsPage } from '../pages/Settings';
+
 import { useRealtimeData } from '../hooks/useRealtimeData';
 import { CustomerForm } from './CustomerForm';
 import { BottomSheet } from './BottomSheet';
@@ -25,7 +25,6 @@ const navItems = [
 export function Layout({ children, currentTab, setCurrentTab }: { children: React.ReactNode, currentTab: string, setCurrentTab: (t: string) => void }) {
   const { isCompact, isModalOpen, isCustomerDetailsOpen } = useUI();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const { isSyncing } = useSync();
   const { setCenterOpen, history } = useFeedback();
@@ -75,17 +74,14 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
 
   useEffect(() => {
     const handleAndroidBack = (e: Event) => {
-      if (isSettingsOpen) {
-        e.preventDefault();
-        setIsSettingsOpen(false);
-      } else if (showGlobalAddCustomer) {
+      if (showGlobalAddCustomer) {
         e.preventDefault();
         setShowGlobalAddCustomer(false);
       }
     };
     window.addEventListener('pigmy-android-back', handleAndroidBack);
     return () => window.removeEventListener('pigmy-android-back', handleAndroidBack);
-  }, [isSettingsOpen, showGlobalAddCustomer]);
+  }, [showGlobalAddCustomer]);
 
   // Desktop Keyboard Shortcuts
   useEffect(() => {
@@ -236,19 +232,19 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
           {/* Top Quick Actions */}
           <div className="flex items-center gap-1.5 sm:gap-2">
             
-            {/* Quick Add Customer Trigger on Desktop */}
+            {/* Quick Add Customer Trigger on Tablet/Desktop */}
             <button
               type="button"
               onClick={() => {
                 if (navigator.vibrate) navigator.vibrate(8);
                 setShowGlobalAddCustomer(true);
               }}
-              className="hidden lg:flex h-9 px-3 rounded-xl bg-accent hover:brightness-110 text-white font-bold text-xs items-center gap-1.5 shadow-sm shadow-accent/25 transition-all active:scale-95 cursor-pointer"
+              className="hidden sm:flex h-9 px-3 rounded-xl bg-accent hover:brightness-110 text-white font-bold text-xs items-center gap-1.5 shadow-sm shadow-accent/25 transition-all active:scale-95 cursor-pointer"
               title="Register New Customer (Press N)"
             >
               <UserPlus size={14} strokeWidth={2.5} />
               <span>Add Customer</span>
-              <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-white/20 text-white font-bold">N</span>
+              <span className="hidden lg:inline text-[9px] font-mono px-1 py-0.2 rounded bg-white/20 text-white font-bold">N</span>
             </button>
 
             {/* Keyboard Shortcuts Trigger on Desktop */}
@@ -290,7 +286,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
             {/* Settings Trigger */}
             <button 
               type="button"
-              onClick={() => setIsSettingsOpen(true)}
+              onClick={() => handleTabClick('settings')}
               className="w-9 h-9 rounded-xl bg-card hover:bg-muted border border-border/80 text-text-secondary hover:text-text-primary flex items-center justify-center active:scale-95 transition-all cursor-pointer"
               title="System Settings"
               aria-label="Open System Settings"
@@ -332,56 +328,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
           {children}
         </div>
 
-        {/* Settings Modal Overlay */}
-        <AnimatePresence>
-          {isSettingsOpen && (
-            <motion.div 
-              key="settings-backdrop"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsSettingsOpen(false)}
-              aria-hidden="true"
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[99990] cursor-pointer"
-            />
-          )}
-          {isSettingsOpen && (
-            <motion.div
-              key="settings-modal"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="settings-modal-title"
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="fixed inset-x-0 bottom-0 top-[8%] md:top-auto md:bottom-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-2xl md:h-[84vh] bg-card border-t md:border border-border rounded-t-[32px] md:rounded-[28px] z-[99995] shadow-2xl overflow-hidden flex flex-col"
-            >
-              <div className="h-14 flex items-center justify-between px-6 border-b border-border/80 shrink-0 bg-card">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-accent/10 text-accent flex items-center justify-center font-bold" aria-hidden="true">
-                    <SettingsIcon size={16} />
-                  </div>
-                  <h2 id="settings-modal-title" className="text-sm font-bold text-text-primary">System Settings</h2>
-                </div>
-                <button 
-                  type="button"
-                  onClick={() => setIsSettingsOpen(false)}
-                  className="min-w-[44px] min-h-[44px] rounded-full bg-muted hover:bg-muted/80 flex items-center justify-center text-text-secondary hover:text-text-primary active:scale-90 transition-all cursor-pointer"
-                  title="Close Settings"
-                  aria-label="Close Settings"
-                >
-                  <X size={16} aria-hidden="true" />
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                <div className="max-w-3xl mx-auto p-4 sm:p-6">
-                  <SettingsPage />
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+
 
         {/* Global New Customer Form BottomSheet Modal */}
         <BottomSheet

@@ -234,29 +234,25 @@ export function CustomerForm({
 
     if (formData.accountType === 'loan' && cleanName.length >= 2 && cleanPhone.length === 10) {
       setIsCheckingDuplicate(true);
-      const timer = setTimeout(async () => {
-        try {
-          const result = await firestoreService.checkDuplicateCustomer(
-            cleanName,
-            cleanPhone,
-            'loan'
-          );
-          if (!result.allowed) {
-            setDuplicateLoanError({
-              exists: true,
-              existingLoanId: result.existingLoanId,
-              reason: result.reason
-            });
-          } else {
-            setDuplicateLoanError(null);
-          }
-        } catch (e) {
+      firestoreService.checkDuplicateCustomer(
+        cleanName,
+        cleanPhone,
+        'loan'
+      ).then(result => {
+        if (!result.allowed) {
+          setDuplicateLoanError({
+            exists: true,
+            existingLoanId: result.existingLoanId,
+            reason: result.reason
+          });
+        } else {
           setDuplicateLoanError(null);
-        } finally {
-          setIsCheckingDuplicate(false);
         }
-      }, 300);
-      return () => clearTimeout(timer);
+      }).catch(() => {
+        setDuplicateLoanError(null);
+      }).finally(() => {
+        setIsCheckingDuplicate(false);
+      });
     } else {
       setDuplicateLoanError(null);
       setIsCheckingDuplicate(false);
@@ -493,9 +489,10 @@ export function CustomerForm({
 
     // Validate New Customer or Edit Customer flow
     const cleanPhone = formData.phone.replace(/\D/g, '').slice(-10);
-    if (!formData.name || !formData.loan || (!isIdUnique && !isEdit) || cleanPhone.length !== 10 || Number(formData.loan) <= 0) {
+    const isSaving = formData.accountType === 'saving';
+    if (!formData.name || (!isSaving && !formData.loan) || (!isIdUnique && !isEdit) || cleanPhone.length !== 10 || (!isSaving && Number(formData.loan) <= 0)) {
       if (cleanPhone.length !== 10) toast.error('Enter valid 10-digit phone number');
-      if (Number(formData.loan) <= 0) toast.error(formData.accountType === 'saving' ? 'Enter valid target savings (> ₹0)' : 'Enter valid loan amount (> ₹0)');
+      if (!isSaving && Number(formData.loan) <= 0) toast.error('Enter valid loan amount (> ₹0)');
       if (!isIdUnique && !isEdit) toast.error('ID already used');
       return;
     }
@@ -520,9 +517,8 @@ export function CustomerForm({
       }
     }
 
-    const isSaving = formData.accountType === 'saving';
     const finalLoanAmt = isSaving ? 0 : totalLoanWithInterest;
-    const targetDepositAmt = isSaving ? totalLoanWithInterest : undefined;
+    const targetDepositAmt = undefined;
     const startMs = parseISO(formData.startDate).getTime();
     const endMs = parseISO(endDate).getTime();
     const uniqueKey = isSaving
@@ -740,92 +736,62 @@ export function CustomerForm({
         )}
 
         {/* Financial Highlights */}
-        <div className="grid grid-cols-3 gap-2 border-t border-border/40 pt-4 mt-1">
-          <div>
-            <p className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] mb-1">
-              {formData.accountType === 'saving'
-                ? 'Target Savings'
-                : (isExistingLoan && existingPaidNum > 0
+        {formData.accountType !== 'saving' ? (
+          <div className="grid grid-cols-3 gap-2 border-t border-border/40 pt-4 mt-1">
+            <div>
+              <p className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] mb-1">
+                {isExistingLoan && existingPaidNum > 0
                   ? 'Pending Due'
-                  : (hasInterest && interestAmount > 0 ? 'Total Due' : (isNewLoan && effectiveAdvanceToApply > 0 ? 'Opening Due' : 'Total Loan')))}
-            </p>
-            <p className="text-lg font-black text-text-primary tracking-tighter font-mono">
-              ₹{(isExistingLoan && existingPaidNum > 0
-                ? existingPendingNum
-                : (isNewLoan && effectiveAdvanceToApply > 0 ? netOpeningPending : totalLoanWithInterest)
-              ).toLocaleString()}
-            </p>
-            {formData.accountType === 'saving' ? (
-              <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 font-mono">
-                Pigmy Savings
+                  : (hasInterest && interestAmount > 0 ? 'Total Due' : (isNewLoan && effectiveAdvanceToApply > 0 ? 'Opening Due' : 'Total Loan'))}
               </p>
-            ) : hasInterest && interestAmount > 0 ? (
-              <p className="text-[10px] font-bold text-accent font-mono">
-                incl. ₹{interestAmount.toLocaleString()} ({interestRate}%)
+              <p className="text-lg font-black text-text-primary tracking-tighter font-mono">
+                ₹{(isExistingLoan && existingPaidNum > 0
+                  ? existingPendingNum
+                  : (isNewLoan && effectiveAdvanceToApply > 0 ? netOpeningPending : totalLoanWithInterest)
+                ).toLocaleString()}
               </p>
-            ) : isExistingLoan && existingPaidNum > 0 ? (
-              <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 font-mono">
-                ₹{existingPaidNum.toLocaleString()} already paid
+              {hasInterest && interestAmount > 0 ? (
+                <p className="text-[10px] font-bold text-accent font-mono">
+                  incl. ₹{interestAmount.toLocaleString()} ({interestRate}%)
+                </p>
+              ) : isExistingLoan && existingPaidNum > 0 ? (
+                <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                  ₹{existingPaidNum.toLocaleString()} already paid
+                </p>
+              ) : null}
+            </div>
+            <div className="text-center">
+              <p className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] mb-1">Tenure</p>
+              <p className="text-lg font-black text-text-primary tracking-tighter font-mono">
+                {formData.duration} Days
               </p>
-            ) : null}
+              {isExistingLoan && remainingInstallmentsCount > 0 && (
+                <p className="text-[10px] font-bold text-text-secondary font-mono">
+                  {remainingInstallmentsCount} days left
+                </p>
+              )}
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] mb-1">
+                Est. Installment
+              </p>
+              <p className="text-lg font-black text-accent tracking-tighter font-mono">
+                ₹{estimatedInstallment.toLocaleString()}
+              </p>
+            </div>
           </div>
-          <div className="text-center">
-            <p className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] mb-1">Tenure</p>
-            <p className="text-lg font-black text-text-primary tracking-tighter font-mono">
-              {formData.duration} Days
-            </p>
-            {isExistingLoan && remainingInstallmentsCount > 0 && (
-              <p className="text-[10px] font-bold text-text-secondary font-mono">
-                {remainingInstallmentsCount} days left
-              </p>
-            )}
+        ) : (
+          <div className="border-t border-border/40 pt-4 mt-1 flex items-center justify-between text-xs">
+            <span className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+              <span>🐷 Pigmy Savings Account</span>
+              <span className="text-[10px] opacity-70">(Flexible / No Target Goal)</span>
+            </span>
           </div>
-          <div className="text-right">
-            <p className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] mb-1">
-              {formData.accountType === 'saving' ? 'Daily Target' : 'Est. Installment'}
-            </p>
-            <p className="text-lg font-black text-accent tracking-tighter font-mono">
-              ₹{estimatedInstallment.toLocaleString()}
-            </p>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Account Type Selector for New Accounts (Loan vs Saving) */}
-      {!isNewLoan && !isEdit && (
-        <div className="bg-card/70 p-1.5 rounded-2xl border border-border/70 flex items-center gap-2 mx-1 shadow-xs">
-          <button
-            type="button"
-            onClick={() => {
-              setFormData(prev => ({ ...prev, accountType: 'loan' }));
-            }}
-            className={`flex-1 py-2.5 px-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
-              formData.accountType === 'loan'
-                ? 'bg-accent text-white shadow-md shadow-accent/25'
-                : 'text-text-secondary hover:text-text-primary hover:bg-muted/60'
-            }`}
-          >
-            <span>💳 Loan Account</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setFormData(prev => ({ ...prev, accountType: 'saving' }));
-              setDuplicateLoanError(null);
-            }}
-            className={`flex-1 py-2.5 px-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
-              formData.accountType === 'saving'
-                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25'
-                : 'text-text-secondary hover:text-text-primary hover:bg-muted/60'
-            }`}
-          >
-            <span>🐷 Saving Account</span>
-          </button>
-        </div>
-      )}
-
       {/* Real-time Dual Loan Warning Banner */}
-      {duplicateLoanError?.exists && formData.accountType === 'loan' && (
+      {duplicateLoanError?.exists && (
         <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex flex-col gap-3 mx-1">
           <div className="flex items-start gap-3">
             <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-500 flex items-center justify-center shrink-0 mt-0.5">
@@ -839,36 +805,6 @@ export function CustomerForm({
                 An active loan already exists for <strong>{formData.name}</strong> (+91 {formData.phone.replace(/\D/g, '').slice(-10)}) under ID <strong>{duplicateLoanError.existingLoanId}</strong>. You cannot create a dual loan using the same name and phone number.
               </p>
             </div>
-          </div>
-          <div className="pt-2 border-t border-rose-500/20 flex items-center justify-between gap-2 flex-wrap">
-            <span className="text-[11px] font-semibold text-text-secondary">
-              Borrower can create a Saving account with these details:
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setFormData(prev => ({ ...prev, accountType: 'saving' }));
-                setDuplicateLoanError(null);
-              }}
-              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all cursor-pointer shadow-xs active:scale-95"
-            >
-              🐷 Switch to Saving Account
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Pigmy Saving Account Confirmation Banner */}
-      {formData.accountType === 'saving' && !isNewLoan && (
-        <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex items-center gap-3 mx-1">
-          <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-lg shrink-0">
-            🐷
-          </div>
-          <div className="text-xs text-emerald-800 dark:text-emerald-300 min-w-0">
-            <p className="font-black uppercase tracking-wider">Pigmy Saving Account</p>
-            <p className="text-[11px] opacity-80 mt-0.5">
-              Using the same name and phone number to create a Saving account is fully allowed alongside their loan account.
-            </p>
           </div>
         </div>
       )}
@@ -1005,50 +941,50 @@ export function CustomerForm({
           </h4>
           <div className="space-y-5">
             {/* Principal / Loan Amount or Target Savings */}
-            <div>
-              <label htmlFor="customer-input-loan" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] ml-1 mb-1.5 block">
-                {formData.accountType === 'saving'
-                  ? 'Target Savings Goal (₹)'
-                  : (isRenewal 
+            {formData.accountType !== 'saving' && (
+              <div>
+                <label htmlFor="customer-input-loan" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] ml-1 mb-1.5 block">
+                  {isRenewal 
                       ? `Renewal Principal (Cycle #${nextCycle})` 
-                      : (isNewLoan ? `New Loan Principal (Cycle #${nextCycle})` : 'Loan Amount'))}
-              </label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-bold text-text-secondary opacity-40" aria-hidden="true">₹</span>
-                <input
-                  id="customer-input-loan"
-                  type="number"
-                  min="500"
-                  step="500"
-                  required
-                  aria-required="true"
-                  aria-label={formData.accountType === 'saving' ? "Target savings goal in Rupees" : "Loan principal amount in Rupees"}
-                  value={formData.loan}
-                  onChange={e => handlePrincipalChange(e.target.value)}
-                  className="w-full bg-bg border border-border/60 rounded-2xl h-14 pl-10 pr-4 focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/5 transition-all text-[15px] font-bold font-mono"
-                  placeholder="0.00"
-                />
-              </div>
+                      : (isNewLoan ? `New Loan Principal (Cycle #${nextCycle})` : 'Loan Amount')}
+                </label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-bold text-text-secondary opacity-40" aria-hidden="true">₹</span>
+                  <input
+                    id="customer-input-loan"
+                    type="number"
+                    min="500"
+                    step="500"
+                    required
+                    aria-required="true"
+                    aria-label="Loan principal amount in Rupees"
+                    value={formData.loan}
+                    onChange={e => handlePrincipalChange(e.target.value)}
+                    className="w-full bg-bg border border-border/60 rounded-2xl h-14 pl-10 pr-4 focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/5 transition-all text-[15px] font-bold font-mono"
+                    placeholder="0.00"
+                  />
+                </div>
 
-              {/* Quick preset amounts */}
-              <div className="flex items-center gap-1.5 flex-wrap pt-2" role="group" aria-label="Preset amounts">
-                {quickAmounts.map(amount => (
-                  <button
-                    key={amount}
-                    type="button"
-                    aria-label={`Set amount to ₹${amount.toLocaleString('en-IN')}`}
-                    onClick={() => handlePrincipalChange(amount.toString())}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold font-mono border transition-all active:scale-95 cursor-pointer ${
-                      principalAmountNum === amount
-                        ? 'bg-accent text-white border-accent shadow-xs'
-                        : 'bg-card border-border/70 hover:bg-muted text-text-secondary'
-                    }`}
-                  >
-                    ₹{amount >= 1000 ? `${amount / 1000}k` : amount}
-                  </button>
-                ))}
+                {/* Quick preset amounts */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-2" role="group" aria-label="Preset amounts">
+                  {quickAmounts.map(amount => (
+                    <button
+                      key={amount}
+                      type="button"
+                      aria-label={`Set amount to ₹${amount.toLocaleString('en-IN')}`}
+                      onClick={() => handlePrincipalChange(amount.toString())}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold font-mono border transition-all active:scale-95 cursor-pointer ${
+                        principalAmountNum === amount
+                          ? 'bg-accent text-white border-accent shadow-xs'
+                          : 'bg-card border-border/70 hover:bg-muted text-text-secondary'
+                      }`}
+                    >
+                      ₹{amount >= 1000 ? `${amount / 1000}k` : amount}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Interest Section: Only applicable for Loans */}
             {formData.accountType !== 'saving' && (
@@ -1175,173 +1111,177 @@ export function CustomerForm({
             </div>
             )}
 
-            {/* Collection Frequency (Daily 1d, Weekly 7d, Monthly 30d, or Custom Days) */}
-            <div className="p-4 rounded-2xl bg-card border border-border/50 space-y-3">
-              <div className="flex justify-between items-center">
-                <label className="text-[10px] font-black text-text-secondary opacity-50 uppercase tracking-[0.2em] block">
-                  Collection Frequency
-                </label>
-                <span className="text-[10px] font-bold text-accent">
-                  {formData.frequencyDays === 1 ? 'Daily (1 Day)' : formData.frequencyDays === 7 ? 'Weekly (7 Days)' : formData.frequencyDays === 30 ? 'Monthly (30 Days)' : `Every ${formData.frequencyDays} Days`}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                {frequencyOptions.map(opt => {
-                  const isSelected = !isCustomFrequency && formData.frequencyDays === opt.days;
-                  return (
-                    <button
-                      key={opt.key}
-                      id={`freq-btn-${opt.key}`}
-                      type="button"
-                      onClick={() => handleSelectFrequency(opt.key, opt.days)}
-                      className={`py-3 px-2 rounded-xl border flex flex-col items-center justify-center transition-all cursor-pointer ${
-                        isSelected 
-                          ? 'bg-accent text-white border-accent shadow-md shadow-accent/20' 
-                          : 'bg-bg border-border/50 text-text-secondary hover:border-accent/40'
-                      }`}
-                    >
-                      <span className="text-xs font-black">{opt.label}</span>
-                      <span className={`text-[10px] font-bold mt-0.5 ${isSelected ? 'text-white/80' : 'opacity-40'}`}>
-                        {opt.tag}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Custom Frequency Days Option */}
-              <div className="pt-1 flex items-center justify-between gap-3 border-t border-border/30 mt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCustomFrequency(!isCustomFrequency)}
-                  className={`text-[11px] font-bold transition-colors cursor-pointer ${isCustomFrequency ? 'text-accent' : 'text-text-secondary hover:text-text-primary'}`}
-                >
-                  {isCustomFrequency ? '✓ Custom Days Interval' : '+ Custom Collection Interval'}
-                </button>
-
-                {isCustomFrequency && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-text-secondary">Every</span>
-                    <input
-                      id="customer-custom-freq-days"
-                      type="number"
-                      min="1"
-                      value={formData.frequencyDays}
-                      onChange={e => {
-                        const val = Math.max(1, parseInt(e.target.value) || 1);
-                        setFormData(prev => ({
-                          ...prev,
-                          frequency: 'custom',
-                          frequencyDays: val,
-                        }));
-                      }}
-                      className="w-16 h-9 px-2 bg-bg border border-border/60 rounded-xl text-center text-xs font-black focus:outline-none focus:border-accent font-mono"
-                    />
-                    <span className="text-xs text-text-secondary">Days</span>
+            {formData.accountType !== 'saving' && (
+              <>
+                {/* Collection Frequency (Daily 1d, Weekly 7d, Monthly 30d, or Custom Days) */}
+                <div className="p-4 rounded-2xl bg-card border border-border/50 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-black text-text-secondary opacity-50 uppercase tracking-[0.2em] block">
+                      Collection Frequency
+                    </label>
+                    <span className="text-[10px] font-bold text-accent">
+                      {formData.frequencyDays === 1 ? 'Daily (1 Day)' : formData.frequencyDays === 7 ? 'Weekly (7 Days)' : formData.frequencyDays === 30 ? 'Monthly (30 Days)' : `Every ${formData.frequencyDays} Days`}
+                    </span>
                   </div>
-                )}
-              </div>
-            </div>
 
-            {/* Duration / Number of Days (50, 100, 120, 150, 200 Days & Custom Input) */}
-            <div className="p-4 rounded-2xl bg-card border border-border/50 space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] font-black text-text-secondary opacity-50 uppercase tracking-[0.2em] block">
-                  Loan Tenure / Duration (Days)
-                </span>
-                <span className="text-xs font-black text-text-primary font-mono">
-                  {formData.duration} Days Total
-                </span>
-              </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {frequencyOptions.map(opt => {
+                      const isSelected = !isCustomFrequency && formData.frequencyDays === opt.days;
+                      return (
+                        <button
+                          key={opt.key}
+                          id={`freq-btn-${opt.key}`}
+                          type="button"
+                          onClick={() => handleSelectFrequency(opt.key, opt.days)}
+                          className={`py-3 px-2 rounded-xl border flex flex-col items-center justify-center transition-all cursor-pointer ${
+                            isSelected 
+                              ? 'bg-accent text-white border-accent shadow-md shadow-accent/20' 
+                              : 'bg-bg border-border/50 text-text-secondary hover:border-accent/40'
+                          }`}
+                        >
+                          <span className="text-xs font-black">{opt.label}</span>
+                          <span className={`text-[10px] font-bold mt-0.5 ${isSelected ? 'text-white/80' : 'opacity-40'}`}>
+                            {opt.tag}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
 
-              {/* Quick Duration Buttons */}
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2" role="group" aria-label="Preset loan duration options">
-                {durationPresets.map(preset => {
-                  const isSelected = formData.duration === preset.days;
-                  return (
+                  {/* Custom Frequency Days Option */}
+                  <div className="pt-1 flex items-center justify-between gap-3 border-t border-border/30 mt-2">
                     <button
-                      key={preset.days}
-                      id={`duration-preset-${preset.days}`}
                       type="button"
-                      aria-label={`Select tenure of ${preset.label}`}
-                      onClick={() => handleSelectDurationDays(preset.days)}
-                      className={`py-2 px-1 rounded-xl text-[11px] font-bold border text-center transition-all cursor-pointer font-mono ${
-                        isSelected 
-                          ? 'bg-accent/15 border-accent text-accent font-black shadow-xs' 
-                          : 'bg-bg border-border/40 text-text-secondary hover:border-text-secondary/40'
-                      }`}
+                      onClick={() => setIsCustomFrequency(!isCustomFrequency)}
+                      className={`text-[11px] font-bold transition-colors cursor-pointer ${isCustomFrequency ? 'text-accent' : 'text-text-secondary hover:text-text-primary'}`}
                     >
-                      {preset.label}
+                      {isCustomFrequency ? '✓ Custom Days Interval' : '+ Custom Collection Interval'}
                     </button>
-                  );
-                })}
-              </div>
 
-              {/* Direct Duration in Days Numeric Input */}
-              <div className="pt-2">
-                <label htmlFor="customer-input-duration" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-widest mb-1.5 block">
-                  Enter Custom Duration (Number of Days)
-                </label>
-                <div className="relative flex items-center">
-                  <input
-                    id="customer-input-duration"
-                    type="number"
-                    min="1"
-                    aria-label="Tenure duration in days"
-                    value={formData.duration || ''}
-                    onChange={e => {
-                      const days = parseInt(e.target.value) || 0;
-                      setFormData(prev => ({
-                        ...prev,
-                        duration: days > 0 ? days : 1
-                      }));
-                    }}
-                    className="w-full bg-bg border border-border/60 rounded-2xl h-14 pl-4 pr-16 focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/5 transition-all text-[15px] font-bold font-mono"
-                    placeholder="e.g. 50, 100, 120"
-                  />
-                  <span className="absolute right-4 text-xs font-black uppercase text-text-secondary opacity-50 tracking-wider pointer-events-none" aria-hidden="true">
-                    Days
-                  </span>
+                    {isCustomFrequency && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-text-secondary">Every</span>
+                        <input
+                          id="customer-custom-freq-days"
+                          type="number"
+                          min="1"
+                          value={formData.frequencyDays}
+                          onChange={e => {
+                            const val = Math.max(1, parseInt(e.target.value) || 1);
+                            setFormData(prev => ({
+                              ...prev,
+                              frequency: 'custom',
+                              frequencyDays: val,
+                            }));
+                          }}
+                          className="w-16 h-9 px-2 bg-bg border border-border/60 rounded-xl text-center text-xs font-black focus:outline-none focus:border-accent font-mono"
+                        />
+                        <span className="text-xs text-text-secondary">Days</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            {/* Date Pickers (Start Date & Calculated End Date) */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label htmlFor="customer-input-start-date" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] ml-1 mb-1.5 block">Start Date</label>
-                <div className="relative">
-                  <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary opacity-40 pointer-events-none" aria-hidden="true" />
-                  <input
-                    id="customer-input-start-date"
-                    type="date"
-                    required
-                    aria-required="true"
-                    aria-label="Loan start date"
-                    value={formData.startDate}
-                    onChange={e => setFormData({ ...formData, startDate: e.target.value })}
-                    className="w-full bg-bg border border-border/60 rounded-2xl h-14 pl-9 pr-3 focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/5 transition-all text-[12px] font-bold font-mono"
-                  />
+                {/* Duration / Number of Days (50, 100, 120, 150, 200 Days & Custom Input) */}
+                <div className="p-4 rounded-2xl bg-card border border-border/50 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-black text-text-secondary opacity-50 uppercase tracking-[0.2em] block">
+                      Loan Tenure / Duration (Days)
+                    </span>
+                    <span className="text-xs font-black text-text-primary font-mono">
+                      {formData.duration} Days Total
+                    </span>
+                  </div>
+
+                  {/* Quick Duration Buttons */}
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2" role="group" aria-label="Preset loan duration options">
+                    {durationPresets.map(preset => {
+                      const isSelected = formData.duration === preset.days;
+                      return (
+                        <button
+                          key={preset.days}
+                          id={`duration-preset-${preset.days}`}
+                          type="button"
+                          aria-label={`Select tenure of ${preset.label}`}
+                          onClick={() => handleSelectDurationDays(preset.days)}
+                          className={`py-2 px-1 rounded-xl text-[11px] font-bold border text-center transition-all cursor-pointer font-mono ${
+                            isSelected 
+                              ? 'bg-accent/15 border-accent text-accent font-black shadow-xs' 
+                              : 'bg-bg border-border/40 text-text-secondary hover:border-text-secondary/40'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Direct Duration in Days Numeric Input */}
+                  <div className="pt-2">
+                    <label htmlFor="customer-input-duration" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-widest mb-1.5 block">
+                      Enter Custom Duration (Number of Days)
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        id="customer-input-duration"
+                        type="number"
+                        min="1"
+                        aria-label="Tenure duration in days"
+                        value={formData.duration || ''}
+                        onChange={e => {
+                          const days = parseInt(e.target.value) || 0;
+                          setFormData(prev => ({
+                            ...prev,
+                            duration: days > 0 ? days : 1
+                          }));
+                        }}
+                        className="w-full bg-bg border border-border/60 rounded-2xl h-14 pl-4 pr-16 focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/5 transition-all text-[15px] font-bold font-mono"
+                        placeholder="e.g. 50, 100, 120"
+                      />
+                      <span className="absolute right-4 text-xs font-black uppercase text-text-secondary opacity-50 tracking-wider pointer-events-none" aria-hidden="true">
+                        Days
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div>
-                <label htmlFor="customer-input-end-date" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] ml-1 mb-1.5 block">End Date</label>
-                <div className="relative">
-                  <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary opacity-40 pointer-events-none" aria-hidden="true" />
-                  <input
-                    id="customer-input-end-date"
-                    type="date"
-                    required
-                    aria-required="true"
-                    aria-label="Loan end date"
-                    value={endDate}
-                    onChange={e => handleEndDateChange(e.target.value)}
-                    className="w-full bg-bg border border-border/60 rounded-2xl h-14 pl-9 pr-3 focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/5 transition-all text-[12px] font-bold font-mono"
-                  />
+
+                {/* Date Pickers (Start Date & Calculated End Date) */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="customer-input-start-date" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] ml-1 mb-1.5 block">Start Date</label>
+                    <div className="relative">
+                      <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary opacity-40 pointer-events-none" aria-hidden="true" />
+                      <input
+                        id="customer-input-start-date"
+                        type="date"
+                        required
+                        aria-required="true"
+                        aria-label="Loan start date"
+                        value={formData.startDate}
+                        onChange={e => setFormData({ ...formData, startDate: e.target.value })}
+                        className="w-full bg-bg border border-border/60 rounded-2xl h-14 pl-9 pr-3 focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/5 transition-all text-[12px] font-bold font-mono"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor="customer-input-end-date" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] ml-1 mb-1.5 block">End Date</label>
+                    <div className="relative">
+                      <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary opacity-40 pointer-events-none" aria-hidden="true" />
+                      <input
+                        id="customer-input-end-date"
+                        type="date"
+                        required
+                        aria-required="true"
+                        aria-label="Loan end date"
+                        value={endDate}
+                        onChange={e => handleEndDateChange(e.target.value)}
+                        className="w-full bg-bg border border-border/60 rounded-2xl h-14 pl-9 pr-3 focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/5 transition-all text-[12px] font-bold font-mono"
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </>
+            )}
 
             {/* Section 2.5: Optional Existing Customer with Prior Repayments */}
             {!isNewLoan && !isEdit && (
@@ -1642,7 +1582,7 @@ export function CustomerForm({
               isSubmitting ||
               (isNewLoan 
                 ? (totalLoanWithInterest <= 0 || (formData.duration || 0) < 1)
-                : ((!isIdUnique && !isEdit) || formData.phone.replace(/\D/g, '').slice(-10).length !== 10 || Number(formData.loan) <= 0 || (duplicateLoanError?.exists && formData.accountType === 'loan')))
+                : ((!isIdUnique && !isEdit) || formData.phone.replace(/\D/g, '').slice(-10).length !== 10 || (formData.accountType !== 'saving' && Number(formData.loan) <= 0) || (duplicateLoanError?.exists && formData.accountType === 'loan')))
             }
             className={`flex-[2] h-14 rounded-2xl font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all shadow-xl disabled:opacity-50 disabled:shadow-none cursor-pointer flex items-center justify-center gap-2 ${
               duplicateLoanError?.exists && formData.accountType === 'loan'

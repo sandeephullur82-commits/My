@@ -215,7 +215,6 @@ export const CustomerCard = React.memo(function CustomerCard({
                 {tag}
               </span>
             </div>
-          </div>
           
           <div className="flex justify-between items-end gap-2 mt-1">
             <div className="min-w-0 flex-1">
@@ -400,7 +399,7 @@ export const CustomerCard = React.memo(function CustomerCard({
           </div>
 
           {/* Mini Progress Bar */}
-          {!isCompact && (
+          {!isCompact && !isSaving && (
             <div className="w-full h-1.5 bg-muted rounded-full mt-2.5 overflow-hidden">
               <div 
                 className={`h-full rounded-full transition-all duration-300 ${statusColor}`}

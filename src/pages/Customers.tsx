@@ -80,7 +80,6 @@ export function Customers({ onNavigate }: CustomersProps) {
   const filterOptions = [
     { value: 'all', label: 'All Accounts' },
     { value: 'loans', label: 'Loans' },
-    { value: 'savings', label: 'Savings' },
     { value: 'pending', label: 'Pending Loans' },
     { value: 'paid', label: 'Fully Paid' },
     { value: 'overdue', label: 'Overdue Loans' },
@@ -131,26 +130,20 @@ export function Customers({ onNavigate }: CustomersProps) {
     let overdue = 0;
     let paid = 0;
     let loans = 0;
-    let savings = 0;
     const now = Date.now();
     customers.forEach(c => {
       if (c.isDeleted || localDeletedIds.includes(c.id)) return;
-      if (c.accountType === 'saving') {
-        savings++;
-      } else {
-        loans++;
-        const loanAmount = c.loanAmount || c.loan || 0;
-        const paidAmount = c.paid || 0;
-        const pendingAmount = c.pending !== undefined ? c.pending : (loanAmount - paidAmount);
-        if (pendingAmount <= 0) paid++;
-        else if (c.endDate < now) overdue++;
-        else pending++;
-      }
+      loans++;
+      const loanAmount = c.loanAmount || c.loan || 0;
+      const paidAmount = c.paid || 0;
+      const pendingAmount = c.pending !== undefined ? c.pending : (loanAmount - paidAmount);
+      if (pendingAmount <= 0) paid++;
+      else if (c.endDate < now) overdue++;
+      else pending++;
     });
     return {
       all: customers.filter(c => !c.isDeleted && !localDeletedIds.includes(c.id)).length,
       loans,
-      savings,
       pending,
       overdue,
       paid
@@ -186,21 +179,19 @@ export function Customers({ onNavigate }: CustomersProps) {
     let result = customers.filter(c => {
       if (c.isDeleted || localDeletedIds.includes(c.id)) return false;
 
-      const isSaving = c.accountType === 'saving';
       const loanAmount = c.loanAmount || c.loan || 0;
       const paidAmount = c.paid || 0;
       const pendingAmount = c.pending !== undefined ? c.pending : (loanAmount - paidAmount);
-      const isOverdue = !isSaving && c.endDate < now && pendingAmount > 0;
-      const isFullyPaid = !isSaving && pendingAmount <= 0;
+      const isOverdue = c.endDate < now && pendingAmount > 0;
+      const isFullyPaid = pendingAmount <= 0;
 
       // Filter chips
       let matchesFilter = true;
-      if (filter === 'loans') matchesFilter = !isSaving;
-      else if (filter === 'savings') matchesFilter = isSaving;
+      if (filter === 'loans') matchesFilter = true;
       else if (filter === 'paid') matchesFilter = isFullyPaid;
       else if (filter === 'overdue') matchesFilter = isOverdue;
-      else if (filter === 'pending') matchesFilter = !isSaving && !isFullyPaid && !isOverdue;
-      else if (filter === 'high_amount') matchesFilter = loanAmount >= 20000 || (c.targetDeposit || 0) >= 20000;
+      else if (filter === 'pending') matchesFilter = !isFullyPaid && !isOverdue;
+      else if (filter === 'high_amount') matchesFilter = loanAmount >= 20000;
 
       if (!matchesFilter) return false;
 
@@ -493,25 +484,7 @@ export function Customers({ onNavigate }: CustomersProps) {
               </span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                if (navigator.vibrate) navigator.vibrate(5);
-                setFilter('savings');
-              }}
-              className={`flex-1 min-w-[75px] py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                filter === 'savings'
-                  ? 'bg-card text-emerald-600 dark:text-emerald-400 shadow-xs border border-emerald-500/30 font-black'
-                  : 'text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              <span>Savings</span>
-              <span className={`text-[10px] font-mono tabular-nums px-1.5 py-0.2 rounded-md ${
-                filter === 'savings' ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold' : 'bg-card/50 text-text-secondary'
-              }`}>
-                {counts.savings}
-              </span>
-            </button>
+
 
             <button
               type="button"

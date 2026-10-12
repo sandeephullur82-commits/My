@@ -45,6 +45,8 @@ import { BottomSheet } from '../components/BottomSheet';
 import { WithdrawDepositModal } from '../components/WithdrawDepositModal';
 import { notificationService } from '../services/notificationService';
 import { playSuccessSound } from '../lib/sound';
+import { BulkEntryModal } from '../components/Entry/BulkEntryModal';
+import { Layers } from 'lucide-react';
 
 export function Entry() {
   const { transactions, customers, loading } = useRealtimeData();
@@ -93,6 +95,9 @@ export function Entry() {
 
   // Selected NP transaction for responsive quick conversion sheet
   const [selectedNpTx, setSelectedNpTx] = useState<{ tx: Transaction; customer: Customer } | null>(null);
+
+  // Bulk entry modal state
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [debouncedQuery, setDebouncedQuery] = useState(globalSearch);
@@ -664,7 +669,7 @@ export function Entry() {
             </button>
           </div>
 
-          {/* SEARCH BAR & NOTIFICATION CENTER TRIGGER */}
+          {/* SEARCH BAR & BULK ENTRY BUTTON */}
           <div className="flex items-center gap-2">
             <div className="relative group flex-1">
               <div className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary opacity-40 group-focus-within:opacity-100 group-focus-within:text-accent transition-all">
@@ -693,6 +698,16 @@ export function Entry() {
                 )}
               </AnimatePresence>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setIsBulkModalOpen(true)}
+              className="px-3.5 py-3 bg-accent/10 hover:bg-accent text-accent hover:text-white border border-accent/30 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all active:scale-95 shadow-xs shrink-0 cursor-pointer"
+              title="Bulk Collection Entry"
+            >
+              <Layers size={16} />
+              <span className="hidden sm:inline">Bulk Entry</span>
+            </button>
           </div>
         </div>
 
@@ -1636,6 +1651,15 @@ export function Entry() {
         onSuccess={(receipt) => {
           setActiveReceipt(receipt);
         }}
+      />
+
+      {/* BULK ENTRY MODAL */}
+      <BulkEntryModal
+        isOpen={isBulkModalOpen}
+        onClose={() => setIsBulkModalOpen(false)}
+        customers={customers}
+        todayStr={todayStr}
+        todayLoggedCustomerIds={todayLoggedCustomerIds}
       />
 
     </PageContainer>

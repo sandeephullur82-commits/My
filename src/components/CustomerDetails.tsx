@@ -39,6 +39,7 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
   }, [propCustomer]);
 
   const customer = activeCustomer;
+  const isSaving = customer.accountType === 'saving';
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
 
   useEffect(() => {
@@ -266,93 +267,129 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
       <div className="flex-1 overflow-y-auto scrollbar-hide pb-12">
         {/* Summary Section */}
         <div className="p-6 flex flex-col items-center justify-center bg-card border-b border-border">
-          <div className="relative w-32 h-32 mb-4">
-            <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-              <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="8" className="text-bg" />
-              <circle 
-                cx="50" cy="50" r="45" 
-                fill="none" stroke="currentColor" strokeWidth="8" 
-                strokeDasharray={`${progress * 2.83} 283`}
-                className={isOverdue ? 'text-danger' : 'text-success'} 
-                strokeLinecap="round"
-              />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-2xl font-bold">{Math.round(progress)}%</span>
-              <span className="text-xs text-text-secondary">Paid</span>
+          {!isSaving ? (
+            <div className="relative w-32 h-32 mb-4">
+              <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="8" className="text-bg" />
+                <circle 
+                  cx="50" cy="50" r="45" 
+                  fill="none" stroke="currentColor" strokeWidth="8" 
+                  strokeDasharray={`${progress * 2.83} 283`}
+                  className={isOverdue ? 'text-danger' : 'text-success'} 
+                  strokeLinecap="round"
+                />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-2xl font-bold">{Math.round(progress)}%</span>
+                <span className="text-xs text-text-secondary">Paid</span>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="w-24 h-24 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-4xl mb-4 font-black">
+              🐷
+            </div>
+          )}
           
           <div className="text-center w-full">
             <p className="text-sm text-text-secondary mb-1">
-              {isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'Advance Savings Held' : 'Pending Amount'}
+              {isSaving ? 'Total Saved Balance' : (isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'Advance Savings Held' : 'Pending Amount')}
             </p>
             <p className={`text-4xl font-bold font-mono tabular-nums ${
-              isFullyPaid && (customer.advanceBalance || 0) > 0 
+              isSaving
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : isFullyPaid && (customer.advanceBalance || 0) > 0 
                 ? 'text-sky-500' 
                 : isOverdue ? 'text-danger' : isFullyPaid ? 'text-success' : 'text-warning'
             }`}>
-              ₹{(isFullyPaid && (customer.advanceBalance || 0) > 0 ? (customer.advanceBalance || 0) : pendingAmount).toLocaleString('en-IN')}
+              ₹{isSaving ? paidAmount.toLocaleString('en-IN') : (isFullyPaid && (customer.advanceBalance || 0) > 0 ? (customer.advanceBalance || 0) : pendingAmount).toLocaleString('en-IN')}
             </p>
-            <p className="text-sm text-success font-medium font-mono tabular-nums mt-2">
-              Total Paid: ₹{paidAmount.toLocaleString('en-IN')}
-            </p>
+            {!isSaving && (
+              <p className="text-sm text-success font-medium font-mono tabular-nums mt-2">
+                Total Paid: ₹{paidAmount.toLocaleString('en-IN')}
+              </p>
+            )}
 
             {/* Direct Action Buttons (Replaces Floating Action Button) */}
             <div className="flex items-center justify-center gap-2 mt-4 flex-wrap">
-              {pendingAmount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setShowQuickPayment(true)}
-                  className="px-4 py-2 rounded-xl bg-accent hover:brightness-110 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-accent/20 active:scale-95 transition-all"
-                >
-                  <PlusCircle size={15} strokeWidth={2.5} />
-                  <span>Add Payment</span>
-                </button>
-              )}
-
-              {isFullyPaid && (
+              {isSaving ? (
                 <>
                   <button
                     type="button"
                     onClick={() => setShowQuickPayment(true)}
-                    className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-sky-600/20 active:scale-95 transition-all cursor-pointer"
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-95 transition-all cursor-pointer"
                   >
                     <PlusCircle size={15} strokeWidth={2.5} />
-                    <span>Deposit Advance</span>
+                    <span>Deposit Savings</span>
                   </button>
 
-                  {(customer.advanceBalance || 0) > 0 && (
+                  {paidAmount > 0 && (
                     <button
                       type="button"
                       onClick={() => setShowWithdrawModal(true)}
                       className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-amber-600/20 active:scale-95 transition-all cursor-pointer"
                     >
                       <ArrowUpRight size={15} strokeWidth={2.5} />
-                      <span>Withdraw Deposit</span>
+                      <span>Withdraw Savings</span>
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  {pendingAmount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowQuickPayment(true)}
+                      className="px-4 py-2 rounded-xl bg-accent hover:brightness-110 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-accent/20 active:scale-95 transition-all"
+                    >
+                      <PlusCircle size={15} strokeWidth={2.5} />
+                      <span>Add Payment</span>
                     </button>
                   )}
 
-                  <button
-                    type="button"
-                    onClick={() => setShowNewLoanModal(true)}
-                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-95 transition-all cursor-pointer"
-                  >
-                    <Sparkles size={14} strokeWidth={2.5} />
-                    <span>Issue New Loan</span>
-                  </button>
-                </>
-              )}
+                  {isFullyPaid && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowQuickPayment(true)}
+                        className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-sky-600/20 active:scale-95 transition-all cursor-pointer"
+                      >
+                        <PlusCircle size={15} strokeWidth={2.5} />
+                        <span>Deposit Advance</span>
+                      </button>
 
-              {isMaturedWithPending && (
-                <button
-                  type="button"
-                  onClick={() => setShowRenewalModal(true)}
-                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-amber-600/20 active:scale-95 transition-all"
-                >
-                  <RotateCcw size={14} strokeWidth={2.5} />
-                  <span>Renew Loan</span>
-                </button>
+                      {(customer.advanceBalance || 0) > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowWithdrawModal(true)}
+                          className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-amber-600/20 active:scale-95 transition-all cursor-pointer"
+                        >
+                          <ArrowUpRight size={15} strokeWidth={2.5} />
+                          <span>Withdraw Deposit</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => setShowNewLoanModal(true)}
+                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-95 transition-all cursor-pointer"
+                      >
+                        <Sparkles size={14} strokeWidth={2.5} />
+                        <span>Issue New Loan</span>
+                      </button>
+                    </>
+                  )}
+
+                  {isMaturedWithPending && (
+                    <button
+                      type="button"
+                      onClick={() => setShowRenewalModal(true)}
+                      className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-amber-600/20 active:scale-95 transition-all"
+                    >
+                      <RotateCcw size={14} strokeWidth={2.5} />
+                      <span>Renew Loan</span>
+                    </button>
+                  )}
+                </>
               )}
 
               {customer.phone && (
@@ -390,7 +427,7 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
         </div>
 
         {/* Completed Loan Banner */}
-        {isFullyPaid && (
+        {!isSaving && isFullyPaid && (
           <div className="mx-4 mt-4 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
             <div className="flex items-start gap-3 min-w-0">
               <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-emerald-600/30 mt-0.5">
@@ -446,7 +483,7 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
         )}
 
         {/* Matured Loan Renewal Banner */}
-        {isMaturedWithPending && (
+        {!isSaving && isMaturedWithPending && (
           <div className="mx-4 mt-4 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
             <div className="flex items-start gap-3 min-w-0">
               <div className="w-10 h-10 rounded-xl bg-amber-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-amber-600/30 mt-0.5">
@@ -483,7 +520,7 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
         )}
 
         {/* Overdue Alert */}
-        {isOverdue && (
+        {!isSaving && isOverdue && (
           <div className="mx-4 mt-4 p-3 rounded-xl bg-danger/10 border border-danger/20 flex items-start gap-3">
             <AlertTriangle className="text-danger shrink-0 mt-0.5" size={20} />
             <div>
@@ -503,69 +540,96 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
               </div>
               <p className="font-medium text-sm">{customer.phone || 'N/A'}</p>
             </div>
-            <div className="bg-card p-3 rounded-xl border border-border">
-              <div className="flex items-center gap-2 text-text-secondary mb-1">
-                <IndianRupee size={14} /> <span className="text-xs">Total Loan</span>
-              </div>
-              <p className="font-medium text-sm">₹{loanAmount.toLocaleString()}</p>
-            </div>
-            <div className="bg-card p-3 rounded-xl border border-border">
-              <div className="flex items-center gap-2 text-text-secondary mb-1">
-                <Clock size={14} /> <span className="text-xs">Schedule</span>
-              </div>
-              <p className="font-medium text-sm">
-                {customer.frequency === 'daily' || customer.frequencyDays === 1 
-                  ? 'Daily (1 Day)' 
-                  : customer.frequency === 'weekly' || customer.frequencyDays === 7 
-                  ? 'Weekly (7 Days)' 
-                  : customer.frequency === 'monthly' || customer.frequencyDays === 30 
-                  ? 'Monthly (30 Days)' 
-                  : customer.frequencyDays 
-                  ? `Every ${customer.frequencyDays} Days`
-                  : 'Daily'}
-              </p>
-            </div>
-            <div className="bg-card p-3 rounded-xl border border-border">
-              <div className="flex items-center gap-2 text-text-secondary mb-1">
-                <Calendar size={14} /> <span className="text-xs">Start Date</span>
-              </div>
-              <p className="font-medium text-sm">{safeFormat(customer.startDate, 'dd MMM yyyy')}</p>
-            </div>
-            <div className="bg-card p-3 rounded-xl border border-border">
-              <div className="flex items-center gap-2 text-text-secondary mb-1">
-                <Calendar size={14} /> <span className="text-xs">End Date</span>
-              </div>
-              <p className="font-medium text-sm">{safeFormat(customer.endDate, 'dd MMM yyyy')}</p>
-            </div>
-            <div className="bg-card p-3 rounded-xl border border-border">
-              <div className="flex items-center gap-2 text-text-secondary mb-1">
-                <Calendar size={14} /> <span className="text-xs">Tenure</span>
-              </div>
-              <p className="font-medium text-sm">
-                {customer.durationDays || Math.max(1, safeDifferenceInDays(customer.endDate, customer.startDate) + 1)} Days
-              </p>
-            </div>
+            {isSaving ? (
+              <>
+                <div className="bg-card p-3 rounded-xl border border-border">
+                  <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 mb-1">
+                    <IndianRupee size={14} /> <span className="text-xs font-bold">Total Saved</span>
+                  </div>
+                  <p className="font-medium text-sm font-mono text-emerald-600 dark:text-emerald-400">₹{paidAmount.toLocaleString()}</p>
+                </div>
+                <div className="bg-card p-3 rounded-xl border border-border">
+                  <div className="flex items-center gap-2 text-text-secondary mb-1">
+                    <Calendar size={14} /> <span className="text-xs">Account Type</span>
+                  </div>
+                  <p className="font-medium text-sm">Pigmy Savings</p>
+                </div>
+                <div className="bg-card p-3 rounded-xl border border-border">
+                  <div className="flex items-center gap-2 text-text-secondary mb-1">
+                    <Calendar size={14} /> <span className="text-xs">Start Date</span>
+                  </div>
+                  <p className="font-medium text-sm">{safeFormat(customer.startDate, 'dd MMM yyyy')}</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="bg-card p-3 rounded-xl border border-border">
+                  <div className="flex items-center gap-2 text-text-secondary mb-1">
+                    <IndianRupee size={14} /> <span className="text-xs">Total Loan</span>
+                  </div>
+                  <p className="font-medium text-sm">₹{loanAmount.toLocaleString()}</p>
+                </div>
+                <div className="bg-card p-3 rounded-xl border border-border">
+                  <div className="flex items-center gap-2 text-text-secondary mb-1">
+                    <Clock size={14} /> <span className="text-xs">Schedule</span>
+                  </div>
+                  <p className="font-medium text-sm">
+                    {customer.frequency === 'daily' || customer.frequencyDays === 1 
+                      ? 'Daily (1 Day)' 
+                      : customer.frequency === 'weekly' || customer.frequencyDays === 7 
+                      ? 'Weekly (7 Days)' 
+                      : customer.frequency === 'monthly' || customer.frequencyDays === 30 
+                      ? 'Monthly (30 Days)' 
+                      : customer.frequencyDays 
+                      ? `Every ${customer.frequencyDays} Days`
+                      : 'Daily'}
+                  </p>
+                </div>
+                <div className="bg-card p-3 rounded-xl border border-border">
+                  <div className="flex items-center gap-2 text-text-secondary mb-1">
+                    <Calendar size={14} /> <span className="text-xs">Start Date</span>
+                  </div>
+                  <p className="font-medium text-sm">{safeFormat(customer.startDate, 'dd MMM yyyy')}</p>
+                </div>
+                <div className="bg-card p-3 rounded-xl border border-border">
+                  <div className="flex items-center gap-2 text-text-secondary mb-1">
+                    <Calendar size={14} /> <span className="text-xs">End Date</span>
+                  </div>
+                  <p className="font-medium text-sm">{safeFormat(customer.endDate, 'dd MMM yyyy')}</p>
+                </div>
+                <div className="bg-card p-3 rounded-xl border border-border">
+                  <div className="flex items-center gap-2 text-text-secondary mb-1">
+                    <Calendar size={14} /> <span className="text-xs">Tenure</span>
+                  </div>
+                  <p className="font-medium text-sm">
+                    {customer.durationDays || Math.max(1, safeDifferenceInDays(customer.endDate, customer.startDate) + 1)} Days
+                  </p>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
         {/* Smart Insights */}
-        <div className="px-4 pb-4">
-          <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3 ml-1">Smart Insights</h3>
-          <div className="bg-card rounded-xl border border-border p-4 space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-text-secondary">Avg. Daily Payment</span>
-              <span className="font-medium text-sm">₹{Math.round(avgDaily).toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-text-secondary">Remaining Days</span>
-              <span className="font-medium text-sm">{remainingDays} days</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-text-secondary">Est. Completion</span>
-              <span className="font-medium text-sm">{expectedCompletionDays > 0 ? `${expectedCompletionDays} days` : 'N/A'}</span>
+        {!isSaving && (
+          <div className="px-4 pb-4">
+            <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3 ml-1">Smart Insights</h3>
+            <div className="bg-card rounded-xl border border-border p-4 space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-text-secondary">Avg. Daily Payment</span>
+                <span className="font-medium text-sm">₹{Math.round(avgDaily).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-text-secondary">Remaining Days</span>
+                <span className="font-medium text-sm">{remainingDays} days</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-text-secondary">Est. Completion</span>
+                <span className="font-medium text-sm">{expectedCompletionDays > 0 ? `${expectedCompletionDays} days` : 'N/A'}</span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Loan Cycle History */}
         {completedCycles.length > 0 && (

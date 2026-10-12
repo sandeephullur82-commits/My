@@ -3,6 +3,17 @@ import { ReceiptData } from './receiptPdfService';
 import { PIGMY_LOGO_BASE64 } from '../assets/logoBase64';
 
 /**
+ * Helper to get user receipt settings from localStorage
+ */
+function getReceiptSettings() {
+  try {
+    const saved = localStorage.getItem('pigmy_receipt_settings');
+    if (saved) return JSON.parse(saved);
+  } catch {}
+  return { printLogo: true, includeFooterNotes: true };
+}
+
+/**
  * Checks if the browser environment supports the Web Bluetooth API.
  */
 export function isBluetoothPrintSupported(): boolean {
@@ -242,6 +253,7 @@ export async function printViaBluetoothThermal(
  */
 export function printViaSystemThermal(data: ReceiptData): void {
   const { transaction, customer, previousBalance, newBalance } = data;
+  const settings = getReceiptSettings();
   const receiptNo = `REC-${(transaction.id || '').slice(0, 8).toUpperCase()}`;
   const dateStr = safeFormat(
     transaction.paidAt || transaction.timestamp || transaction.date,
@@ -281,7 +293,7 @@ export function printViaSystemThermal(data: ReceiptData): void {
         <style>
           @page {
             size: 80mm auto;
-            margin: 2mm 3mm;
+            margin: 1mm 2mm;
           }
           @media print {
             body {
@@ -295,41 +307,31 @@ export function printViaSystemThermal(data: ReceiptData): void {
             padding: 0;
           }
           body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, monospace, sans-serif;
-            width: 76mm;
+            font-family: monospace, sans-serif;
+            width: 72mm;
             max-width: 100%;
             margin: 0 auto;
-            padding: 4mm 2mm;
-            color: #111827;
+            padding: 2mm 1mm;
+            color: #000000;
             background: #ffffff;
             font-size: 11px;
-            line-height: 1.35;
+            line-height: 1.3;
           }
           .header {
             text-align: center;
-            border-bottom: 1.5px dashed #4b5563;
-            padding-bottom: 8px;
-            margin-bottom: 8px;
-          }
-          .logo {
-            width: 44px;
-            height: 44px;
-            object-fit: contain;
-            margin: 0 auto 4px auto;
-            display: block;
-            border-radius: 8px;
+            border-bottom: 1.5px dashed #000000;
+            padding-bottom: 6px;
+            margin-bottom: 6px;
           }
           .title {
             font-size: 16px;
             font-weight: 900;
             letter-spacing: -0.3px;
             text-transform: uppercase;
-            color: #059669;
           }
           .subtitle {
             font-size: 9px;
             font-weight: 700;
-            color: #4b5563;
             text-transform: uppercase;
             letter-spacing: 0.5px;
           }
@@ -337,85 +339,71 @@ export function printViaSystemThermal(data: ReceiptData): void {
             display: flex;
             justify-content: space-between;
             font-size: 10px;
-            margin-top: 3px;
-            color: #374151;
+            margin-top: 2px;
           }
           .meta-label {
-            color: #6b7280;
             font-weight: 600;
           }
           .meta-value {
             font-weight: 700;
           }
           .divider {
-            border-top: 1px dashed #9ca3af;
-            margin: 7px 0;
+            border-top: 1px dashed #000000;
+            margin: 6px 0;
           }
           .amount-box {
             text-align: center;
-            background: #f3f4f6;
-            border: 1.5px solid #d1d5db;
-            border-radius: 8px;
-            padding: 8px 4px;
-            margin: 8px 0;
+            border: 1.5px solid #000000;
+            padding: 6px 4px;
+            margin: 6px 0;
           }
           .amount-label {
             font-size: 9px;
             font-weight: 800;
-            color: #4b5563;
             letter-spacing: 0.5px;
             text-transform: uppercase;
           }
           .amount-value {
-            font-size: 22px;
+            font-size: 20px;
             font-weight: 900;
-            color: #059669;
             margin: 2px 0;
-            letter-spacing: -0.5px;
           }
           .badge {
             display: inline-block;
-            padding: 2px 8px;
-            border-radius: 9999px;
-            background: #111827;
-            color: #ffffff;
+            padding: 1px 6px;
+            border: 1px solid #000000;
             font-size: 8.5px;
             font-weight: 800;
-            letter-spacing: 0.5px;
             text-transform: uppercase;
           }
           .section-title {
             font-size: 9.5px;
             font-weight: 900;
-            color: #1f2937;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin-bottom: 4px;
+            margin-bottom: 3px;
           }
           .balance-box {
-            background: #ecfdf5;
-            border: 1px solid #a7f3d0;
-            border-radius: 6px;
-            padding: 6px 8px;
-            margin-top: 6px;
+            border: 1px dashed #000000;
+            padding: 5px 6px;
+            margin-top: 5px;
           }
           .footer {
             text-align: center;
-            margin-top: 10px;
-            padding-top: 6px;
-            border-top: 1.5px dashed #4b5563;
+            margin-top: 8px;
+            padding-top: 5px;
+            border-top: 1.5px dashed #000000;
             font-size: 8.5px;
-            color: #6b7280;
-            line-height: 1.4;
+            line-height: 1.3;
           }
         </style>
       </head>
       <body>
         <div class="header">
-          <img src="${PIGMY_LOGO_BASE64}" class="logo" alt="Logo" />
+          ${settings.printLogo ? `<div style="margin-bottom: 4px;"><img src="${PIGMY_LOGO_BASE64}" style="width: 30px; height: 30px; object-fit: contain;" /></div>` : ''}
           <div class="title">PIGMY PRO</div>
           <div class="subtitle">Smart Collection System</div>
-          <div style="font-size: 8px; color: #6b7280; margin-top: 2px;">Digital Ledger Deposit Slip</div>
+          <div style="font-size: 8px; margin-top: 2px;">Official Thermal Voucher</div>
         </div>
 
         <div class="meta-row">
@@ -446,7 +434,7 @@ export function printViaSystemThermal(data: ReceiptData): void {
 
         <div class="section-title">Customer Details</div>
         <div class="meta-row">
-          <span class="meta-label">Customer Name:</span>
+          <span class="meta-label">Name:</span>
           <span class="meta-value" style="font-size: 11px;">${customer.name}</span>
         </div>
         <div class="meta-row">
@@ -461,35 +449,37 @@ export function printViaSystemThermal(data: ReceiptData): void {
         ` : ''}
 
         <div class="amount-box">
-          <div class="amount-label">Total Amount Collected</div>
+          <div class="amount-label">Amount Collected</div>
           <div class="amount-value">Rs. ${transaction.amount.toLocaleString('en-IN')}</div>
           <div class="badge">${paymentModeLabel}</div>
         </div>
 
         <div class="divider"></div>
 
-        <div class="section-title">Account Balance Breakdown</div>
+        <div class="section-title">Account Balance Summary</div>
         <div class="meta-row">
           <span class="meta-label">Previous Balance:</span>
           <span class="meta-value">Rs. ${previousBalance.toLocaleString('en-IN')}</span>
         </div>
         <div class="meta-row">
           <span class="meta-label">Amount Credited:</span>
-          <span class="meta-value" style="color: #059669;">- Rs. ${transaction.amount.toLocaleString('en-IN')}</span>
+          <span class="meta-value">- Rs. ${transaction.amount.toLocaleString('en-IN')}</span>
         </div>
         
         <div class="balance-box">
           <div class="meta-row" style="margin: 0; align-items: center;">
-            <span style="font-weight: 800; color: #065f46; font-size: 10px;">Outstanding Balance:</span>
-            <span style="font-weight: 900; color: #047857; font-size: 12px;">Rs. ${newBalance.toLocaleString('en-IN')}</span>
+            <span style="font-weight: 800; font-size: 10px;">Net Remaining:</span>
+            <span style="font-weight: 900; font-size: 12px;">Rs. ${newBalance.toLocaleString('en-IN')}</span>
           </div>
         </div>
 
+        ${settings.includeFooterNotes ? `
         <div class="footer">
-          <div>Verified & Authenticated in Digital Ledger</div>
-          <div>Authorized Agent • Thank You For Your Deposit!</div>
-          <div style="font-size: 7px; color: #9ca3af; margin-top: 3px;">PIGMY PRO THERMAL PRINT ENGINE</div>
+          <div>*** VERIFIED DIGITAL LEDGER ***</div>
+          <div>Authorized Agent • Thank You!</div>
+          <div style="font-size: 7px; margin-top: 2px;">PIGMY PRO THERMAL TICKET</div>
         </div>
+        ` : ''}
       </body>
     </html>
   `;

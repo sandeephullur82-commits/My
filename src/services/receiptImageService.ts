@@ -142,12 +142,33 @@ function drawShieldIcon(ctx: CanvasRenderingContext2D, x: number, y: number, siz
 }
 
 /**
+ * Helper to get user receipt settings from localStorage
+ */
+function getReceiptSettings() {
+  try {
+    const saved = localStorage.getItem('pigmy_receipt_settings');
+    if (saved) return JSON.parse(saved);
+  } catch {}
+  return { printLogo: true, includeFooterNotes: true };
+}
+
+/**
  * Generates an ultra-crisp, elegant, professional financial receipt image on an HTML5 canvas.
  * Features a refined luxury fintech color scheme, clean typography, perforated ticket stub,
  * full customer & balance breakdown, and official digital verification seal (NO QR code).
  */
 export async function generateReceiptImage(data: ReceiptData): Promise<GeneratedReceiptImage> {
   const { transaction, customer, previousBalance, newBalance } = data;
+  const settings = getReceiptSettings();
+
+  let logoImg: HTMLImageElement | null = null;
+  if (settings.printLogo) {
+    try {
+      logoImg = await loadImage(PIGMY_LOGO_BASE64);
+    } catch {
+      logoImg = null;
+    }
+  }
 
   const receiptNo = `REC-${(transaction.id || '').slice(0, 8).toUpperCase()}`;
   const dateStr = safeFormat(
@@ -183,9 +204,10 @@ export async function generateReceiptImage(data: ReceiptData): Promise<Generated
           : 'CASH COLLECTION';
   const fileName = `Receipt_${(customer.name || 'Customer').replace(/[^a-zA-Z0-9]/g, '_')}_${receiptNo}.png`;
 
-  // Logical dimensions (rendered at 2.5x scale for razor-sharp Retina/OLED mobile clarity)
-  const logicalWidth = 600;
-  const logicalHeight = wasNP && !isNP ? 890 : 860;
+  // Bus ticket size proportions (rendered at 2.5x scale for razor-sharp clarity)
+  const logicalWidth = 420;
+  const baseHeight = wasNP && !isNP ? 760 : 720;
+  const logicalHeight = settings.includeFooterNotes ? baseHeight : baseHeight - 60;
   const scale = 2.5;
 
   const canvas = document.createElement('canvas');
@@ -197,402 +219,150 @@ export async function generateReceiptImage(data: ReceiptData): Promise<Generated
 
   ctx.scale(scale, scale);
 
-  // 1. Overall Outer Background
-  ctx.fillStyle = '#f1f5f9'; // Slate-100
+  // 1. Pure White Background (Thermal Paper style)
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, logicalWidth, logicalHeight);
 
-  // 2. Main Ticket Body Card (White with soft elevation shadow)
-  const cardX = 14;
-  const cardY = 14;
-  const cardWidth = logicalWidth - 28;
-  const cardHeight = logicalHeight - 28;
-  const cardRadius = 24;
+  const margin = 12;
+  const contentWidth = logicalWidth - (margin * 2);
 
-  ctx.save();
-  ctx.shadowColor = 'rgba(15, 23, 42, 0.08)';
-  ctx.shadowBlur = 20;
-  ctx.shadowOffsetY = 6;
-  ctx.fillStyle = '#ffffff';
-  roundRect(ctx, cardX, cardY, cardWidth, cardHeight, cardRadius);
-  ctx.fill();
-  ctx.restore();
+  // Helper for dashed lines
+  const drawDashedLine = (y: number) => {
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(margin, y);
+    ctx.lineTo(logicalWidth - margin, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  };
 
-  // Subtle Outer Border
-  ctx.strokeStyle = '#e2e8f0';
-  ctx.lineWidth = 1.5;
-  roundRect(ctx, cardX, cardY, cardWidth, cardHeight, cardRadius);
-  ctx.stroke();
+  let curY = margin + 6;
 
-  // 3. Header Section (Refined Deep Emerald or Warm Amber)
-  const headerHeight = 142;
-  const headerGrad = ctx.createLinearGradient(cardX, cardY, cardX + cardWidth, cardY + headerHeight);
-
-  if (isWithdrawal) {
-    headerGrad.addColorStop(0, '#7c2d12'); // orange-900
-    headerGrad.addColorStop(0.6, '#c2410c'); // orange-700
-    headerGrad.addColorStop(1, '#ea580c'); // orange-600
-  } else if (isNP) {
-    headerGrad.addColorStop(0, '#78350f'); // amber-900
-    headerGrad.addColorStop(0.6, '#b45309'); // amber-700
-    headerGrad.addColorStop(1, '#d97706'); // amber-600
-  } else {
-    headerGrad.addColorStop(0, '#064e3b'); // emerald-900
-    headerGrad.addColorStop(0.6, '#047857'); // emerald-700
-    headerGrad.addColorStop(1, '#0d9488'); // teal-600
+  // 2. Header (Bus Ticket / Thermal Receipt Header)
+  if (logoImg) {
+    const logoSize = 34;
+    ctx.drawImage(logoImg, (logicalWidth - logoSize) / 2, curY, logoSize, logoSize);
+    curY += logoSize + 4;
   }
 
-  ctx.save();
-  roundRect(ctx, cardX, cardY, cardWidth, headerHeight, { tl: cardRadius, tr: cardRadius, bl: 0, br: 0 });
-  ctx.fillStyle = headerGrad;
-  ctx.fill();
-  ctx.clip();
-
-  // Top Accent Bar (Mint Green or Gold/Orange)
-  ctx.fillStyle = isWithdrawal ? '#fdba74' : isNP ? '#fbbf24' : '#34d399';
-  ctx.fillRect(cardX, cardY, cardWidth, 3.5);
-
-  // Subtle geometric curve watermarks in header
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
-  ctx.beginPath();
-  ctx.arc(cardX + cardWidth - 30, cardY + 20, 75, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(cardX + 30, cardY + 120, 50, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-
-  // Brand Logo in Header
-  let logoDrawn = false;
-  try {
-    const logoImg = await loadImage(PIGMY_LOGO_BASE64);
-    ctx.fillStyle = '#ffffff';
-    roundRect(ctx, cardX + 22, cardY + 22, 48, 48, 13);
-    ctx.fill();
-    ctx.drawImage(logoImg, cardX + 26, cardY + 26, 40, 40);
-    logoDrawn = true;
-  } catch (e) {
-    console.warn('Fallback emblem for header');
-  }
-
-  if (!logoDrawn) {
-    ctx.fillStyle = '#ffffff';
-    roundRect(ctx, cardX + 22, cardY + 22, 48, 48, 13);
-    ctx.fill();
-    ctx.fillStyle = isNP ? '#b45309' : '#047857';
-    ctx.font = 'bold 20px system-ui, -apple-system, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('PP', cardX + 46, cardY + 46);
-  }
-
-  // Header Brand Typography
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '900 23px system-ui, -apple-system, sans-serif';
-  ctx.fillText('PIGMY PRO', cardX + 82, cardY + 44);
-
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-  ctx.font = 'bold 9.5px system-ui, -apple-system, sans-serif';
-  ctx.fillText('DAILY COLLECTION & DIGITAL LEDGER', cardX + 83, cardY + 60);
-
-  // Status Badge Pill (Top Right)
-  const statusPillWidth = 140;
-  const statusPillHeight = 28;
-  const statusPillX = cardX + cardWidth - statusPillWidth - 22;
-  const statusPillY = cardY + 32;
-
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
-  roundRect(ctx, statusPillX, statusPillY, statusPillWidth, statusPillHeight, 14);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 10px system-ui, -apple-system, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(
-    isWithdrawal 
-      ? '✓ ADVANCE WITHDRAWAL' 
-      : isNP 
-        ? '⚠ MISSED INSTALLMENT' 
-        : wasNP 
-          ? '✓ SETTLED FROM NP' 
-          : '✓ OFFICIAL RECEIPT', 
-    statusPillX + (statusPillWidth / 2), 
-    statusPillY + 18
-  );
+  ctx.fillStyle = '#000000';
+  ctx.font = '900 18px monospace, sans-serif';
+  ctx.fillText('PIGMY PRO', logicalWidth / 2, curY);
+  curY += 16;
 
-  // Sub-bar in Header: Receipt No & Date
-  const subBarY = cardY + 94;
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-  ctx.fillRect(cardX, subBarY, cardWidth, 48);
+  ctx.font = '700 10px monospace, sans-serif';
+  ctx.fillText('SMART COLLECTION & DIGITAL LEDGER', logicalWidth / 2, curY);
+  curY += 14;
 
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 12px system-ui, -apple-system, monospace';
+  ctx.font = '600 9px monospace, sans-serif';
+  ctx.fillText('OFFICIAL THERMAL VOUCHER', logicalWidth / 2, curY);
+  curY += 12;
+
+  drawDashedLine(curY);
+  curY += 14;
+
+  // 3. Receipt Meta Info
   ctx.textAlign = 'left';
-  ctx.fillText(receiptNo, cardX + 22, subBarY + 30);
+  ctx.font = 'bold 11px monospace, sans-serif';
+  ctx.fillText(`Receipt No: ${receiptNo}`, margin, curY);
+  curY += 16;
 
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-  ctx.font = '600 11.5px system-ui, -apple-system, sans-serif';
-  ctx.textAlign = 'right';
   if (wasNP && !isNP && npDateStr) {
-    ctx.fillText(`NP: ${npDateStr} | Paid: ${dateStr}`, cardX + cardWidth - 22, subBarY + 30);
+    ctx.font = '9px monospace, sans-serif';
+    ctx.fillText(`NP Recorded: ${npDateStr}`, margin, curY);
+    curY += 14;
+    ctx.fillText(`Settled At:  ${dateStr}`, margin, curY);
   } else {
-    ctx.fillText(dateStr, cardX + cardWidth - 22, subBarY + 30);
+    ctx.font = '10px monospace, sans-serif';
+    ctx.fillText(`Date: ${dateStr}`, margin, curY);
   }
+  curY += 18;
 
-  // 4. Ticket Perforation Notches on Left & Right
-  const notchY = cardY + 172;
-  const notchRadius = 14;
+  drawDashedLine(curY);
+  curY += 14;
 
-  // Left circular notch cutout
-  ctx.fillStyle = '#f1f5f9';
-  ctx.beginPath();
-  ctx.arc(cardX, notchY, notchRadius, -Math.PI / 2, Math.PI / 2);
-  ctx.fill();
-  ctx.strokeStyle = '#e2e8f0';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+  // 4. Customer Details
+  ctx.font = 'bold 10px monospace, sans-serif';
+  ctx.fillText('CUSTOMER DETAILS:', margin, curY);
+  curY += 16;
 
-  // Right circular notch cutout
-  ctx.beginPath();
-  ctx.arc(cardX + cardWidth, notchY, notchRadius, Math.PI / 2, -Math.PI / 2);
-  ctx.fill();
-  ctx.stroke();
+  ctx.font = '900 13px monospace, sans-serif';
+  ctx.fillText((customer.name || 'Valued Customer').toUpperCase(), margin, curY);
+  curY += 16;
 
-  // Perforated Dashed Line between notches
-  ctx.strokeStyle = '#cbd5e1';
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([7, 6]);
-  ctx.beginPath();
-  ctx.moveTo(cardX + notchRadius + 6, notchY);
-  ctx.lineTo(cardX + cardWidth - notchRadius - 6, notchY);
-  ctx.stroke();
-  ctx.setLineDash([]); // Reset dash
-
-  // 5. Hero Amount Card Section
-  const heroY = notchY + 20;
-  const heroHeight = 132;
-  const heroWidth = cardWidth - 44;
-  const heroX = cardX + 22;
-
-  ctx.fillStyle = isWithdrawal ? '#fff7ed' : isNP ? '#fffbeb' : '#f0fdf4'; // Orange-50, Amber-50, or Emerald-50
-  roundRect(ctx, heroX, heroY, heroWidth, heroHeight, 18);
-  ctx.fill();
-
-  ctx.strokeStyle = isWithdrawal ? '#fed7aa' : isNP ? '#fde68a' : '#bbf7d0';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  // Subtitle
-  ctx.fillStyle = isWithdrawal ? '#c2410c' : isNP ? '#b45309' : '#047857';
-  ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(
-    isWithdrawal
-      ? 'ADVANCE DEPOSIT WITHDRAWAL PAYOUT'
-      : isNP 
-        ? 'RECORDED DUE / UNPAID INSTALLMENT' 
-        : 'AMOUNT COLLECTED & CREDITED', 
-    logicalWidth / 2, 
-    heroY + 30
-  );
-
-  // Big Amount Display
-  ctx.fillStyle = isNP ? '#9a3412' : '#0f172a';
-  ctx.font = '900 42px system-ui, -apple-system, sans-serif';
-  ctx.fillText(`₹ ${transaction.amount.toLocaleString('en-IN')}`, logicalWidth / 2, heroY + 78);
-
-  // Payment Mode Badge Pill
-  const modePillWidth = 200;
-  const modePillHeight = 26;
-  const modePillY = heroY + 94;
-  ctx.fillStyle = isNP ? '#fed7aa' : isUpi ? '#dbeafe' : '#dcfce7';
-  roundRect(ctx, (logicalWidth - modePillWidth) / 2, modePillY, modePillWidth, modePillHeight, 13);
-  ctx.fill();
-
-  ctx.fillStyle = isNP ? '#9a3412' : isUpi ? '#1d4ed8' : '#15803d';
-  ctx.font = 'bold 10px system-ui, -apple-system, sans-serif';
-  ctx.fillText(paymentModeLabel, logicalWidth / 2, modePillY + 17);
-
-  // 6. Customer & Loan Details Card
-  let curY = heroY + heroHeight + 22;
-  const sectionWidth = cardWidth - 44;
-  const sectionX = cardX + 22;
-
-  // Customer Card Box
-  const custCardY = curY;
-  const custCardHeight = 98;
-  ctx.fillStyle = '#f8fafc';
-  roundRect(ctx, sectionX, custCardY, sectionWidth, custCardHeight, 16);
-  ctx.fill();
-  ctx.strokeStyle = '#e2e8f0';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  // Section Header Label
-  ctx.fillStyle = '#64748b';
-  ctx.font = 'bold 10px system-ui, -apple-system, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText('CUSTOMER & ACCOUNT INFORMATION', sectionX + 16, custCardY + 22);
-
-  // Customer Name
-  ctx.fillStyle = '#0f172a';
-  ctx.font = '900 15px system-ui, -apple-system, sans-serif';
-  ctx.fillText((customer.name || 'Valued Customer').toUpperCase(), sectionX + 16, custCardY + 48);
-
-  // Mobile
+  ctx.font = '10px monospace, sans-serif';
+  ctx.fillText(`Account ID: #${customer.displayId || customer.id}`, margin, curY);
   if (customer.phone) {
-    ctx.fillStyle = '#475569';
-    ctx.font = '500 12px system-ui, -apple-system, sans-serif';
-    ctx.fillText(`Phone: ${customer.phone}`, sectionX + 16, custCardY + 70);
+    ctx.fillText(`Phone: ${customer.phone}`, logicalWidth / 2, curY);
   }
+  curY += 18;
 
-  // Account ID Pill (on the right)
-  const accPillWidth = 100;
-  const accPillHeight = 26;
-  const accPillX = sectionX + sectionWidth - accPillWidth - 16;
-  const accPillY = custCardY + 26;
+  drawDashedLine(curY);
+  curY += 14;
 
-  ctx.fillStyle = '#eff6ff';
-  roundRect(ctx, accPillX, accPillY, accPillWidth, accPillHeight, 8);
-  ctx.fill();
-  ctx.strokeStyle = '#bfdbfe';
-  ctx.lineWidth = 1;
-  ctx.stroke();
+  // 5. Amount Collected Box (Black outline, bold center text)
+  const boxHeight = 68;
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(margin, curY, contentWidth, boxHeight);
 
-  ctx.fillStyle = '#1d4ed8';
-  ctx.font = 'bold 11px system-ui, -apple-system, monospace';
   ctx.textAlign = 'center';
-  ctx.fillText(`#${customer.displayId || customer.id}`, accPillX + (accPillWidth / 2), accPillY + 17);
+  ctx.font = 'bold 9px monospace, sans-serif';
+  ctx.fillText(isWithdrawal ? 'AMOUNT WITHDRAWN' : isNP ? 'MISSED DUE (NP)' : 'AMOUNT COLLECTED', logicalWidth / 2, curY + 18);
 
-  // Total Loan Info (if available)
-  const totalLoanVal = customer.loanAmount || customer.loan || 0;
-  if (totalLoanVal > 0) {
-    ctx.fillStyle = '#64748b';
-    ctx.font = '600 10.5px system-ui, -apple-system, sans-serif';
+  ctx.font = '900 24px monospace, sans-serif';
+  ctx.fillText(`Rs. ${transaction.amount.toLocaleString('en-IN')}`, logicalWidth / 2, curY + 44);
+
+  ctx.font = 'bold 9px monospace, sans-serif';
+  ctx.fillText(`[ ${paymentModeLabel} ]`, logicalWidth / 2, curY + 60);
+
+  curY += boxHeight + 16;
+
+  // 6. Balance Breakdown Table
+  ctx.textAlign = 'left';
+  ctx.font = 'bold 10px monospace, sans-serif';
+  ctx.fillText('ACCOUNT BALANCE SUMMARY', margin, curY);
+  curY += 18;
+
+  const renderRow = (label: string, val: string, isBold = false) => {
+    ctx.font = `${isBold ? 'bold 11px' : '10px'} monospace, sans-serif`;
+    ctx.fillText(label, margin + 4, curY);
     ctx.textAlign = 'right';
-    ctx.fillText(`Scheme: ₹${totalLoanVal.toLocaleString('en-IN')}`, sectionX + sectionWidth - 16, custCardY + 70);
+    ctx.fillText(val, logicalWidth - margin - 4, curY);
+    ctx.textAlign = 'left';
+    curY += 16;
+  };
+
+  renderRow(isWithdrawal ? 'Previous Deposit:' : isNP ? 'Outstanding:' : 'Previous Balance:', `Rs. ${previousBalance.toLocaleString('en-IN')}`);
+  renderRow(isWithdrawal ? 'Withdrawn Payout:' : isNP ? 'Retained Due:' : 'Amount Paid:', `- Rs. ${transaction.amount.toLocaleString('en-IN')}`);
+
+  curY += 4;
+  drawDashedLine(curY);
+  curY += 14;
+
+  renderRow(isWithdrawal ? 'Remaining Deposit:' : 'Remaining Balance:', `Rs. ${newBalance.toLocaleString('en-IN')}`, true);
+
+  curY += 10;
+  drawDashedLine(curY);
+  curY += 16;
+
+  // 7. Footer Authentication & Message
+  if (settings.includeFooterNotes) {
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 9.5px monospace, sans-serif';
+    ctx.fillText('*** 100% VERIFIED DIGITAL LEDGER ***', logicalWidth / 2, curY);
+    curY += 14;
+
+    ctx.font = '8.5px monospace, sans-serif';
+    ctx.fillText('Thank you for your daily deposit!', logicalWidth / 2, curY);
+    curY += 14;
+
+    ctx.font = '7px monospace, sans-serif';
+    ctx.fillText(`Ref: ${(transaction.id || '').toUpperCase().slice(0, 16)}`, logicalWidth / 2, curY);
   }
-
-  curY += custCardHeight + 16;
-
-  // 7. Financial Balance Breakdown Table
-  const balCardY = curY;
-  const balCardHeight = 158;
-  ctx.fillStyle = '#f8fafc';
-  roundRect(ctx, sectionX, balCardY, sectionWidth, balCardHeight, 16);
-  ctx.fill();
-  ctx.strokeStyle = '#e2e8f0';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  // Section Header Label
-  ctx.fillStyle = '#64748b';
-  ctx.font = 'bold 10px system-ui, -apple-system, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText('ACCOUNT BALANCE BREAKDOWN', sectionX + 16, balCardY + 22);
-
-  // Row 1: Previous Outstanding / Deposit
-  let rowY = balCardY + 46;
-  ctx.fillStyle = '#64748b';
-  ctx.font = '500 12.5px system-ui, -apple-system, sans-serif';
-  ctx.fillText(
-    isWithdrawal ? 'Previous Deposit Held' : isNP ? 'Outstanding Balance' : 'Previous Outstanding', 
-    sectionX + 16, 
-    rowY
-  );
-
-  ctx.fillStyle = '#334155';
-  ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
-  ctx.textAlign = 'right';
-  ctx.fillText(`₹ ${previousBalance.toLocaleString('en-IN')}`, sectionX + sectionWidth - 16, rowY);
-
-  // Row 2: Amount Credited / Withdrawn
-  rowY += 26;
-  ctx.textAlign = 'left';
-  ctx.fillStyle = '#64748b';
-  ctx.font = '500 12.5px system-ui, -apple-system, sans-serif';
-  ctx.fillText(
-    isWithdrawal ? 'Withdrawn Payout' : isNP ? 'Status' : 'Amount Paid & Credited', 
-    sectionX + 16, 
-    rowY
-  );
-
-  ctx.fillStyle = isWithdrawal ? '#c2410c' : isNP ? '#d97706' : '#059669';
-  ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
-  ctx.textAlign = 'right';
-  ctx.fillText(
-    isWithdrawal 
-      ? `- ₹ ${transaction.amount.toLocaleString('en-IN')}` 
-      : isNP 
-        ? 'NP • Due Retained' 
-        : `- ₹ ${transaction.amount.toLocaleString('en-IN')}`, 
-    sectionX + sectionWidth - 16, 
-    rowY
-  );
-
-  // Row 3: Remaining Balance Highlight Box
-  rowY += 14;
-  const remBoxHeight = 44;
-  const remBoxWidth = sectionWidth - 32;
-  const remBoxX = sectionX + 16;
-  const remBoxY = rowY;
-
-  ctx.fillStyle = isWithdrawal ? '#fff7ed' : '#ecfdf5'; // Orange-50 or Emerald-50
-  roundRect(ctx, remBoxX, remBoxY, remBoxWidth, remBoxHeight, 12);
-  ctx.fill();
-  ctx.strokeStyle = isWithdrawal ? '#fed7aa' : '#a7f3d0';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  ctx.textAlign = 'left';
-  ctx.fillStyle = isWithdrawal ? '#9a3412' : '#065f46';
-  ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
-  ctx.fillText(isWithdrawal ? 'Remaining Deposit Held' : 'Net Remaining Balance', remBoxX + 14, remBoxY + 27);
-
-  ctx.textAlign = 'right';
-  ctx.fillStyle = isWithdrawal ? '#c2410c' : '#047857';
-  ctx.font = '900 17px system-ui, -apple-system, sans-serif';
-  ctx.fillText(`₹ ${newBalance.toLocaleString('en-IN')}`, remBoxX + remBoxWidth - 14, remBoxY + 28);
-
-  curY += balCardHeight + 20;
-
-  // 8. Official Electronic Verification Strip (NO QR CODE)
-  const authCardY = curY;
-  const authCardHeight = 64;
-  ctx.fillStyle = '#ffffff';
-  roundRect(ctx, sectionX, authCardY, sectionWidth, authCardHeight, 14);
-  ctx.fill();
-  ctx.strokeStyle = '#e2e8f0';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  // Shield Checkmark Icon on Left
-  drawShieldIcon(ctx, sectionX + 14, authCardY + 17, 30, isNP ? '#d97706' : '#059669');
-
-  // Verification Details Text
-  ctx.textAlign = 'left';
-  ctx.fillStyle = '#0f172a';
-  ctx.font = 'bold 11.5px system-ui, -apple-system, sans-serif';
-  ctx.fillText('100% VERIFIED ELECTRONIC VOUCHER', sectionX + 54, authCardY + 28);
-
-  ctx.fillStyle = '#64748b';
-  ctx.font = '500 10px system-ui, -apple-system, sans-serif';
-  ctx.fillText(`Security Reference: ${(transaction.id || '').toUpperCase().slice(0, 18)} • Cloud Ledger`, sectionX + 54, authCardY + 46);
-
-  // Official Stamp on Right
-  drawOfficialStamp(ctx, sectionX + sectionWidth - 44, authCardY + 32, 27, isNP);
-
-  curY += authCardHeight + 16;
-
-  // 9. Polite Footer Watermark
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#94a3b8';
-  ctx.font = 'italic 10px system-ui, -apple-system, sans-serif';
-  ctx.fillText('Thank you for choosing Pigmy Pro Smart Daily Collection!', logicalWidth / 2, curY);
 
   // Return generated Image Blob & Data URL
   return new Promise((resolve, reject) => {
