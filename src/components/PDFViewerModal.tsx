@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Share2, Printer, ChevronLeft, ChevronRight,
+  Share2, Printer, Download, ChevronLeft, ChevronRight,
   ZoomIn, ZoomOut, Loader2, BookOpen, Layers,
   AlertCircle
 } from 'lucide-react';
@@ -12,8 +12,10 @@ import { toast } from 'sonner';
 import { useUI } from '../context/UIContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { 
+  isAndroidApp,
   shareFileForAndroid,
-  printFileForAndroid
+  printFileForAndroid,
+  downloadFileForAndroid
 } from '../utils/capacitorDeviceHelper';
 
 // Configure worker for pdfjs-dist
@@ -203,6 +205,31 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
     }
   };
 
+  // Download Handler
+  const handleDownload = async () => {
+    if (!report) return;
+    try {
+      if (isAndroidApp()) {
+        await downloadFileForAndroid(report.blob, report.fileName, report.title);
+      } else {
+        const url = URL.createObjectURL(report.blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = report.fileName;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 100);
+        toast.success(`Downloaded: ${report.fileName}`);
+      }
+    } catch (e) {
+      console.error('Download error:', e);
+      toast.error('Download failed');
+    }
+  };
+
   const handlePrevPage = useCallback(() => {
     setCurrentPage(prev => Math.max(1, prev - 1));
   }, []);
@@ -302,6 +329,16 @@ export function PDFViewerModal({ isOpen, onClose, report }: PDFViewerModalProps)
                 className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all cursor-pointer"
               >
                 <Printer size={16} />
+              </motion.button>
+
+              {/* Download Button */}
+              <motion.button 
+                whileTap={{ scale: 0.92 }}
+                onClick={handleDownload}
+                title="Download PDF Report"
+                className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all cursor-pointer"
+              >
+                <Download size={16} />
               </motion.button>
 
               {/* Native System Share Sheet */}
