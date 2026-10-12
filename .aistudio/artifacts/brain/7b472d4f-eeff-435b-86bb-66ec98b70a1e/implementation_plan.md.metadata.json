@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to completely remove Android directories (android/, android-app/), APK build scripts, GitHub Actions workflows, and APK download endpoints from PigmyPro, transitioning the architecture exclusively to a fast, reliable Progressive Web App (PWA) with native-grade installability, offline IndexedDB/Firestore sync, and seamless mobile touch ergonomics.",
-  "updatedAt":  "2026-10-10T16:39:58.351150936Z",
+  "summary":  "Implementation plan for adding existing customers with prior loan repayments, entering pending balance directly, and creating an opening balance ledger entry.",
+  "updatedAt":  "2026-10-12T01:33:19.639386966Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

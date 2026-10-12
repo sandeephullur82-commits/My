@@ -256,7 +256,10 @@ export function Customers({ onNavigate }: CustomersProps) {
     }
   };
 
-  const handleSaveCustomer = async (newCustomer: Partial<Customer> & { id: string }) => {
+  const handleSaveCustomer = async (
+    newCustomer: Partial<Customer> & { id: string },
+    openingBalanceData?: { amount: number; note?: string; timestamp?: number }
+  ) => {
     const isUpdating = customers.some(c => c.id === newCustomer.id);
 
     if (isUpdating) {
@@ -309,8 +312,13 @@ export function Customers({ onNavigate }: CustomersProps) {
     }
 
     try {
-      await firestoreService.saveCustomer(newCustomer);
-      toastSuccess('Registration Successful', `${newCustomer.name} is now active.`);
+      if (openingBalanceData && openingBalanceData.amount > 0) {
+        await firestoreService.saveCustomerWithOpeningBalance(newCustomer, openingBalanceData);
+        toastSuccess('Registration Successful', `${newCustomer.name} registered with ₹${openingBalanceData.amount.toLocaleString('en-IN')} opening collections.`);
+      } else {
+        await firestoreService.saveCustomer(newCustomer);
+        toastSuccess('Registration Successful', `${newCustomer.name} is now active.`);
+      }
       setShowAdd(false);
     } catch (error) {
       toastError('Registration Failed', 'Failed to create customer record');

@@ -15,7 +15,8 @@ import {
   Bluetooth,
   Receipt,
   Sparkles,
-  PiggyBank
+  PiggyBank,
+  History
 } from 'lucide-react';
 import { safeFormat } from '../lib/utils';
 import { 
@@ -48,11 +49,15 @@ export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: Receip
 
 
   const { transaction, customer, previousBalance, newBalance } = receipt;
+  const isOpeningBalance = Boolean(
+    transaction.isOpeningBalance || 
+    (transaction.notes && transaction.notes.toLowerCase().includes('opening balance'))
+  );
   const isUpi = transaction.type === 'phonepe';
   const isWithdrawal = Boolean(transaction.isWithdrawal);
   const isNP = transaction.type === 'NP' || transaction.type === 'unsettled' || transaction.status === 'unsettled';
   const isAdvance = Boolean(
-    !isWithdrawal && (
+    !isWithdrawal && !isOpeningBalance && (
       transaction.isAdvance || 
       (previousBalance <= 0 && !isNP) ||
       (transaction.notes && transaction.notes.toLowerCase().includes('advance'))
@@ -168,16 +173,18 @@ export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: Receip
         >
           {/* Header Banner */}
           <div className={`relative ${
-            isWithdrawal
-              ? 'bg-gradient-to-br from-amber-700 via-orange-600 to-rose-700'
-              : isNP 
-                ? 'bg-gradient-to-br from-amber-700 via-amber-600 to-amber-800' 
-                : isAdvance
-                  ? 'bg-gradient-to-br from-sky-800 via-sky-700 to-indigo-900'
-                  : 'bg-gradient-to-br from-emerald-800 via-emerald-700 to-teal-800'
+            isOpeningBalance
+              ? 'bg-gradient-to-br from-amber-800 via-amber-700 to-emerald-900'
+              : isWithdrawal
+                ? 'bg-gradient-to-br from-amber-700 via-orange-600 to-rose-700'
+                : isNP 
+                  ? 'bg-gradient-to-br from-amber-700 via-amber-600 to-amber-800' 
+                  : isAdvance
+                    ? 'bg-gradient-to-br from-sky-800 via-sky-700 to-indigo-900'
+                    : 'bg-gradient-to-br from-emerald-800 via-emerald-700 to-teal-800'
           } p-5 text-white text-center flex flex-col items-center shadow-inner`}>
             {/* Top gold/sky/emerald trim line */}
-            <div className={`absolute top-0 inset-x-0 h-1 ${isWithdrawal ? 'bg-amber-300' : isNP ? 'bg-amber-400' : isAdvance ? 'bg-sky-400' : 'bg-emerald-400'}`} />
+            <div className={`absolute top-0 inset-x-0 h-1 ${isOpeningBalance ? 'bg-amber-400' : isWithdrawal ? 'bg-amber-300' : isNP ? 'bg-amber-400' : isAdvance ? 'bg-sky-400' : 'bg-emerald-400'}`} />
 
             <button
               type="button"
@@ -202,7 +209,9 @@ export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: Receip
             </div>
 
             <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center mb-2 shadow-inner border border-white/10" aria-hidden="true">
-              {isWithdrawal ? (
+              {isOpeningBalance ? (
+                <History size={26} className="text-white" strokeWidth={2.5} />
+              ) : isWithdrawal ? (
                 <ArrowUpRight size={26} className="text-white" strokeWidth={2.5} />
               ) : isAdvance ? (
                 <PiggyBank size={26} className="text-white" strokeWidth={2.3} />
@@ -212,20 +221,24 @@ export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: Receip
             </div>
 
             <p id="receipt-success-title" className="text-[10px] font-black uppercase tracking-widest opacity-85 mb-0.5">
-              {isWithdrawal 
-                ? 'Advance Deposit Payout Successful' 
-                : isNP 
-                  ? 'Debt / Missed Due Recorded' 
-                  : isAdvance 
-                    ? 'Advance Savings Deposit Recorded' 
-                    : 'Payment Recorded Successfully'}
+              {isOpeningBalance
+                ? 'Opening Balance Record'
+                : isWithdrawal 
+                  ? 'Advance Deposit Payout Successful' 
+                  : isNP 
+                    ? 'Debt / Missed Due Recorded' 
+                    : isAdvance 
+                      ? 'Advance Savings Deposit Recorded' 
+                      : 'Payment Recorded Successfully'}
             </p>
             <h2 className="text-3xl font-black font-mono tabular-nums tracking-tight drop-shadow-xs">
               ₹{transaction.amount.toLocaleString('en-IN')}
             </h2>
 
             <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-white/15 text-[10px] font-black uppercase tracking-wider backdrop-blur-xs border border-white/10">
-              {isWithdrawal ? (
+              {isOpeningBalance ? (
+                <History size={12} />
+              ) : isWithdrawal ? (
                 isUpi ? <Smartphone size={12} /> : <Banknote size={12} />
               ) : isUpi ? (
                 <Smartphone size={12} />
@@ -237,13 +250,15 @@ export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: Receip
                 <Banknote size={12} />
               )}
               <span>
-                {isWithdrawal
-                  ? isUpi ? 'PhonePe UPI Payout' : 'Cash Payout'
-                  : isUpi 
-                    ? (isAdvance ? 'UPI Advance Deposit' : 'UPI / PhonePe') 
-                    : isNP 
-                      ? 'NP (Debt Recorded)' 
-                      : (isAdvance ? 'Cash Advance Deposit' : 'Cash Deposit')}
+                {isOpeningBalance
+                  ? 'Opening Balance • Prior Collections'
+                  : isWithdrawal
+                    ? isUpi ? 'PhonePe UPI Payout' : 'Cash Payout'
+                    : isUpi 
+                      ? (isAdvance ? 'UPI Advance Deposit' : 'UPI / PhonePe') 
+                      : isNP 
+                        ? 'NP (Debt Recorded)' 
+                        : (isAdvance ? 'Cash Advance Deposit' : 'Cash Deposit')}
               </span>
             </div>
           </div>

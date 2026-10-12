@@ -692,10 +692,19 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
                                 <div key={`${tx.id}-${idx}`} className="p-4 flex items-center justify-between transition-colors hover:bg-bg/40">
                                   <div>
                                     <div className="flex items-center gap-2">
-                                      <div className={`w-2 h-2 rounded-full ${tx.type === 'cash' ? 'bg-success' : tx.type === 'phonepe' ? 'bg-accent' : 'bg-warning'}`} />
-                                      <p className="text-[11px] font-black text-text-primary uppercase tracking-wider">{String(tx.type).replace('_', ' ')}</p>
+                                      <div className={`w-2 h-2 rounded-full ${tx.isOpeningBalance ? 'bg-amber-500' : tx.type === 'cash' ? 'bg-success' : tx.type === 'phonepe' ? 'bg-accent' : 'bg-warning'}`} />
+                                      <p className="text-[11px] font-black text-text-primary uppercase tracking-wider">
+                                        {tx.isOpeningBalance ? 'Opening Balance' : String(tx.type).replace('_', ' ')}
+                                      </p>
+                                      {tx.isOpeningBalance && (
+                                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25 uppercase">
+                                          Prior Paid
+                                        </span>
+                                      )}
                                     </div>
-                                    <p className="text-[10px] font-bold text-text-secondary opacity-50 mt-1 uppercase">Ref: {tx.id.slice(0, 8)}</p>
+                                    <p className="text-[10px] font-bold text-text-secondary opacity-70 mt-1">
+                                      {tx.notes ? tx.notes : `Ref: ${tx.id.slice(0, 8)}`}
+                                    </p>
                                   </div>
                                   <div className="flex items-center gap-3">
                                     <button

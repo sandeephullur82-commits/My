@@ -89,6 +89,8 @@ export interface Customer {
   lastRenewalDate?: number;
   renewalStatus?: 'pending_review' | 'rejected' | 'renewed' | null;
   renewalRejectedAt?: number;
+  hasOpeningBalance?: boolean;
+  openingBalance?: number;
 }
 
 export const firestoreUtils = {
@@ -144,6 +146,7 @@ export interface Transaction {
   isSettled?: boolean;
   isAdvance?: boolean;          // Payment was recorded as advance savings
   isWithdrawal?: boolean;       // Payout or withdrawal from advance savings deposit
+  isOpeningBalance?: boolean;   // Opening balance / prior loan collection record
   createdBy?: string;
   isDeleted?: boolean;
   notes?: string;
@@ -470,6 +473,95 @@ export const firestoreService = {
       console.log(`[Firestore Write] Successfully saved customer: ${customer.id}`);
     } catch (error: any) {
       console.error(`[Firestore Error - saveCustomer]:`, error);
+      handleFirestoreError(error, OperationType.WRITE, `customers/${customer.id}`);
+      throw error;
+    }
+  },
+
+  async saveCustomerWithOpeningBalance(
+    customer: Partial<Customer> & { id: string },
+    openingBalance: {
+      amount: number;
+      note?: string;
+      timestamp?: number;
+    }
+  ) {
+    if (!customer.id || !/^[a-zA-Z0-9_\-]{1,128}$/.test(customer.id)) {
+      throw new Error('Invalid customer ID format.');
+    }
+    if (!customer.name || typeof customer.name !== 'string' || customer.name.trim().length === 0 || customer.name.length > 200) {
+      throw new Error('Customer name must be between 1 and 200 characters.');
+    }
+    const cleanPhone = String(customer.phone || '').trim().replace(/[^0-9]/g, '');
+    if (cleanPhone.length < 10 || cleanPhone.length > 15) {
+      throw new Error('Customer phone must be between 10 and 15 digits.');
+    }
+
+    const loanAmount = Math.max(0, Number(customer.loan ?? customer.loanAmount ?? customer.totalLoan ?? 0));
+    const paidAmount = Math.max(0, Math.min(loanAmount, Number(openingBalance.amount) || 0));
+    const pendingAmount = Math.max(0, loanAmount - paidAmount);
+
+    const rootCustomerRef = doc(db, 'customers', customer.id);
+    const existingRef = customer.docPath ? doc(db, customer.docPath) : rootCustomerRef;
+
+    const txId = `open_${customer.id}_${Date.now()}`;
+    const rootTxRef = doc(db, 'entries', txId);
+
+    const now = serverTimestamp();
+    const effectiveTimestamp = openingBalance.timestamp || customer.startDate || Date.now();
+    const effectiveDate = format(new Date(effectiveTimestamp), 'yyyy-MM-dd');
+
+    const customerPayload = cleanData({
+      ...customer,
+      name: customer.name.trim(),
+      phone: cleanPhone,
+      loan: loanAmount,
+      loanAmount: loanAmount,
+      totalLoan: loanAmount,
+      paid: paidAmount,
+      pending: pendingAmount,
+      hasOpeningBalance: true,
+      openingBalance: paidAmount,
+      lastPayment: now,
+      createdBy: customer.createdBy || 'agent',
+      createdAt: now,
+      updatedAt: now
+    });
+
+    try {
+      // 1. Create/save the customer record
+      await setDoc(rootCustomerRef, customerPayload, { merge: true });
+      if (customer.docPath && customer.docPath !== rootCustomerRef.path) {
+        await setDoc(doc(db, customer.docPath), customerPayload, { merge: true }).catch(() => {});
+      }
+
+      // 2. Create the opening balance transaction record in entries
+      if (paidAmount > 0) {
+        const txPayload = cleanData({
+          id: txId,
+          customerId: customer.id,
+          amount: paidAmount,
+          type: 'cash',
+          status: 'paid',
+          entryStatus: 'active',
+          date: effectiveDate,
+          timestamp: effectiveTimestamp,
+          notes: openingBalance.note || `Opening Balance: Prior repayments recorded`,
+          isOpeningBalance: true,
+          createdBy: 'agent',
+          createdAt: now,
+          updatedAt: now,
+          paidAt: now
+        });
+
+        await setDoc(rootTxRef, txPayload, { merge: true });
+        const subTxRef = doc(db, 'customers', customer.id, 'entries', txId);
+        await setDoc(subTxRef, txPayload, { merge: true }).catch(() => {});
+      }
+
+      console.log(`[Firestore Write] Successfully registered customer ${customer.id} with opening balance: ₹${paidAmount}`);
+    } catch (error: any) {
+      console.error(`[Firestore Error - saveCustomerWithOpeningBalance]:`, error);
       handleFirestoreError(error, OperationType.WRITE, `customers/${customer.id}`);
       throw error;
     }

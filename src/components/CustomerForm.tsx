@@ -5,12 +5,15 @@ import { notificationService } from '../services/notificationService';
 import { toast } from 'sonner';
 import { format, addDays, differenceInDays, parseISO, isValid } from 'date-fns';
 import { safeFormat, safeDifferenceInDays } from '../lib/utils';
-import { Calendar, Loader2, Trash2, Clock, Check, Lock, Sparkles, IndianRupee, RotateCcw, CheckCircle2, Percent } from 'lucide-react';
+import { Calendar, Loader2, Trash2, Clock, Check, Lock, Sparkles, IndianRupee, RotateCcw, CheckCircle2, Percent, History } from 'lucide-react';
 
 interface CustomerFormProps {
   customer?: Customer; // if provided, we are in Edit mode, New Loan mode, or Renewal mode
   mode?: 'create' | 'edit' | 'new_loan' | 'renewal';
-  onSave?: (customer: Partial<Customer> & { id: string }) => Promise<void>;
+  onSave?: (
+    customer: Partial<Customer> & { id: string },
+    openingBalance?: { amount: number; note?: string; timestamp?: number }
+  ) => Promise<void>;
   onCancel: () => void;
   onDelete?: (id: string, name: string) => void;
   onSuccess?: (updatedCustomer: Customer) => void;
@@ -229,6 +232,83 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
     return Math.round(totalLoanWithInterest / numInstallments);
   }, [totalLoanWithInterest, formData.duration, formData.frequencyDays]);
 
+  // Existing Customer with Prior Repayments (e.g. ₹20,000 loan with ₹14,000 pending and ₹6,000 already collected)
+  const [isExistingLoan, setIsExistingLoan] = useState<boolean>(false);
+  const [pendingBalanceInput, setPendingBalanceInput] = useState<string>('');
+  const [inputMode, setInputMode] = useState<'pending' | 'paid'>('pending');
+  const [alreadyPaidInput, setAlreadyPaidInput] = useState<string>('');
+  const [openingBalanceNote, setOpeningBalanceNote] = useState<string>('');
+
+  const existingPendingNum = useMemo(() => {
+    if (!isExistingLoan) return totalLoanWithInterest;
+    if (inputMode === 'pending') {
+      if (pendingBalanceInput === '') return totalLoanWithInterest;
+      const parsed = Number(pendingBalanceInput);
+      return Math.max(0, Math.min(totalLoanWithInterest, isNaN(parsed) ? totalLoanWithInterest : parsed));
+    } else {
+      const parsedPaid = Number(alreadyPaidInput);
+      const paidNum = Math.max(0, Math.min(totalLoanWithInterest, isNaN(parsedPaid) ? 0 : parsedPaid));
+      return Math.max(0, totalLoanWithInterest - paidNum);
+    }
+  }, [isExistingLoan, inputMode, pendingBalanceInput, alreadyPaidInput, totalLoanWithInterest]);
+
+  const existingPaidNum = useMemo(() => {
+    if (!isExistingLoan) return 0;
+    return Math.max(0, totalLoanWithInterest - existingPendingNum);
+  }, [isExistingLoan, totalLoanWithInterest, existingPendingNum]);
+
+  const priorInstallmentsPaid = useMemo(() => {
+    if (!estimatedInstallment || estimatedInstallment <= 0) return 0;
+    return Math.round(existingPaidNum / estimatedInstallment);
+  }, [existingPaidNum, estimatedInstallment]);
+
+  const remainingInstallmentsCount = useMemo(() => {
+    if (!estimatedInstallment || estimatedInstallment <= 0) return 0;
+    return Math.round(existingPendingNum / estimatedInstallment);
+  }, [existingPendingNum, estimatedInstallment]);
+
+  const repaymentProgressPct = useMemo(() => {
+    if (!totalLoanWithInterest || totalLoanWithInterest <= 0) return 0;
+    return Math.min(100, Math.max(0, Math.round((existingPaidNum / totalLoanWithInterest) * 100)));
+  }, [existingPaidNum, totalLoanWithInterest]);
+
+  const handlePendingBalanceChange = (val: string) => {
+    setPendingBalanceInput(val);
+    const num = Number(val);
+    if (!isNaN(num) && val !== '') {
+      const paid = Math.max(0, totalLoanWithInterest - num);
+      setAlreadyPaidInput(paid > 0 ? paid.toString() : '0');
+    } else {
+      setAlreadyPaidInput('');
+    }
+  };
+
+  const handleAlreadyPaidChange = (val: string) => {
+    setAlreadyPaidInput(val);
+    const num = Number(val);
+    if (!isNaN(num) && val !== '') {
+      const pending = Math.max(0, totalLoanWithInterest - num);
+      setPendingBalanceInput(pending.toString());
+    } else {
+      setPendingBalanceInput(totalLoanWithInterest.toString());
+    }
+  };
+
+  const handlePresetPercentagePaid = (pct: number) => {
+    const paid = Math.round(totalLoanWithInterest * (pct / 100));
+    const pending = Math.max(0, totalLoanWithInterest - paid);
+    setPendingBalanceInput(pending.toString());
+    setAlreadyPaidInput(paid.toString());
+  };
+
+  const handlePresetDaysPaid = (days: number) => {
+    if (!estimatedInstallment) return;
+    const paid = Math.min(totalLoanWithInterest, days * estimatedInstallment);
+    const pending = Math.max(0, totalLoanWithInterest - paid);
+    setPendingBalanceInput(pending.toString());
+    setAlreadyPaidInput(paid.toString());
+  };
+
   const handlePhoneChange = (val: string) => {
     if (isNewLoan) return;
     const numeric = String(val || '').replace(/\D/g, '').slice(0, 10);
@@ -404,6 +484,15 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
         toast.success(`Changes to ${normalizedName} saved`);
         onCancel();
       } else {
+        const priorPaidAmount = isExistingLoan ? existingPaidNum : 0;
+        const initialPendingAmt = isExistingLoan ? existingPendingNum : finalLoanAmt;
+
+        const openingBalanceData = (isExistingLoan && priorPaidAmount > 0) ? {
+          amount: priorPaidAmount,
+          note: openingBalanceNote.trim() || `Opening Balance: Prior loan collections (${priorInstallmentsPaid} days @ ₹${estimatedInstallment || 1}/day)`,
+          timestamp: startMs
+        } : undefined;
+
         if (onSave) {
           await onSave({
             id: fullId,
@@ -411,18 +500,24 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
             phone: normalizedPhone,
             loan: finalLoanAmt,
             loanAmount: finalLoanAmt,
-            paid: 0,
-            pending: finalLoanAmt,
+            paid: priorPaidAmount,
+            pending: initialPendingAmt,
             startDate: startMs,
             endDate: endMs,
             frequency: formData.frequency,
             frequencyDays: formData.frequencyDays || 1,
             durationDays: formData.duration || 100,
             notes: formData.notes,
-            uniqueKey
-          });
+            uniqueKey,
+            hasOpeningBalance: isExistingLoan && priorPaidAmount > 0,
+            openingBalance: isExistingLoan && priorPaidAmount > 0 ? priorPaidAmount : undefined
+          }, openingBalanceData);
         }
-        toast.success(`${normalizedName} (${fullId}) created`);
+        toast.success(
+          isExistingLoan && priorPaidAmount > 0
+            ? `${normalizedName} (${fullId}) registered with ₹${priorPaidAmount.toLocaleString('en-IN')} opening collections`
+            : `${normalizedName} (${fullId}) created`
+        );
         localStorage.removeItem('pigmy_draft_new_customer');
         onCancel();
       }
@@ -538,18 +633,57 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
           </div>
         )}
 
+        {/* Existing Loan with Prior Repayments Live Preview */}
+        {!isNewLoan && isExistingLoan && existingPaidNum > 0 && (
+          <div className="space-y-2 pt-2 border-t border-border/40">
+            <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <RotateCcw size={14} className="text-emerald-600 dark:text-emerald-400" />
+                  <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                    Existing Loan Progress ({repaymentProgressPct}% Cleared)
+                  </span>
+                </div>
+                <span className="text-xs font-mono font-black text-emerald-600 dark:text-emerald-400">
+                  ₹{existingPaidNum.toLocaleString('en-IN')} Paid
+                </span>
+              </div>
+              <div className="w-full bg-emerald-950/20 rounded-full h-2 overflow-hidden flex">
+                <div 
+                  className="bg-emerald-500 h-full rounded-full transition-all duration-300"
+                  style={{ width: `${repaymentProgressPct}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[11px] font-mono">
+                <span className="text-emerald-700 dark:text-emerald-300 font-bold">~{priorInstallmentsPaid} days collected</span>
+                <span className="font-black text-amber-600 dark:text-amber-400">₹{existingPendingNum.toLocaleString('en-IN')} pending ({remainingInstallmentsCount} days)</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Financial Highlights */}
         <div className="grid grid-cols-3 gap-2 border-t border-border/40 pt-4 mt-1">
           <div>
             <p className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] mb-1">
-              {hasInterest && interestAmount > 0 ? 'Total Due' : (isNewLoan && effectiveAdvanceToApply > 0 ? 'Opening Due' : 'Total Loan')}
+              {isExistingLoan && existingPaidNum > 0
+                ? 'Pending Due'
+                : (hasInterest && interestAmount > 0 ? 'Total Due' : (isNewLoan && effectiveAdvanceToApply > 0 ? 'Opening Due' : 'Total Loan'))}
             </p>
             <p className="text-lg font-black text-text-primary tracking-tighter font-mono">
-              ₹{(isNewLoan && effectiveAdvanceToApply > 0 ? netOpeningPending : totalLoanWithInterest).toLocaleString()}
+              ₹{(isExistingLoan && existingPaidNum > 0
+                ? existingPendingNum
+                : (isNewLoan && effectiveAdvanceToApply > 0 ? netOpeningPending : totalLoanWithInterest)
+              ).toLocaleString()}
             </p>
             {hasInterest && interestAmount > 0 && (
               <p className="text-[10px] font-bold text-accent font-mono">
                 incl. ₹{interestAmount.toLocaleString()} ({interestRate}%)
+              </p>
+            )}
+            {isExistingLoan && existingPaidNum > 0 && (
+              <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                ₹{existingPaidNum.toLocaleString()} already paid
               </p>
             )}
           </div>
@@ -558,6 +692,11 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
             <p className="text-lg font-black text-text-primary tracking-tighter font-mono">
               {formData.duration} Days
             </p>
+            {isExistingLoan && remainingInstallmentsCount > 0 && (
+              <p className="text-[10px] font-bold text-text-secondary font-mono">
+                {remainingInstallmentsCount} days left
+              </p>
+            )}
           </div>
           <div className="text-right">
             <p className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] mb-1">Est. Installment</p>
@@ -1033,6 +1172,253 @@ export function CustomerForm({ customer, mode, onSave, onCancel, onDelete, onSuc
                 </div>
               </div>
             </div>
+
+            {/* Section 2.5: Optional Existing Customer with Prior Repayments */}
+            {!isNewLoan && !isEdit && (
+              <div className="p-4 rounded-2xl bg-card border border-border/60 space-y-4 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-accent/15 text-accent flex items-center justify-center shrink-0" aria-hidden="true">
+                      <History size={16} strokeWidth={2.5} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-text-primary uppercase tracking-wider block">
+                          Existing Loan / Prior Repayments?
+                        </span>
+                        <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-accent/10 text-accent border border-accent/20">
+                          Optional
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-text-secondary leading-tight block mt-0.5">
+                        For onboarding borrowers who already have an active running loan with paid installments
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !isExistingLoan;
+                      setIsExistingLoan(next);
+                    }}
+                    aria-label={isExistingLoan ? "Disable existing loan prior repayments" : "Enable existing loan prior repayments"}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      isExistingLoan 
+                        ? 'bg-accent text-white border-accent shadow-xs' 
+                        : 'bg-bg border-border text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    {isExistingLoan ? 'Enabled ✓' : '+ Add Prior Paid'}
+                  </button>
+                </div>
+
+                {isExistingLoan && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="space-y-4 pt-3 border-t border-border/40"
+                  >
+                    {/* Method Switch: Enter Remaining Pending Balance (Default) vs Enter Amount Already Paid */}
+                    <div className="flex items-center justify-between bg-bg p-1 rounded-xl border border-border/60" role="tablist">
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={inputMode === 'pending'}
+                        onClick={() => setInputMode('pending')}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          inputMode === 'pending'
+                            ? 'bg-accent text-white shadow-xs'
+                            : 'text-text-secondary hover:text-text-primary'
+                        }`}
+                      >
+                        Enter Remaining Pending (₹)
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={inputMode === 'paid'}
+                        onClick={() => setInputMode('paid')}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          inputMode === 'paid'
+                            ? 'bg-accent text-white shadow-xs'
+                            : 'text-text-secondary hover:text-text-primary'
+                        }`}
+                      >
+                        Enter Amount Already Paid (₹)
+                      </button>
+                    </div>
+
+                    {/* Primary Input Field */}
+                    {inputMode === 'pending' ? (
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5 ml-1">
+                          <label htmlFor="customer-input-pending-balance" className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest block">
+                            Remaining Pending Balance (₹)
+                          </label>
+                          <span className="text-[10px] text-text-secondary font-mono">
+                            Total: ₹{totalLoanWithInterest.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-amber-600 dark:text-amber-400 font-mono" aria-hidden="true">₹</span>
+                          <input
+                            id="customer-input-pending-balance"
+                            type="number"
+                            min="0"
+                            max={totalLoanWithInterest}
+                            step="50"
+                            aria-label="Remaining pending balance in Rupees"
+                            value={pendingBalanceInput}
+                            onChange={e => handlePendingBalanceChange(e.target.value)}
+                            placeholder={totalLoanWithInterest ? `e.g. ${Math.round(totalLoanWithInterest * 0.7)}` : '0'}
+                            className="w-full bg-bg border border-amber-500/40 rounded-2xl h-14 pl-10 pr-4 focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 transition-all text-[15px] font-bold font-mono text-amber-600 dark:text-amber-400"
+                          />
+                        </div>
+                        <span className="text-[10px] text-text-secondary opacity-70 ml-1 mt-1 block">
+                          Enter the current unpaid balance remaining on the borrower's notebook
+                        </span>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5 ml-1">
+                          <label htmlFor="customer-input-already-paid" className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest block">
+                            Amount Already Collected / Paid (₹)
+                          </label>
+                          <span className="text-[10px] text-text-secondary font-mono">
+                            Total: ₹{totalLoanWithInterest.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-emerald-600 dark:text-emerald-400 font-mono" aria-hidden="true">₹</span>
+                          <input
+                            id="customer-input-already-paid"
+                            type="number"
+                            min="0"
+                            max={totalLoanWithInterest}
+                            step="50"
+                            aria-label="Amount already paid in Rupees"
+                            value={alreadyPaidInput}
+                            onChange={e => handleAlreadyPaidChange(e.target.value)}
+                            placeholder={totalLoanWithInterest ? `e.g. ${Math.round(totalLoanWithInterest * 0.3)}` : '0'}
+                            className="w-full bg-bg border border-emerald-500/40 rounded-2xl h-14 pl-10 pr-4 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all text-[15px] font-bold font-mono text-emerald-600 dark:text-emerald-400"
+                          />
+                        </div>
+                        <span className="text-[10px] text-text-secondary opacity-70 ml-1 mt-1 block">
+                          Enter the sum of installments already collected from this borrower
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Quick Preset Buttons */}
+                    {totalLoanWithInterest > 0 && (
+                      <div className="space-y-1.5">
+                        <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider block ml-1">
+                          Quick Presets:
+                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => handlePresetPercentagePaid(25)}
+                            className="px-2.5 py-1 rounded-xl text-[11px] font-bold font-mono border bg-bg border-border/70 hover:bg-muted text-text-secondary transition-all active:scale-95 cursor-pointer"
+                          >
+                            25% Paid (₹{Math.round(totalLoanWithInterest * 0.75).toLocaleString('en-IN')} pend.)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handlePresetPercentagePaid(50)}
+                            className="px-2.5 py-1 rounded-xl text-[11px] font-bold font-mono border bg-bg border-border/70 hover:bg-muted text-text-secondary transition-all active:scale-95 cursor-pointer"
+                          >
+                            50% Paid (₹{Math.round(totalLoanWithInterest * 0.5).toLocaleString('en-IN')} pend.)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handlePresetPercentagePaid(75)}
+                            className="px-2.5 py-1 rounded-xl text-[11px] font-bold font-mono border bg-bg border-border/70 hover:bg-muted text-text-secondary transition-all active:scale-95 cursor-pointer"
+                          >
+                            75% Paid (₹{Math.round(totalLoanWithInterest * 0.25).toLocaleString('en-IN')} pend.)
+                          </button>
+                          {estimatedInstallment > 0 && [10, 30, 50].map(days => {
+                            const paidVal = days * estimatedInstallment;
+                            if (paidVal >= totalLoanWithInterest) return null;
+                            return (
+                              <button
+                                key={days}
+                                type="button"
+                                onClick={() => handlePresetDaysPaid(days)}
+                                className="px-2.5 py-1 rounded-xl text-[11px] font-bold font-mono border bg-bg border-border/70 hover:bg-muted text-text-secondary transition-all active:scale-95 cursor-pointer"
+                              >
+                                {days}d Paid (₹{paidVal.toLocaleString('en-IN')})
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Real-time Bi-directional Summary Card */}
+                    <div className="p-3.5 rounded-2xl bg-muted/40 border border-border/60 space-y-2.5">
+                      <div className="grid grid-cols-2 gap-2 text-center">
+                        <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                          <span className="text-[9px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-widest block">
+                            Already Paid
+                          </span>
+                          <span className="text-sm font-black font-mono text-emerald-600 dark:text-emerald-400 mt-0.5 block">
+                            ₹{existingPaidNum.toLocaleString('en-IN')}
+                          </span>
+                          <span className="text-[10px] text-text-secondary font-mono mt-0.5 block">
+                            ~{priorInstallmentsPaid} installments
+                          </span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                          <span className="text-[9px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-widest block">
+                            Remaining Pending
+                          </span>
+                          <span className="text-sm font-black font-mono text-amber-600 dark:text-amber-400 mt-0.5 block">
+                            ₹{existingPendingNum.toLocaleString('en-IN')}
+                          </span>
+                          <span className="text-[10px] text-text-secondary font-mono mt-0.5 block">
+                            ~{remainingInstallmentsCount} installments left
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Progress Track */}
+                      <div className="w-full bg-border/40 rounded-full h-2 overflow-hidden flex">
+                        <div 
+                          className="bg-emerald-500 h-full rounded-full transition-all duration-300"
+                          style={{ width: `${repaymentProgressPct}%` }}
+                        />
+                      </div>
+
+                      {/* Audit Ledger Notice */}
+                      <div className="pt-1 flex items-start gap-2 text-[11px] text-text-secondary leading-snug">
+                        <CheckCircle2 size={14} className="text-emerald-500 shrink-0 mt-0.5" />
+                        <div>
+                          <span>A single <strong>opening balance ledger entry of ₹{existingPaidNum.toLocaleString('en-IN')}</strong> will be created on registration for audit integrity.</span>
+                        </div>
+                      </div>
+
+                      {/* Opening Balance Ledger Note Field */}
+                      <div className="pt-2 border-t border-border/30">
+                        <label htmlFor="customer-opening-balance-note" className="text-[10px] font-bold text-text-secondary opacity-60 uppercase tracking-wider block mb-1">
+                          Audit Record Note:
+                        </label>
+                        <input
+                          id="customer-opening-balance-note"
+                          type="text"
+                          value={openingBalanceNote}
+                          onChange={e => setOpeningBalanceNote(e.target.value)}
+                          placeholder={`Opening Balance: ${priorInstallmentsPaid} days collected prior to system registration`}
+                          className="w-full bg-bg border border-border/50 rounded-xl h-9 px-3 text-xs focus:outline-none focus:border-accent"
+                        />
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
