@@ -41,9 +41,9 @@ export function Settings() {
   const [receiptSettings, setReceiptSettings] = useState(() => {
     try {
       const saved = localStorage.getItem('pigmy_receipt_settings');
-      return saved ? JSON.parse(saved) : { printLogo: true, includeFooterNotes: true };
+      return saved ? JSON.parse(saved) : { printLogo: true, includeFooterNotes: true, paperSize: 'standard' };
     } catch {
-      return { printLogo: true, includeFooterNotes: true };
+      return { printLogo: true, includeFooterNotes: true, paperSize: 'standard' };
     }
   });
 
@@ -54,6 +54,7 @@ export function Settings() {
     setStatusMessage({ type: 'success', text: 'Receipt configuration updated successfully.' });
     setTimeout(() => setStatusMessage(null), 3000);
   };
+
 
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [tempProfile, setTempProfile] = useState(profile);
@@ -290,6 +291,7 @@ export function Settings() {
                  {receiptSettings.includeFooterNotes ? <ToggleRight size={26} className="text-accent" /> : <ToggleLeft size={26} className="text-text-secondary opacity-40" />}
               </div>
             </button>
+
           </div>
         </div>
       </div>

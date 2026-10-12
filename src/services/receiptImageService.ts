@@ -147,9 +147,16 @@ function drawShieldIcon(ctx: CanvasRenderingContext2D, x: number, y: number, siz
 function getReceiptSettings() {
   try {
     const saved = localStorage.getItem('pigmy_receipt_settings');
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        printLogo: parsed.printLogo ?? true,
+        includeFooterNotes: parsed.includeFooterNotes ?? true,
+        paperSize: parsed.paperSize || 'standard'
+      };
+    }
   } catch {}
-  return { printLogo: true, includeFooterNotes: true };
+  return { printLogo: true, includeFooterNotes: true, paperSize: 'standard' };
 }
 
 /**
@@ -204,9 +211,10 @@ export async function generateReceiptImage(data: ReceiptData): Promise<Generated
           : 'CASH COLLECTION';
   const fileName = `Receipt_${(customer.name || 'Customer').replace(/[^a-zA-Z0-9]/g, '_')}_${receiptNo}.png`;
 
-  // Bus ticket size proportions (rendered at 2.5x scale for razor-sharp clarity)
-  const logicalWidth = 420;
-  const baseHeight = wasNP && !isNP ? 760 : 720;
+  // Paper size proportions: 'thermal' (bus ticket size 420), 'standard' (A5 professional business receipt 560), 'a4' (720)
+  const paperSize = settings.paperSize || 'standard';
+  const logicalWidth = paperSize === 'thermal' ? 420 : paperSize === 'a4' ? 720 : 560;
+  const baseHeight = wasNP && !isNP ? 820 : 780;
   const logicalHeight = settings.includeFooterNotes ? baseHeight : baseHeight - 60;
   const scale = 2.5;
 

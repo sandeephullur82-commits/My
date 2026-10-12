@@ -26,21 +26,41 @@ export interface GeneratedReceipt {
   receiptNo: string;
 }
 
+function getReceiptSettings() {
+  try {
+    const saved = localStorage.getItem('pigmy_receipt_settings');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        printLogo: parsed.printLogo ?? true,
+        includeFooterNotes: parsed.includeFooterNotes ?? true,
+        paperSize: parsed.paperSize || 'standard'
+      };
+    }
+  } catch {}
+  return { printLogo: true, includeFooterNotes: true, paperSize: 'standard' };
+}
+
 /**
  * Generates a clean, brand-aligned visual PDF receipt template.
  * Includes company logo, transaction ID, date, customer name, payment mode,
  * total amount collected, and account balance breakdown.
- * Sized in standard A6 format (105mm x 148mm) suitable for both standard printers
- * and 80mm thermal receipt printers.
+ * Sized in standard A5/A4/A6 format based on user settings.
  */
 export function generateReceiptPDF(data: ReceiptData): GeneratedReceipt {
   const { transaction, customer, previousBalance, newBalance } = data;
-  
-  // A6 Dimensions: 105mm x 148mm (Portrait)
+  const settings = getReceiptSettings();
+  const paperSize = settings.paperSize || 'standard';
+  const pdfFormat = paperSize === 'thermal' ? 'a6' : paperSize === 'a4' ? 'a4' : 'a5';
+  const pageWidth = paperSize === 'thermal' ? 105 : paperSize === 'a4' ? 210 : 148;
+  const pageHeight = paperSize === 'thermal' ? 148 : paperSize === 'a4' ? 297 : 210;
+  const margin = paperSize === 'thermal' ? 8 : 12;
+  const contentWidth = pageWidth - (margin * 2);
+
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
-    format: 'a6'
+    format: pdfFormat
   });
 
   const receiptNo = `REC-${(transaction.id || '').slice(0, 8).toUpperCase()}`;
@@ -60,11 +80,6 @@ export function generateReceiptPDF(data: ReceiptData): GeneratedReceipt {
         ? 'NP' 
         : 'CASH DEPOSIT';
   const fileName = `Receipt_${customer.name.replace(/[^a-zA-Z0-9]/g, '_')}_${receiptNo}.pdf`;
-
-  const pageWidth = 105;
-  const pageHeight = 148;
-  const margin = 8;
-  const contentWidth = pageWidth - (margin * 2);
 
   // Outer border / decorative frame
   doc.setDrawColor(229, 231, 235); // Gray 200
