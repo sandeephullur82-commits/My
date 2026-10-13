@@ -97,13 +97,30 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
       });
       console.log(`Firebase Admin Initialized with Service Account for project: ${serviceAccount.project_id}`);
     } else {
-      console.warn("FIREBASE_SERVICE_ACCOUNT does not contain a valid project_id and credentials. Backend admin features will remain dormant.");
+      console.warn("FIREBASE_SERVICE_ACCOUNT incomplete. Initializing with project credentials.");
+      firebaseAdmin = admin.initializeApp({
+        projectId: process.env.VITE_FIREBASE_PROJECT_ID || "pigmy-app-a794e"
+      });
     }
   } catch (e: any) {
-    console.warn("Failed to initialize Firebase Admin with service account:", e?.message || e);
+    console.warn("Failed to initialize Firebase Admin with service account, attempting project initialization:", e?.message || e);
+    try {
+      firebaseAdmin = admin.initializeApp({
+        projectId: process.env.VITE_FIREBASE_PROJECT_ID || "pigmy-app-a794e"
+      });
+    } catch (adcErr) {
+      console.warn("ADC initialization notice:", adcErr);
+    }
   }
 } else {
-  console.log("FIREBASE_SERVICE_ACCOUNT not configured. Backend admin features and background scans will remain dormant.");
+  try {
+    firebaseAdmin = admin.initializeApp({
+      projectId: process.env.VITE_FIREBASE_PROJECT_ID || "pigmy-app-a794e"
+    });
+    console.log("Firebase Admin Initialized with project credentials.");
+  } catch (e) {
+    console.warn("Firebase Admin default credential initialization notice:", e);
+  }
 }
 
 async function startServer() {
@@ -139,7 +156,7 @@ async function startServer() {
   });
 
   const isValidId = (id: unknown): id is string => {
-    return typeof id === "string" && /^[a-zA-Z0-9_\-]{1,128}$/.test(id);
+    return typeof id === "string" && id.trim().length > 0 && id.length <= 256 && !id.includes("/") && !id.includes("..");
   };
 
   app.get("/api/health", (req, res) => {

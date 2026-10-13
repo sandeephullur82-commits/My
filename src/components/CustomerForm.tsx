@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Customer, RenewalData, firestoreService } from '../services/firestoreService';
 import { notificationService } from '../services/notificationService';
@@ -184,6 +184,28 @@ export function CustomerForm({
   const [isCustomFrequency, setIsCustomFrequency] = useState(
     formData.frequencyDays !== 1 && formData.frequencyDays !== 7 && formData.frequencyDays !== 30
   );
+
+  const loanBoxRef = useRef<HTMLDivElement | null>(null);
+  const durationBoxRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handleOutsideInteraction = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      if (loanBoxRef.current && !loanBoxRef.current.contains(target)) {
+        setIsLoanFocused(false);
+      }
+      if (durationBoxRef.current && !durationBoxRef.current.contains(target)) {
+        setIsDurationFocused(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideInteraction);
+    document.addEventListener('touchstart', handleOutsideInteraction, { passive: true });
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideInteraction);
+      document.removeEventListener('touchstart', handleOutsideInteraction);
+    };
+  }, []);
 
   const fullId = useMemo(() => {
     if ((isEdit || isNewLoan) && customer) return customer.id;
@@ -999,6 +1021,7 @@ export function CustomerForm({
                 <div className="flex items-start gap-2">
                   <div className="flex-1 min-w-0">
                     <div 
+                      ref={loanBoxRef}
                       className={`relative bg-bg border rounded-2xl transition-all duration-200 cursor-text ${
                         isLoanFocused 
                           ? 'border-accent ring-4 ring-accent/5 p-3' 
@@ -1025,11 +1048,6 @@ export function CustomerForm({
                           aria-label="Loan principal amount in Rupees"
                           value={formData.loan}
                           onFocus={() => setIsLoanFocused(true)}
-                          onBlur={(e) => {
-                            if (!e.currentTarget.parentElement?.parentElement?.contains(e.relatedTarget as Node)) {
-                              setIsLoanFocused(false);
-                            }
-                          }}
                           onChange={e => handlePrincipalChange(e.target.value)}
                           className="flex-1 min-w-0 bg-transparent focus:outline-none text-[15px] font-bold font-mono text-text-primary placeholder:text-text-secondary/40"
                           placeholder="0.00"
@@ -1321,6 +1339,7 @@ export function CustomerForm({
                   </div>
 
                   <div 
+                    ref={durationBoxRef}
                     className={`relative bg-bg border rounded-2xl transition-all duration-200 cursor-text ${
                       isDurationFocused 
                         ? 'border-accent ring-4 ring-accent/5 p-3' 
@@ -1342,11 +1361,6 @@ export function CustomerForm({
                           aria-label="Tenure duration in days"
                           value={formData.duration || ''}
                           onFocus={() => setIsDurationFocused(true)}
-                          onBlur={(e) => {
-                            if (!e.currentTarget.parentElement?.parentElement?.contains(e.relatedTarget as Node)) {
-                              setIsDurationFocused(false);
-                            }
-                          }}
                           onChange={e => {
                             const days = parseInt(e.target.value) || 0;
                             setFormData(prev => ({

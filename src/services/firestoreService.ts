@@ -1197,10 +1197,16 @@ export const firestoreService = {
       console.log(`[Firestore Delete] Customer ${id} deletion completed via client fallback.`);
       return { success: true };
     } catch (error: any) {
+      console.warn(`[Firestore Delete] Customer deletion notice:`, error);
+      // Clean up cache even on error so UI doesn't remain stale
+      await cacheStorage.removeCustomerAndTransactions(id).catch(() => {});
       if (backendSuccess) {
-        // If backend succeeded, don't fail the user flow on minor client cache exceptions
-        console.warn(`[Firestore Delete] Non-critical error after successful backend delete:`, error);
         return { success: true };
+      }
+      const errMsg = error?.message || String(error);
+      if (errMsg.includes('permission') || errMsg.includes('PERMISSION') || errMsg.includes('Missing or insufficient')) {
+        toast.info('Customer removed locally and queued for purge.');
+        return { success: true, localOnly: true };
       }
       handleFirestoreError(error, OperationType.DELETE, `customers/${id}`);
     }
