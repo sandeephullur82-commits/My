@@ -15,6 +15,7 @@ import { QuickPaymentModal } from './Entry/QuickPaymentModal';
 import { WithdrawDepositModal } from './WithdrawDepositModal';
 import { CustomerForm } from './CustomerForm';
 import { BottomSheet } from './BottomSheet';
+import { DeleteCustomerModal } from './DeleteCustomerModal';
 import { useUI } from '../context/UIContext';
 import { useLocation } from 'react-router-dom';
 
@@ -244,7 +245,7 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
           <button
             type="button"
             onClick={() => setShowDeleteConfirm(true)}
-            className="p-2 rounded-xl text-danger/80 hover:text-danger hover:bg-danger/10 transition-all"
+            className="p-2 rounded-xl text-danger/80 hover:text-danger hover:bg-danger/10 transition-all cursor-pointer"
             title="Delete borrower account"
           >
             <Trash2 size={17} />
@@ -841,58 +842,22 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
         onCancel={() => setPendingAction(null)}
       />
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="bg-card w-full max-w-[480px] rounded-[32px] p-6 shadow-2xl border border-border flex flex-col max-h-[90vh]"
-          >
-            <div className="flex justify-between items-center mb-5 shrink-0">
-              <h3 className="text-[18px] font-black text-text-primary uppercase tracking-tight">Delete {customer.name}?</h3>
-              <button 
-                onClick={() => setShowDeleteConfirm(false)} 
-                className="p-2 rounded-full bg-bg text-text-secondary hover:text-text-primary transition-colors"
-                title="Close"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto pr-1">
-              <div className="bg-bg/50 rounded-2xl p-4 mb-6 border border-border">
-                <div className="flex justify-between mb-3">
-                  <span className="text-[12px] font-bold text-text-secondary uppercase tracking-widest opacity-60">Related Entries</span>
-                  <span className="text-[13px] font-black text-text-primary">{customerTransactions.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[12px] font-bold text-text-secondary uppercase tracking-widest opacity-60">Pending Amount</span>
-                  <span className="text-[13px] font-black text-danger">₹{pendingAmount.toLocaleString()}</span>
-                </div>
-              </div>
-              <p className="text-[13px] font-medium text-text-secondary mb-8 text-center leading-relaxed break-normal whitespace-normal">
-                This will mark the customer and all related entries as deleted. This can be undone for 5 seconds.
-              </p>
-            </div>
-
-            <div className="flex gap-3 pt-2 shrink-0">
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 py-4 rounded-2xl bg-bg border border-border font-black text-[12px] uppercase tracking-widest text-text-secondary active:scale-95 transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                className="flex-1 py-4 rounded-2xl bg-danger text-white font-black text-[12px] uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-danger/20 active:scale-95 transition-all"
-              >
-                <Trash2 size={18} /> Delete
-              </button>
-            </div>
-          </motion.div>
-        </div>
-      )}
+      {/* Delete Confirmation & Backup Modal */}
+      <DeleteCustomerModal
+        isOpen={showDeleteConfirm}
+        customer={customer}
+        transactions={transactions}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirmDelete={async (cust, knownTxIds) => {
+          await firestoreService.deleteCustomer(cust.id, cust.docPath, knownTxIds);
+          toast.success('Customer permanently deleted');
+          if (onDelete) {
+            onDelete(cust.id);
+          }
+          setShowDeleteConfirm(false);
+          onClose();
+        }}
+      />
 
       <PDFViewerModal 
         isOpen={showPreview}

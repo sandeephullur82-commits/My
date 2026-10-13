@@ -27,7 +27,8 @@ export function calculateMasterMetrics(
   transactions: Transaction[]
 ): MasterExportMetrics {
   const activeCusts = customers.filter(c => !c.isDeleted);
-  const activeTxs = transactions.filter(t => !t.isDeleted);
+  const activeCustIds = new Set(activeCusts.map(c => c.id));
+  const activeTxs = transactions.filter(t => !t.isDeleted && activeCustIds.has(t.customerId));
 
   let totalLoansDisbursed = 0;
   let totalPending = 0;
@@ -180,8 +181,9 @@ export async function exportMasterToExcel(
     });
 
   // 3. Transactions Ledger Sheet Data
+  const activeCustomerIdsForExcel = new Set(customers.filter(c => !c.isDeleted).map(c => c.id));
   const sortedTransactions = [...transactions]
-    .filter(t => !t.isDeleted)
+    .filter(t => !t.isDeleted && activeCustomerIdsForExcel.has(t.customerId))
     .sort((a, b) => b.timestamp - a.timestamp);
 
   const transactionRows = sortedTransactions.map(t => {
@@ -467,8 +469,9 @@ export async function generateMasterPDFReport(
   doc.text(`Total Records: ${transactions.length} entries  |  Verified Ledger`, 14, currentY + 5);
   currentY += 9;
 
+  const activeCustomerIdsForPdf = new Set(customers.filter(c => !c.isDeleted).map(c => c.id));
   const sortedTransactions = [...transactions]
-    .filter(t => !t.isDeleted)
+    .filter(t => !t.isDeleted && activeCustomerIdsForPdf.has(t.customerId))
     .sort((a, b) => b.timestamp - a.timestamp);
 
   const transactionRows = sortedTransactions.map(t => {

@@ -176,8 +176,11 @@ export function CustomerForm({
 
   const [isSyncingId, setIsSyncingId] = useState(false);
   const [isIdUnique, setIsIdUnique] = useState(true);
+  const [isIdRecycled, setIsIdRecycled] = useState(false);
   const [isCheckingId, setIsCheckingId] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoanFocused, setIsLoanFocused] = useState(false);
+  const [isDurationFocused, setIsDurationFocused] = useState(false);
   const [isCustomFrequency, setIsCustomFrequency] = useState(
     formData.frequencyDays !== 1 && formData.frequencyDays !== 7 && formData.frequencyDays !== 30
   );
@@ -207,11 +210,12 @@ export function CustomerForm({
 
   useEffect(() => {
     if (isEdit || isNewLoan) return;
-    if (idSuffix.length === 3) {
+    if (idSuffix.length >= 1) {
       const check = async () => {
         setIsCheckingId(true);
-        const unique = await firestoreService.checkIdUnique(fullId);
-        setIsIdUnique(unique);
+        const availability = await firestoreService.checkIdAvailability(fullId);
+        setIsIdUnique(availability.available);
+        setIsIdRecycled(availability.isRecycled);
         setIsCheckingId(false);
       };
       check();
@@ -888,9 +892,26 @@ export function CustomerForm({
                   Account ID
                 </label>
                 {!isEdit && !isNewLoan && (
-                  <span className={`text-[9px] font-black uppercase tracking-widest ${isIdUnique ? 'text-success' : 'text-danger'}`} role="status">
-                    {isCheckingId ? 'Checking...' : isIdUnique ? 'Available' : 'Taken'}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {isCheckingId ? (
+                      <span className="text-[9px] font-black uppercase tracking-widest text-text-secondary opacity-60">Checking...</span>
+                    ) : isIdUnique ? (
+                      isIdRecycled ? (
+                        <span className="inline-flex items-center gap-1 text-[9px] font-black tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/25">
+                          <RotateCcw size={10} className="stroke-[2.5]" />
+                          <span>Recycling ID: {fullId}</span>
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-black uppercase tracking-widest text-success" role="status">
+                          Available
+                        </span>
+                      )
+                    ) : (
+                      <span className="text-[9px] font-black uppercase tracking-widest text-danger" role="status">
+                        Taken
+                      </span>
+                    )}
+                  </div>
                 )}
                 {isNewLoan && (
                   <span className="text-[9px] font-bold text-text-secondary opacity-70">
@@ -913,7 +934,11 @@ export function CustomerForm({
                   value={idSuffix}
                   onChange={e => handleIdChange(e.target.value)}
                   className={`w-full bg-bg border ${
-                    !isIdUnique && !isEdit && !isNewLoan ? 'border-danger/50 focus:border-danger' : 'border-border/60 focus:border-accent'
+                    !isIdUnique && !isEdit && !isNewLoan 
+                      ? 'border-danger/50 focus:border-danger' 
+                      : (isIdRecycled && isIdUnique && !isEdit && !isNewLoan 
+                          ? 'border-emerald-500/60 focus:border-emerald-500 bg-emerald-500/[0.03]' 
+                          : 'border-border/60 focus:border-accent')
                   } rounded-2xl h-14 pl-[5.5rem] pr-10 focus:outline-none focus:ring-4 transition-all text-[15px] font-black tracking-widest ${
                     isEdit || isNewLoan ? 'opacity-70 cursor-not-allowed bg-muted/40' : ''
                   }`}
@@ -930,7 +955,30 @@ export function CustomerForm({
                   </div>
                 )}
               </div>
+
+              {/* Prominent status indicator when recycling a previously deleted ID */}
+              {!isEdit && !isNewLoan && isIdUnique && isIdRecycled && (
+                <div className="mt-2.5 flex items-start gap-2.5 p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-800 dark:text-emerald-200">
+                  <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                    <RotateCcw size={13} className="stroke-[2.5]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-black tracking-tight text-emerald-900 dark:text-emerald-100">
+                        Recycling ID: {fullId}
+                      </span>
+                      <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                        Deleted ID Reused
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-emerald-800/80 dark:text-emerald-200/80 font-medium leading-relaxed mt-0.5">
+                      This ID was previously deleted and is now available for reuse. Saving will start a clean, fresh ledger for this customer.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
+
           </div>
         </div>
 
@@ -940,7 +988,7 @@ export function CustomerForm({
             <span className="w-1.5 h-1.5 rounded-full bg-accent" /> Financials & Schedule
           </h4>
           <div className="space-y-5">
-            {/* Principal / Loan Amount or Target Savings */}
+            {/* Principal / Loan Amount with Quick Amounts inside and Interest Button beside */}
             {formData.accountType !== 'saving' && (
               <div>
                 <label htmlFor="customer-input-loan" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] ml-1 mb-1.5 block">
@@ -948,47 +996,130 @@ export function CustomerForm({
                       ? `Renewal Principal (Cycle #${nextCycle})` 
                       : (isNewLoan ? `New Loan Principal (Cycle #${nextCycle})` : 'Loan Amount')}
                 </label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-bold text-text-secondary opacity-40" aria-hidden="true">₹</span>
-                  <input
-                    id="customer-input-loan"
-                    type="number"
-                    min="500"
-                    step="500"
-                    required
-                    aria-required="true"
-                    aria-label="Loan principal amount in Rupees"
-                    value={formData.loan}
-                    onChange={e => handlePrincipalChange(e.target.value)}
-                    className="w-full bg-bg border border-border/60 rounded-2xl h-14 pl-10 pr-4 focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/5 transition-all text-[15px] font-bold font-mono"
-                    placeholder="0.00"
-                  />
-                </div>
-
-                {/* Quick preset amounts */}
-                <div className="flex items-center gap-1.5 flex-wrap pt-2" role="group" aria-label="Preset amounts">
-                  {quickAmounts.map(amount => (
-                    <button
-                      key={amount}
-                      type="button"
-                      aria-label={`Set amount to ₹${amount.toLocaleString('en-IN')}`}
-                      onClick={() => handlePrincipalChange(amount.toString())}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold font-mono border transition-all active:scale-95 cursor-pointer ${
-                        principalAmountNum === amount
-                          ? 'bg-accent text-white border-accent shadow-xs'
-                          : 'bg-card border-border/70 hover:bg-muted text-text-secondary'
+                <div className="flex items-start gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div 
+                      className={`relative bg-bg border rounded-2xl transition-all duration-200 cursor-text ${
+                        isLoanFocused 
+                          ? 'border-accent ring-4 ring-accent/5 p-3' 
+                          : 'border-border/60 hover:border-border/90 px-3.5 h-14 flex flex-col justify-center'
                       }`}
+                      onClick={() => {
+                        const inputEl = document.getElementById('customer-input-loan');
+                        if (inputEl) inputEl.focus();
+                        setIsLoanFocused(true);
+                      }}
                     >
-                      ₹{amount >= 1000 ? `${amount / 1000}k` : amount}
-                    </button>
-                  ))}
+                      {/* Amount input row */}
+                      <div className="flex items-center w-full">
+                        <span className="text-[15px] font-bold text-text-secondary opacity-40 shrink-0 mr-1.5 select-none" aria-hidden="true">
+                          ₹
+                        </span>
+                        <input
+                          id="customer-input-loan"
+                          type="number"
+                          min="500"
+                          step="500"
+                          required
+                          aria-required="true"
+                          aria-label="Loan principal amount in Rupees"
+                          value={formData.loan}
+                          onFocus={() => setIsLoanFocused(true)}
+                          onBlur={(e) => {
+                            if (!e.currentTarget.parentElement?.parentElement?.contains(e.relatedTarget as Node)) {
+                              setIsLoanFocused(false);
+                            }
+                          }}
+                          onChange={e => handlePrincipalChange(e.target.value)}
+                          className="flex-1 min-w-0 bg-transparent focus:outline-none text-[15px] font-bold font-mono text-text-primary placeholder:text-text-secondary/40"
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      {/* Quick amounts visible at bottom inside the field on tap/focus */}
+                      <AnimatePresence>
+                        {isLoanFocused && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.18 }}
+                            className="pt-2 mt-2 border-t border-border/40 overflow-hidden"
+                          >
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary opacity-60">
+                                Quick Amounts
+                              </span>
+                              {principalAmountNum > 0 && (
+                                <span className="text-[10px] font-mono font-bold text-accent">
+                                  Selected: ₹{principalAmountNum.toLocaleString('en-IN')}
+                                </span>
+                              )}
+                            </div>
+                            <div 
+                              className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5" 
+                              role="group" 
+                              aria-label="Quick preset amounts"
+                            >
+                              {quickAmounts.map(amount => {
+                                const isSelected = principalAmountNum === amount;
+                                return (
+                                  <button
+                                    key={amount}
+                                    type="button"
+                                    aria-label={`Set amount to ₹${amount.toLocaleString('en-IN')}`}
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      handlePrincipalChange(amount.toString());
+                                    }}
+                                    className={`px-2.5 py-1 rounded-xl text-xs font-bold font-mono shrink-0 transition-all cursor-pointer ${
+                                      isSelected
+                                        ? 'bg-accent text-white shadow-xs font-black scale-102'
+                                        : 'bg-muted/80 hover:bg-muted text-text-secondary hover:text-text-primary border border-border/60'
+                                    }`}
+                                  >
+                                    ₹{amount >= 1000 ? `${amount / 1000}k` : amount}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+
+                  {/* Interest button beside the loan amount field */}
+                  <button
+                    type="button"
+                    onClick={() => setHasInterest(!hasInterest)}
+                    aria-label={hasInterest ? "Interest enabled, click to toggle" : "Add interest to loan"}
+                    className={`h-14 px-3 sm:px-4 rounded-2xl font-black text-xs flex items-center justify-center gap-1.5 shrink-0 border transition-all cursor-pointer active:scale-95 ${
+                      hasInterest
+                        ? 'bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400 shadow-xs'
+                        : 'bg-card border-border/60 text-text-secondary hover:border-accent/40 hover:text-text-primary hover:bg-muted/30'
+                    }`}
+                  >
+                    <Percent size={15} strokeWidth={2.5} />
+                    <span className="hidden xs:inline sm:inline">Interest</span>
+                    {hasInterest && (
+                      <span className="text-[10px] font-mono bg-amber-500 text-white rounded-md px-1.5 py-0.5">
+                        {interestRate}%
+                      </span>
+                    )}
+                  </button>
                 </div>
               </div>
             )}
 
-            {/* Interest Section: Only applicable for Loans */}
-            {formData.accountType !== 'saving' && (
-            <div className="p-4 rounded-2xl bg-card border border-border/60 space-y-4">
+            {/* Interest Section: Only applicable when Interest is enabled */}
+            {formData.accountType !== 'saving' && hasInterest && (
+            <motion.div 
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-4 rounded-2xl bg-card border border-amber-500/30 space-y-4 shadow-xs"
+            >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0" aria-hidden="true">
@@ -999,7 +1130,7 @@ export function CustomerForm({
                       Interest Details
                     </span>
                     <span className="text-[10px] text-text-secondary">
-                      Default 3% applied • Both % and amount are fully editable
+                      {interestRate}% applied • Both % and amount (₹) are fully editable
                     </span>
                   </div>
                 </div>
@@ -1007,15 +1138,11 @@ export function CustomerForm({
                 {!isRenewal && (
                   <button
                     type="button"
-                    onClick={() => setHasInterest(!hasInterest)}
-                    aria-label={hasInterest ? "Interest is enabled, click to disable" : "Enable interest calculation"}
-                    className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all cursor-pointer ${
-                      hasInterest
-                        ? 'bg-accent text-white border-accent'
-                        : 'bg-bg border-border text-text-secondary hover:text-text-primary'
-                    }`}
+                    onClick={() => setHasInterest(false)}
+                    aria-label="Remove interest"
+                    className="text-[11px] font-bold text-text-secondary hover:text-danger px-2.5 py-1 rounded-lg hover:bg-danger/10 transition-colors cursor-pointer"
                   >
-                    {hasInterest ? 'Interest Enabled' : '+ Add Interest'}
+                    Remove
                   </button>
                 )}
               </div>
@@ -1108,7 +1235,7 @@ export function CustomerForm({
                   </div>
                 </div>
               )}
-            </div>
+            </motion.div>
             )}
 
             {formData.accountType !== 'saving' && (
@@ -1182,66 +1309,110 @@ export function CustomerForm({
                   </div>
                 </div>
 
-                {/* Duration / Number of Days (50, 100, 120, 150, 200 Days & Custom Input) */}
-                <div className="p-4 rounded-2xl bg-card border border-border/50 space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-black text-text-secondary opacity-50 uppercase tracking-[0.2em] block">
-                      Loan Tenure / Duration (Days)
-                    </span>
+                {/* Duration / Number of Days with Quick Duration visible at bottom inside the text field on tap */}
+                <div>
+                  <div className="flex justify-between items-center mb-1.5 ml-1">
+                    <label htmlFor="customer-input-duration" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] block">
+                      Loan Tenure / Duration
+                    </label>
                     <span className="text-xs font-black text-text-primary font-mono">
                       {formData.duration} Days Total
                     </span>
                   </div>
 
-                  {/* Quick Duration Buttons */}
-                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2" role="group" aria-label="Preset loan duration options">
-                    {durationPresets.map(preset => {
-                      const isSelected = formData.duration === preset.days;
-                      return (
-                        <button
-                          key={preset.days}
-                          id={`duration-preset-${preset.days}`}
-                          type="button"
-                          aria-label={`Select tenure of ${preset.label}`}
-                          onClick={() => handleSelectDurationDays(preset.days)}
-                          className={`py-2 px-1 rounded-xl text-[11px] font-bold border text-center transition-all cursor-pointer font-mono ${
-                            isSelected 
-                              ? 'bg-accent/15 border-accent text-accent font-black shadow-xs' 
-                              : 'bg-bg border-border/40 text-text-secondary hover:border-text-secondary/40'
-                          }`}
-                        >
-                          {preset.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Direct Duration in Days Numeric Input */}
-                  <div className="pt-2">
-                    <label htmlFor="customer-input-duration" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-widest mb-1.5 block">
-                      Enter Custom Duration (Number of Days)
-                    </label>
-                    <div className="relative flex items-center">
-                      <input
-                        id="customer-input-duration"
-                        type="number"
-                        min="1"
-                        aria-label="Tenure duration in days"
-                        value={formData.duration || ''}
-                        onChange={e => {
-                          const days = parseInt(e.target.value) || 0;
-                          setFormData(prev => ({
-                            ...prev,
-                            duration: days > 0 ? days : 1
-                          }));
-                        }}
-                        className="w-full bg-bg border border-border/60 rounded-2xl h-14 pl-4 pr-16 focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/5 transition-all text-[15px] font-bold font-mono"
-                        placeholder="e.g. 50, 100, 120"
-                      />
-                      <span className="absolute right-4 text-xs font-black uppercase text-text-secondary opacity-50 tracking-wider pointer-events-none" aria-hidden="true">
-                        Days
-                      </span>
+                  <div 
+                    className={`relative bg-bg border rounded-2xl transition-all duration-200 cursor-text ${
+                      isDurationFocused 
+                        ? 'border-accent ring-4 ring-accent/5 p-3' 
+                        : 'border-border/60 hover:border-border/90 px-3.5 h-14 flex flex-col justify-center'
+                    }`}
+                    onClick={() => {
+                      const inputEl = document.getElementById('customer-input-duration');
+                      if (inputEl) inputEl.focus();
+                      setIsDurationFocused(true);
+                    }}
+                  >
+                    {/* Duration input row */}
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center flex-1 min-w-0">
+                        <input
+                          id="customer-input-duration"
+                          type="number"
+                          min="1"
+                          aria-label="Tenure duration in days"
+                          value={formData.duration || ''}
+                          onFocus={() => setIsDurationFocused(true)}
+                          onBlur={(e) => {
+                            if (!e.currentTarget.parentElement?.parentElement?.contains(e.relatedTarget as Node)) {
+                              setIsDurationFocused(false);
+                            }
+                          }}
+                          onChange={e => {
+                            const days = parseInt(e.target.value) || 0;
+                            setFormData(prev => ({
+                              ...prev,
+                              duration: days > 0 ? days : 1
+                            }));
+                          }}
+                          className="w-20 min-w-[50px] bg-transparent focus:outline-none text-[15px] font-bold font-mono text-text-primary placeholder:text-text-secondary/40"
+                          placeholder="100"
+                        />
+                        <span className="text-xs font-bold text-text-secondary opacity-60 mr-2 shrink-0 select-none">
+                          Days
+                        </span>
+                      </div>
                     </div>
+
+                    {/* Quick duration presets visible at bottom inside the text field on tap/focus */}
+                    <AnimatePresence>
+                      {isDurationFocused && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.18 }}
+                          className="pt-2 mt-2 border-t border-border/40 overflow-hidden"
+                        >
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary opacity-60">
+                              Quick Presets
+                            </span>
+                            <span className="text-[10px] font-mono font-bold text-accent">
+                              {formData.duration} Days
+                            </span>
+                          </div>
+                          <div 
+                            className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5" 
+                            role="group" 
+                            aria-label="Quick preset loan durations"
+                          >
+                            {durationPresets.map(preset => {
+                              const isSelected = formData.duration === preset.days;
+                              return (
+                                <button
+                                  key={preset.days}
+                                  id={`duration-preset-${preset.days}`}
+                                  type="button"
+                                  aria-label={`Select tenure of ${preset.label}`}
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    handleSelectDurationDays(preset.days);
+                                  }}
+                                  className={`px-2.5 py-1 rounded-xl text-xs font-bold font-mono shrink-0 transition-all cursor-pointer ${
+                                    isSelected
+                                      ? 'bg-accent text-white shadow-xs font-black scale-102'
+                                      : 'bg-muted/80 hover:bg-muted text-text-secondary hover:text-text-primary border border-border/60'
+                                  }`}
+                                >
+                                  {preset.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </div>
 

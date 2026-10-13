@@ -27,9 +27,10 @@ service cloud.firestore {
              data.phone is string && data.phone.size() >= 10 && data.phone.size() <= 15 &&
              ((!('loan' in data) && 'loanAmount' in data && data.loanAmount is number && data.loanAmount >= 0) ||
               ('loan' in data && data.loan is number && data.loan >= 0) ||
-              ('totalLoan' in data && data.totalLoan is number && data.totalLoan >= 0)) &&
-             (!('address' in data) || (data.address is string && data.address.size() <= 500)) &&
-             (!('notes' in data) || (data.notes is string && data.notes.size() <= 2000));
+              ('totalLoan' in data && data.totalLoan is number && data.totalLoan >= 0) ||
+              ('accountType' in data && data.accountType == 'saving')) &&
+             (!('address' in data) || data.address == null || (data.address is string && data.address.size() <= 500)) &&
+             (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 2000));
     }
 
     function isValidTransaction(data) {
@@ -51,9 +52,8 @@ service cloud.firestore {
              data.timestamp is number;
     }
 
-    // --- 1. Customers Collection & Collection Groups ---
-    // Enforces Invariant 1 (valid name, phone, loan) & Dirty Dozen #1, #6, #7, #10, #11
-    match /{path=**}/customers/{customerId} {
+    // --- 1. Customers Root Collection & Collection Groups ---
+    match /customers/{customerId} {
       allow get, list: if true;
 
       allow create: if isValidId(customerId) &&
@@ -65,22 +65,26 @@ service cloud.firestore {
                       incoming().id == customerId &&
                       isValidCustomer(incoming()) &&
                       incoming().updatedAt == request.time &&
-                      (!('createdAt' in existing()) || incoming().createdAt == existing().createdAt);
+                      (!('createdAt' in existing()) ||
+                       ('isDeleted' in existing() && existing().isDeleted == true) ||
+                       !('createdAt' in incoming()) ||
+                       incoming().createdAt == existing().createdAt ||
+                       incoming().createdAt == request.time);
 
-      // Orphan Write Protection (Dirty Dozen #10): Hard deletion is rejected to prevent orphaned records.
-      // Soft-deletion is enforced via update setting isDeleted: true with updatedAt == request.time.
-      allow delete: if false;
+      allow delete: if isValidId(customerId);
     }
 
-    // --- 2. Entries / Transactions Collection & Collection Groups ---
-    // Enforces Invariant 2 (customerId), Invariant 3 (status), & Dirty Dozen #3, #4, #5, #7, #11
-    match /{path=**}/entries/{entryId} {
+    match /{path=**}/customers/{customerId} {
+      allow read: if true;
+    }
+
+    // --- 2. Entries Root Collection & Collection Groups ---
+    match /entries/{entryId} {
       allow get, list: if true;
 
       allow create: if isValidId(entryId) &&
                       incoming().id == entryId &&
                       isValidTransaction(incoming()) &&
-                      // Link Poisoning Protection (Dirty Dozen #4): Customer must exist
                       (exists(/databases/$(database)/documents/customers/$(incoming().customerId)) ||
                        (request.auth != null && exists(/databases/$(database)/documents/users/$(request.auth.uid)/customers/$(incoming().customerId)))) &&
                       incoming().createdAt == request.time;
@@ -89,12 +93,15 @@ service cloud.firestore {
                       incoming().id == entryId &&
                       isValidTransaction(incoming()) &&
                       incoming().updatedAt == request.time &&
-                      // State Skip Protection (Dirty Dozen #5): Transition to paid requires timestamp audit
                       (existing().status == incoming().status ||
                        incoming().status != 'paid' ||
                        incoming().paidAt == request.time);
 
-      allow delete: if false;
+      allow delete: if (existing() != null && 'isDeleted' in existing() && existing().isDeleted == true);
+    }
+
+    match /{path=**}/entries/{entryId} {
+      allow read: if true;
     }
 
     // --- 3. Audit History Subcollections ---

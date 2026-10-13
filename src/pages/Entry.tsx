@@ -45,8 +45,6 @@ import { BottomSheet } from '../components/BottomSheet';
 import { WithdrawDepositModal } from '../components/WithdrawDepositModal';
 import { notificationService } from '../services/notificationService';
 import { playSuccessSound } from '../lib/sound';
-import { BulkEntryModal } from '../components/Entry/BulkEntryModal';
-import { Layers } from 'lucide-react';
 
 export function Entry() {
   const { transactions, customers, loading } = useRealtimeData();
@@ -96,9 +94,6 @@ export function Entry() {
   // Selected NP transaction for responsive quick conversion sheet
   const [selectedNpTx, setSelectedNpTx] = useState<{ tx: Transaction; customer: Customer } | null>(null);
 
-  // Bulk entry modal state
-  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
-  
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [debouncedQuery, setDebouncedQuery] = useState(globalSearch);
 
@@ -178,16 +173,30 @@ export function Entry() {
   
   const [skippedIds, setSkippedIds] = useState<string[]>([]);
 
-  // Customer IDs that have an entry recorded for today (Paid or NP)
+  // Fast O(1) customer lookup map across all render passes
+  const customerMap = useMemo(() => {
+    const map = new Map<string, Customer>();
+    for (let i = 0; i < customers.length; i++) {
+      if (!customers[i].isDeleted) {
+        map.set(customers[i].id, customers[i]);
+      }
+    }
+    return map;
+  }, [customers]);
+
+  // Customer IDs that have an entry recorded for today (Paid or NP) - active customers only
   const todayLoggedCustomerIds = useMemo(() => {
     const set = new Set<string>();
     transactions.forEach(tx => {
       if (tx.date === todayStr && !tx.isDeleted && (tx.status === 'paid' || tx.type === 'NP' || tx.type === 'unsettled')) {
-        set.add(tx.customerId);
+        const cust = customerMap.get(tx.customerId);
+        if (cust && !cust.isDeleted) {
+          set.add(tx.customerId);
+        }
       }
     });
     return set;
-  }, [transactions, todayStr]);
+  }, [transactions, todayStr, customerMap]);
 
   // PENDING SECTION: All customers (both active loans & advance savings) needing entry today
   const pendingCustomers = useMemo(() => {
@@ -254,6 +263,8 @@ export function Entry() {
       .filter(tx => {
         const isTodayPaid = tx.status === 'paid' && tx.type !== 'NP' && tx.type !== 'unsettled' && tx.date === todayStr && !tx.isDeleted;
         if (!isTodayPaid) return false;
+        const cust = customerMap.get(tx.customerId);
+        if (!cust || cust.isDeleted) return false;
         if (!matchesSearch(tx.customerId)) return false;
 
         if (paymentFilter !== 'ALL' && paymentFilter !== 'OVERDUE') {
@@ -267,7 +278,7 @@ export function Entry() {
         const timeB = toSafeMillis(b.paidAt) || toSafeMillis(b.timestamp);
         return timeB - timeA;
       });
-  }, [transactions, todayStr, paymentFilter, debouncedQuery, customers]);
+  }, [transactions, todayStr, paymentFilter, debouncedQuery, customerMap]);
 
   // UNPAID SECTION: Today's NP entries (excluding settled / converted)
   const todayUnpaidEntries = useMemo(() => {
@@ -277,6 +288,8 @@ export function Entry() {
           !tx.isSettled && tx.status !== 'settled' && !tx.settledAt && 
           tx.date === todayStr && !tx.isDeleted;
         if (!isNP) return false;
+        const cust = customerMap.get(tx.customerId);
+        if (!cust || cust.isDeleted) return false;
         return matchesSearch(tx.customerId);
       })
       .sort((a, b) => {
@@ -284,7 +297,7 @@ export function Entry() {
         const timeB = toSafeMillis(b.unsettledAt) || toSafeMillis(b.timestamp);
         return timeB - timeA;
       });
-  }, [transactions, todayStr, debouncedQuery, customers]);
+  }, [transactions, todayStr, debouncedQuery, customerMap]);
 
   // ALL UNPAID ENTRIES: All unsettled NP entries across history (excluding settled / converted)
   const allUnpaidEntries = useMemo(() => {
@@ -294,6 +307,8 @@ export function Entry() {
           !tx.isSettled && tx.status !== 'settled' && !tx.settledAt && 
           !tx.isDeleted;
         if (!isNP) return false;
+        const cust = customerMap.get(tx.customerId);
+        if (!cust || cust.isDeleted) return false;
         return matchesSearch(tx.customerId);
       })
       .sort((a, b) => {
@@ -301,7 +316,7 @@ export function Entry() {
         const timeB = toSafeMillis(b.unsettledAt) || toSafeMillis(b.timestamp);
         return timeB - timeA;
       });
-  }, [transactions, debouncedQuery, customers]);
+  }, [transactions, debouncedQuery, customerMap]);
 
   // Displayed unpaid entries based on scope toggle
   const displayedUnpaidEntries = useMemo(() => {
@@ -504,15 +519,6 @@ export function Entry() {
     }
   };
 
-  // Fast O(1) customer lookup map across all render passes
-  const customerMap = useMemo(() => {
-    const map = new Map<string, Customer>();
-    for (let i = 0; i < customers.length; i++) {
-      map.set(customers[i].id, customers[i]);
-    }
-    return map;
-  }, [customers]);
-
   // Progressive batching for super-smooth 60fps rendering of pending borrower cards
   const [displayLimit, setDisplayLimit] = useState(30);
   useEffect(() => {
@@ -669,45 +675,33 @@ export function Entry() {
             </button>
           </div>
 
-          {/* SEARCH BAR & BULK ENTRY BUTTON */}
-          <div className="flex items-center gap-2">
-            <div className="relative group flex-1">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary opacity-40 group-focus-within:opacity-100 group-focus-within:text-accent transition-all">
-                <Search size={16} />
-              </div>
-              <input 
-                id="entry-search-input"
-                type="text"
-                value={localSearch}
-                onChange={(e) => setLocalSearch(e.target.value)}
-                placeholder="Search name, ID, or phone..."
-                className="w-full pl-10 pr-10 py-3 bg-card border border-border/60 rounded-xl text-xs sm:text-sm font-medium focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/10 transition-all shadow-sm"
-              />
-              <AnimatePresence>
-                {localSearch && (
-                  <motion.button
-                    key="clear-search"
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
-                    onClick={() => setLocalSearch('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-muted flex items-center justify-center rounded-full text-text-secondary hover:bg-border transition-colors"
-                  >
-                    <X size={12} />
-                  </motion.button>
-                )}
-              </AnimatePresence>
+          {/* SEARCH BAR */}
+          <div className="relative group">
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary opacity-40 group-focus-within:opacity-100 group-focus-within:text-accent transition-all">
+              <Search size={16} />
             </div>
-
-            <button
-              type="button"
-              onClick={() => setIsBulkModalOpen(true)}
-              className="px-3.5 py-3 bg-accent/10 hover:bg-accent text-accent hover:text-white border border-accent/30 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all active:scale-95 shadow-xs shrink-0 cursor-pointer"
-              title="Bulk Collection Entry"
-            >
-              <Layers size={16} />
-              <span className="hidden sm:inline">Bulk Entry</span>
-            </button>
+            <input 
+              id="entry-search-input"
+              type="text"
+              value={localSearch}
+              onChange={(e) => setLocalSearch(e.target.value)}
+              placeholder="Search name, ID, or phone..."
+              className="w-full pl-10 pr-10 py-3 bg-card border border-border/60 rounded-xl text-xs sm:text-sm font-medium focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/10 transition-all shadow-sm"
+            />
+            <AnimatePresence>
+              {localSearch && (
+                <motion.button
+                  key="clear-search"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  onClick={() => setLocalSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-muted flex items-center justify-center rounded-full text-text-secondary hover:bg-border transition-colors"
+                >
+                  <X size={12} />
+                </motion.button>
+              )}
+            </AnimatePresence>
           </div>
         </div>
 
@@ -1653,14 +1647,6 @@ export function Entry() {
         }}
       />
 
-      {/* BULK ENTRY MODAL */}
-      <BulkEntryModal
-        isOpen={isBulkModalOpen}
-        onClose={() => setIsBulkModalOpen(false)}
-        customers={customers}
-        todayStr={todayStr}
-        todayLoggedCustomerIds={todayLoggedCustomerIds}
-      />
 
     </PageContainer>
   );

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useRealtimeData } from '../hooks/useRealtimeData';
+import { Customer } from '../services/firestoreService';
 import { format } from 'date-fns';
 import { SyncStatus } from '../components/Dashboard/SyncStatus';
 import { StatsGrid } from '../components/Dashboard/StatsGrid';
@@ -23,18 +24,31 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
 
   const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
 
+  const customerMap = useMemo(() => {
+    const map = new Map<string, Customer>();
+    customers.forEach(c => {
+      if (!c.isDeleted) map.set(c.id, c);
+    });
+    return map;
+  }, [customers]);
+
   const pendingCustomers = useMemo(() => {
     const paidTodaySet = new Set(
       transactions
-        .filter(tx => tx.date === today && !tx.isDeleted && tx.status === 'paid')
+        .filter(tx => {
+          if (tx.date !== today || tx.isDeleted || tx.status !== 'paid') return false;
+          const cust = customerMap.get(tx.customerId);
+          return !!cust && !cust.isDeleted;
+        })
         .map(tx => tx.customerId)
     );
     return customers.filter(c => {
+      if (c.isDeleted) return false;
       const loanAmount = c.loanAmount || c.loan || 0;
       const pendingAmount = c.pending !== undefined ? c.pending : (loanAmount - (c.paid || 0));
       return pendingAmount > 0 && !paidTodaySet.has(c.id);
     });
-  }, [transactions, customers, today]);
+  }, [transactions, customers, today, customerMap]);
 
   const stats = useMemo(() => {
     let cashToday = 0;
@@ -46,6 +60,8 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
 
     transactions.forEach(tx => {
       if (tx.isDeleted) return;
+      const cust = customerMap.get(tx.customerId);
+      if (!cust || cust.isDeleted) return;
 
       if (tx.status === 'unsettled' || tx.type === 'NP') {
         notPaidTotal += tx.amount;
@@ -73,15 +89,19 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string, filter?: a
       phonepeCount,
       notPaidCount,
     };
-  }, [transactions, today]);
+  }, [transactions, today, customerMap]);
 
   const handleTotalClick = () => {
     onNavigate('transactions', 'ALL');
   };
 
   const todayEntriesCount = useMemo(() => {
-    return transactions.filter(tx => tx.date === today && !tx.isDeleted).length;
-  }, [transactions, today]);
+    return transactions.filter(tx => {
+      if (tx.date !== today || tx.isDeleted) return false;
+      const cust = customerMap.get(tx.customerId);
+      return !!cust && !cust.isDeleted;
+    }).length;
+  }, [transactions, today, customerMap]);
 
   if (!isReady) {
     return (

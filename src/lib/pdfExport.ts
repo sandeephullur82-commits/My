@@ -51,8 +51,9 @@ export async function exportTransactionsPDF(
   const aggregatedData: Record<string, { name: string, dates: Record<string, { amount: number, type: 'cash' | 'phonepe' | 'unsettled' | 'NP' }> }> = {};
   
   transactions.forEach(tx => {
+    if (tx.isDeleted) return;
     const customer = customers.find(c => c.id === tx.customerId);
-    if (!customer) return;
+    if (!customer || customer.isDeleted) return;
     
     const cleanNameKey = customer.name.trim().toLowerCase();
     

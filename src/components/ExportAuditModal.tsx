@@ -62,7 +62,8 @@ export function ExportAuditModal({
 
   // Preview counts based on current filters
   const previewData = useMemo(() => {
-    let list = transactions.filter(t => !t.isDeleted);
+    const activeCustomerIds = new Set(customers.filter(c => !c.isDeleted).map(c => c.id));
+    let list = transactions.filter(t => !t.isDeleted && activeCustomerIds.has(t.customerId));
 
     if (startDate && endDate) {
       list = list.filter(t => t.date >= startDate && t.date <= endDate);

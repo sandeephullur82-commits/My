@@ -253,6 +253,121 @@ async function startServer() {
     }
   });
 
+  // Permanently delete customer & all related collections in Firebase
+  const handleCustomerPermanentDelete = async (req: express.Request, res: express.Response) => {
+    const { id } = req.params;
+    const { docPath, knownTxIds } = req.body || {};
+
+    if (!isValidId(id)) {
+      return res.status(400).json({ error: "Invalid customer ID format" });
+    }
+
+    if (!db || !isFirestoreAvailable) {
+      return res.status(503).json({ error: "Database not connected or Firestore Admin not available" });
+    }
+
+    try {
+      console.log(`[Admin Delete] Initiating permanent deletion for customer: ${id}`);
+      let deletedRecords = 0;
+
+      // 1. Delete all entries in root collection 'entries' where customerId == id
+      const rootEntriesSnap = await db.collection("entries").where("customerId", "==", id).get();
+      for (const entryDoc of rootEntriesSnap.docs) {
+        const historySnap = await entryDoc.ref.collection("history").get().catch(() => null);
+        if (historySnap && !historySnap.empty) {
+          const batch = db.batch();
+          historySnap.docs.forEach(h => batch.delete(h.ref));
+          await batch.commit();
+        }
+        await entryDoc.ref.delete();
+        deletedRecords++;
+      }
+
+      // 2. Delete any known transaction IDs
+      if (Array.isArray(knownTxIds)) {
+        for (const txId of knownTxIds) {
+          if (isValidId(txId)) {
+            await db.collection("entries").doc(txId).delete().catch(() => {});
+            deletedRecords++;
+          }
+        }
+      }
+
+      // 3. Delete subcollection customers/{id}/entries
+      const rootCustRef = db.collection("customers").doc(id);
+      const subEntriesSnap = await rootCustRef.collection("entries").get().catch(() => null);
+      if (subEntriesSnap && !subEntriesSnap.empty) {
+        const batch = db.batch();
+        subEntriesSnap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+        deletedRecords += subEntriesSnap.size;
+      }
+
+      // 4. Delete user-scoped customer subcollection and document if docPath provided
+      if (docPath && typeof docPath === "string" && docPath !== rootCustRef.path) {
+        const userSubEntries = await db.collection(`${docPath}/entries`).get().catch(() => null);
+        if (userSubEntries && !userSubEntries.empty) {
+          const batch = db.batch();
+          userSubEntries.docs.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+          deletedRecords += userSubEntries.size;
+        }
+        await db.doc(docPath).delete().catch(() => {});
+        deletedRecords++;
+      }
+
+      // 5. Purge user-scoped customer documents across users collection (e.g. users/{uid}/customers/{id})
+      try {
+        const usersSnap = await db.collection("users").get().catch(() => null);
+        if (usersSnap && !usersSnap.empty) {
+          for (const userDoc of usersSnap.docs) {
+            const userCustRef = userDoc.ref.collection("customers").doc(id);
+            const userCustDoc = await userCustRef.get().catch(() => null);
+            if (userCustDoc && userCustDoc.exists) {
+              const uEntries = await userCustRef.collection("entries").get().catch(() => null);
+              if (uEntries && !uEntries.empty) {
+                const batch = db.batch();
+                uEntries.docs.forEach(d => batch.delete(d.ref));
+                await batch.commit();
+                deletedRecords += uEntries.size;
+              }
+              await userCustRef.delete().catch(() => {});
+              deletedRecords++;
+            }
+
+            // Also purge any user entries belonging to this customer
+            const uEntriesByCust = await userDoc.ref.collection("entries").where("customerId", "==", id).get().catch(() => null);
+            if (uEntriesByCust && !uEntriesByCust.empty) {
+              const batch = db.batch();
+              uEntriesByCust.docs.forEach(d => batch.delete(d.ref));
+              await batch.commit();
+              deletedRecords += uEntriesByCust.size;
+            }
+          }
+        }
+      } catch (userErr) {
+        console.warn("[Admin Delete] User-scoped customer search notice:", userErr);
+      }
+
+      // 6. Delete root customer document
+      await rootCustRef.delete();
+      deletedRecords++;
+
+      console.log(`[Admin Delete] Customer ${id} and ${deletedRecords} records permanently deleted from Firebase.`);
+      return res.json({
+        success: true,
+        message: `Customer ${id} and all related collections permanently deleted from Firebase`,
+        deletedRecords,
+      });
+    } catch (error: any) {
+      console.error(`[Admin Delete] Error permanently deleting customer ${id}:`, error);
+      return res.status(500).json({ error: error?.message || "Failed to permanently delete customer from Firebase" });
+    }
+  };
+
+  app.delete("/api/customers/:id", handleCustomerPermanentDelete);
+  app.post("/api/customers/:id/delete", handleCustomerPermanentDelete);
+
   // Test Notification Endpoint
   app.post("/api/notifications/test", async (req, res) => {
     const { userId, token } = req.body;

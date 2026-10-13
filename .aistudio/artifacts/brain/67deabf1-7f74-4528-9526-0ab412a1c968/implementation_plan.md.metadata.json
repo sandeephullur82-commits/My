@@ -1,0 +1,6 @@
+{
+  "summary": "Implementation plan to support Customer ID reuse and automatic recycling of deleted borrower IDs (e.g., CUST-001). Covers gap-detection in getNextCustomerId, updated uniqueness validation ignoring deleted records, and clean overwrite of past records on registration.",
+  "updatedAt": "2026-10-13T06:56:33.275616683Z",
+  "requestFeedback": true,
+  "userFacing": true
+}

@@ -141,6 +141,51 @@ export const cacheStorage = {
   },
 
   /**
+   * Purges a customer and all their associated transactions from IndexedDB and localStorage caches
+   */
+  async removeCustomerAndTransactions(customerId: string): Promise<void> {
+    try {
+      const db = await getDb();
+      const tx = db.transaction([STORE_CUSTOMERS, STORE_TRANSACTIONS], 'readwrite');
+      const custStore = tx.objectStore(STORE_CUSTOMERS);
+      const txStore = tx.objectStore(STORE_TRANSACTIONS);
+
+      await custStore.delete(customerId);
+
+      const allTx = await txStore.getAll();
+      for (const t of allTx) {
+        if (t && t.customerId === customerId) {
+          await txStore.delete(t.id);
+        }
+      }
+      await tx.done;
+    } catch {
+      // Fallback
+    }
+
+    try {
+      const cachedCust = localStorage.getItem('cache_customers');
+      if (cachedCust) {
+        const parsed = JSON.parse(cachedCust);
+        if (Array.isArray(parsed)) {
+          const updated = parsed.filter((c: any) => c.id !== customerId);
+          localStorage.setItem('cache_customers', JSON.stringify(updated));
+        }
+      }
+      const cachedTx = localStorage.getItem('cache_transactions');
+      if (cachedTx) {
+        const parsed = JSON.parse(cachedTx);
+        if (Array.isArray(parsed)) {
+          const updated = parsed.filter((t: any) => t.customerId !== customerId);
+          localStorage.setItem('cache_transactions', JSON.stringify(updated));
+        }
+      }
+    } catch {
+      // ignore
+    }
+  },
+
+  /**
    * Clears cached records
    */
   async clearCache(): Promise<void> {

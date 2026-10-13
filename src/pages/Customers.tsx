@@ -14,6 +14,7 @@ import { Skeleton } from '../components/Skeleton';
 import { useUI } from '../context/UIContext';
 import { WithdrawDepositModal } from '../components/WithdrawDepositModal';
 import { ReceiptSuccessModal, ReceiptData } from '../components/ReceiptSuccessModal';
+import { DeleteCustomerModal } from '../components/DeleteCustomerModal';
 import { useFeedback } from '../context/FeedbackContext';
 
 interface CustomersProps {
@@ -63,6 +64,7 @@ export function Customers({ onNavigate }: CustomersProps) {
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
   const [activeSwipeId, setActiveSwipeId] = useState<string | null>(null);
   const [localDeletedIds, setLocalDeletedIds] = useState<string[]>([]);
+  const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
   
   const [showFilterSheet, setShowFilterSheet] = useState(false);
   const [showSortSheet, setShowSortSheet] = useState(false);
@@ -70,12 +72,12 @@ export function Customers({ onNavigate }: CustomersProps) {
   // Sync modal & customer details state with UI context
   useEffect(() => {
     setIsCustomerDetailsOpen(!!selectedCustomer);
-    setIsModalOpen(!!selectedCustomer || !!editCustomer || showAdd || !!newLoanCustomer || !!withdrawCustomer || !!selectedReceipt);
+    setIsModalOpen(!!selectedCustomer || !!editCustomer || showAdd || !!newLoanCustomer || !!withdrawCustomer || !!selectedReceipt || !!customerToDelete);
     return () => {
        setIsCustomerDetailsOpen(false);
        setIsModalOpen(false);
     };
-  }, [selectedCustomer, editCustomer, showAdd, newLoanCustomer, withdrawCustomer, selectedReceipt, setIsModalOpen, setIsCustomerDetailsOpen]);
+  }, [selectedCustomer, editCustomer, showAdd, newLoanCustomer, withdrawCustomer, selectedReceipt, customerToDelete, setIsModalOpen, setIsCustomerDetailsOpen]);
 
   const filterOptions = [
     { value: 'all', label: 'All Accounts' },
@@ -346,6 +348,7 @@ export function Customers({ onNavigate }: CustomersProps) {
           `${newCustomer.name} (${newCustomer.id}) is now active.`
         );
       }
+      setLocalDeletedIds(prev => prev.filter(x => x !== newCustomer.id));
       setShowAdd(false);
       setAddCustomerDefaults(null);
     } catch (error: any) {
@@ -353,31 +356,41 @@ export function Customers({ onNavigate }: CustomersProps) {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
+  const handleDeleteRequest = (idOrCustomer: string | Customer, name?: string) => {
+    let target: Customer | undefined;
+    if (typeof idOrCustomer === 'string') {
+      target = customers.find(c => c.id === idOrCustomer) || 
+               (selectedCustomer?.id === idOrCustomer ? selectedCustomer : undefined) || 
+               (editCustomer?.id === idOrCustomer ? editCustomer : undefined);
+    } else {
+      target = idOrCustomer;
+    }
+    if (target) {
+      setCustomerToDelete(target);
+    }
+  };
+
+  const handleConfirmDelete = async (targetCustomer: Customer, knownTxIds: string[]) => {
+    const id = targetCustomer.id;
+    const name = targetCustomer.name;
+
     // Optimistically hide card from UI instantly to avoid lagging list
     setLocalDeletedIds(prev => [...prev, id]);
 
-    toastAction({
-      title: 'Customer Deleted',
-      message: `${name} has been removed from your list.`,
-      label: 'Undo',
-      isUndo: true,
-      onCommit: async () => {
-        try {
-          await firestoreService.deleteCustomer(id);
-        } catch (error) {
-          setLocalDeletedIds(prev => prev.filter(x => x !== id));
-          toastError('Delete Failed', `Could not delete ${name}.`);
-        }
-      },
-      onUndo: () => {
-        setLocalDeletedIds(prev => prev.filter(x => x !== id));
-        toastSuccess('Restored', `${name} is back in place.`);
-      }
-    });
-
     if (selectedCustomer?.id === id) setSelectedCustomer(null);
     if (editCustomer?.id === id) setEditCustomer(null);
+    setCustomerToDelete(null);
+
+    try {
+      await firestoreService.deleteCustomer(id, targetCustomer.docPath, knownTxIds);
+      toastSuccess(
+        'Customer Permanently Deleted',
+        `${name} and all related transaction records have been permanently deleted.`
+      );
+    } catch (error) {
+      setLocalDeletedIds(prev => prev.filter(x => x !== id));
+      toastError('Delete Failed', `Could not delete ${name}.`);
+    }
   };
 
   return (
@@ -687,7 +700,7 @@ export function Customers({ onNavigate }: CustomersProps) {
                     onClick={() => setSelectedCustomer(customer)}
                     onAddEntry={() => onNavigate?.('entry', undefined, customer.id)}
                     onEdit={() => setEditCustomer(customer)}
-                    onDelete={() => handleDelete(customer.id, customer.name)}
+                    onDelete={() => handleDeleteRequest(customer)}
                     onTogglePin={() => handleTogglePin(customer)}
                     onStartNewLoan={() => setNewLoanCustomer(customer)}
                     onWithdraw={(cust) => setWithdrawCustomer(cust)}
@@ -737,7 +750,10 @@ export function Customers({ onNavigate }: CustomersProps) {
                 setSelectedCustomer(null);
               }}
               onEdit={() => setEditCustomer(selectedCustomer)}
-              onDelete={(id) => handleDelete(id, selectedCustomer.name)}
+              onDelete={(id) => {
+                setLocalDeletedIds(prev => [...prev, id]);
+                setSelectedCustomer(null);
+              }}
               onTogglePin={() => handleTogglePin(selectedCustomer)}
             />
           )}
@@ -755,7 +771,7 @@ export function Customers({ onNavigate }: CustomersProps) {
               customer={editCustomer} 
               onSave={handleSaveCustomer}
               onCancel={() => setEditCustomer(null)} 
-              onDelete={handleDelete}
+              onDelete={(id, name) => handleDeleteRequest(id, name)}
             />
           )}
         </BottomSheet>
@@ -800,6 +816,15 @@ export function Customers({ onNavigate }: CustomersProps) {
             onStartNewLoan={() => setNewLoanCustomer(selectedReceipt.customer)}
           />
         )}
+
+        {/* DELETE CONFIRMATION & BACKUP MODAL */}
+        <DeleteCustomerModal
+          isOpen={!!customerToDelete}
+          customer={customerToDelete}
+          transactions={transactions}
+          onClose={() => setCustomerToDelete(null)}
+          onConfirmDelete={handleConfirmDelete}
+        />
       </div>
     </PageContainer>
   );

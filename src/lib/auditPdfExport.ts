@@ -30,8 +30,9 @@ export async function generateAuditReportPDF(
     generatedBy = 'Authorized Auditor'
   } = options;
 
-  // Filter out soft-deleted transactions
-  let filtered = transactions.filter(t => !t.isDeleted);
+  // Filter out soft-deleted transactions and deleted customer entries
+  const activeCustomerIds = new Set(customers.filter(c => !c.isDeleted).map(c => c.id));
+  let filtered = transactions.filter(t => !t.isDeleted && (activeCustomerIds.size === 0 || activeCustomerIds.has(t.customerId)));
 
   // Apply Date Range
   if (startDate && endDate) {

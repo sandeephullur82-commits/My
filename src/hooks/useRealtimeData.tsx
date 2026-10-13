@@ -114,14 +114,32 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refreshKey]);
 
+  // Run one-time background cleanup of orphaned entries for deleted customers
+  useEffect(() => {
+    firestoreService.cleanupOrphanedEntries().catch(() => {});
+  }, []);
+
   const refreshData = () => {
     setLoading(true);
     setError(null);
     setRefreshKey(prev => prev + 1);
   };
 
+  // Set of non-deleted active customer IDs
+  const activeCustomerIds = React.useMemo(() => {
+    return new Set(customers.filter(c => !c.isDeleted).map(c => c.id));
+  }, [customers]);
+
+  // Strictly filter transactions: exclude soft-deleted transactions AND entries belonging to deleted customers
+  const activeTransactions = React.useMemo(() => {
+    if (customers.length === 0) {
+      return transactions.filter(t => !t.isDeleted);
+    }
+    return transactions.filter(t => !t.isDeleted && activeCustomerIds.has(t.customerId));
+  }, [transactions, activeCustomerIds, customers.length]);
+
   return (
-    <DataContext.Provider value={{ customers, transactions, loading, error, refreshData }}>
+    <DataContext.Provider value={{ customers, transactions: activeTransactions, loading, error, refreshData }}>
       {children}
     </DataContext.Provider>
   );

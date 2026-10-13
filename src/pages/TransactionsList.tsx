@@ -42,7 +42,9 @@ export function TransactionsList() {
   const customerMap = useMemo(() => {
     const map = new Map<string, Customer>();
     for (let i = 0; i < customers.length; i++) {
-      map.set(customers[i].id, customers[i]);
+      if (!customers[i].isDeleted) {
+        map.set(customers[i].id, customers[i]);
+      }
     }
     return map;
   }, [customers]);
@@ -122,6 +124,10 @@ export function TransactionsList() {
     return transactions.filter(tx => {
       if (tx.isDeleted) return false;
 
+      // Always require an active, non-deleted customer
+      const customer = customerMap.get(tx.customerId);
+      if (!customer || customer.isDeleted) return false;
+
       // 1. Status/Type Filter
       if (filter !== 'ALL') {
         if (filter === 'UNSETTLED') {
@@ -134,9 +140,6 @@ export function TransactionsList() {
 
       // 2. Search Logic
       if (debouncedQuery) {
-        const customer = customerMap.get(tx.customerId);
-        if (!customer) return false;
-        
         const nameMatch = customer.name.toLowerCase().includes(debouncedQuery);
         const phoneMatch = customer.phone.includes(debouncedQuery);
         const isNumeric = /^\d+$/.test(debouncedQuery);
@@ -161,13 +164,16 @@ export function TransactionsList() {
     const counts = { ALL: 0, CASH: 0, PHONEPE: 0, UNSETTLED: 0 };
     transactions.forEach(tx => {
       if (tx.isDeleted) return;
+      const customer = customerMap.get(tx.customerId);
+      if (!customer || customer.isDeleted) return;
+
       counts.ALL++;
       if (tx.type === 'cash' && tx.status === 'paid') counts.CASH++;
       if (tx.type === 'phonepe' && tx.status === 'paid') counts.PHONEPE++;
       if (tx.status === 'unsettled' || tx.type === 'NP' || tx.type === 'unsettled') counts.UNSETTLED++;
     });
     return counts;
-  }, [transactions]);
+  }, [transactions, customerMap]);
 
 
   // Group transactions by date with totals
