@@ -216,7 +216,7 @@ export function Entry() {
         const nameMatch = c.name.toLowerCase().includes(cleanQuery);
         const phone = (c.phone || '').replace(/\D/g, '');
         const phoneMatch = queryDigits.length > 0 && phone.includes(queryDigits);
-        const idPart = String(c.displayId || c.id).toLowerCase();
+        const idPart = String(c.id).toLowerCase();
         const idMatch = idPart.includes(cleanQuery);
         return nameMatch || phoneMatch || idMatch;
       });
@@ -243,7 +243,7 @@ export function Entry() {
       const nameMatch = customer.name.toLowerCase().includes(cleanQuery);
       const phone = (customer.phone || '').replace(/\D/g, '');
       const phoneMatch = queryDigits.length > 0 && phone.includes(queryDigits);
-      const idPart = String(customer.displayId || customer.id).toLowerCase();
+      const idPart = String(customer.id).toLowerCase();
       const idMatch = idPart.includes(cleanQuery);
       if (nameMatch || phoneMatch || idMatch) {
         matched.add(customer.id);
@@ -1201,8 +1201,7 @@ export function Entry() {
                     phone: (tx as any).customerPhone || '',
                     loanAmount: tx.amount,
                     paid: 0,
-                    pending: tx.amount,
-                    displayId: (tx as any).displayId || ''
+                    pending: tx.amount
                   };
                   const customerLoan = customer ? (customer.loanAmount || customer.loan || 0) : 0;
                   const customerPaid = customer ? (customer.paid || 0) : 0;

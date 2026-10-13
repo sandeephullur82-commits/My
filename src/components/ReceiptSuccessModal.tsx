@@ -292,7 +292,7 @@ export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: Receip
                   Account ID
                 </p>
                 <span className="inline-block mt-0.5 px-2 py-0.5 rounded-md bg-accent/10 text-accent font-mono font-bold text-xs">
-                  #{customer.displayId || customer.id}
+                  #{customer.id}
                 </span>
               </div>
             </div>

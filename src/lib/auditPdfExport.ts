@@ -173,7 +173,7 @@ export async function generateAuditReportPDF(
     doc.text(`Customer Scope: `, 14, cursorY);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(15, 23, 42);
-    doc.text(`${singleCustomer.name} (ID: ${singleCustomer.displayId || singleCustomer.id})`, 38, cursorY);
+    doc.text(`${singleCustomer.name} (ID: ${singleCustomer.id})`, 38, cursorY);
     cursorY += 5;
   }
 
@@ -265,7 +265,7 @@ export async function generateAuditReportPDF(
     const cust = customerMap.get(tx.customerId);
     const dateFormatted = safeFormat(tx.timestamp || tx.date, 'dd/MM/yyyy hh:mm a', '—');
     const custName = cust?.name || 'Unknown';
-    const accOrMob = cust?.displayId ? `#${cust.displayId}` : cust?.phone || '-';
+    const accOrMob = cust?.id ? `#${cust.id}` : cust?.phone || '-';
     const modeLabel = tx.type === 'phonepe' ? 'UPI / PhonePe' : (tx.type === 'NP' || tx.type === 'unsettled') ? 'NP' : tx.type === 'cash' ? 'Cash' : tx.type;
     const statusLabel = tx.status === 'unsettled' ? 'Unsettled' : 'Paid';
     const amountStr = tx.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 });

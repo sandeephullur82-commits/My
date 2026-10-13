@@ -85,7 +85,6 @@ export function DeleteCustomerModal({
       const profileData = [
         { "Section": "CUSTOMER PROFILE", "Field": "Customer Name", "Value": customer.name },
         { "Section": "CUSTOMER PROFILE", "Field": "Customer ID", "Value": customer.id },
-        { "Section": "CUSTOMER PROFILE", "Field": "Display ID", "Value": customer.displayId ? `#${customer.displayId}` : 'N/A' },
         { "Section": "CUSTOMER PROFILE", "Field": "Phone Number", "Value": customer.phone || 'N/A' },
         { "Section": "CUSTOMER PROFILE", "Field": "Account Type", "Value": isSaving ? 'Saving' : 'Loan' },
         { "Section": "CUSTOMER PROFILE", "Field": isSaving ? "Target Deposit (₹)" : "Loan Amount (₹)", "Value": loanAmount },
@@ -210,7 +209,7 @@ export function DeleteCustomerModal({
                   {customer.name}
                 </h4>
                 <div className="flex items-center gap-2 mt-0.5 text-xs text-text-secondary font-medium">
-                  {customer.displayId && <span>ID: #{customer.displayId}</span>}
+                  <span>ID: #{customer.id}</span>
                   <span>•</span>
                   <span>{customer.phone || 'No phone'}</span>
                 </div>

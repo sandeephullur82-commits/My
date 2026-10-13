@@ -179,7 +179,7 @@ export function WithdrawDepositModal({
               <div className="min-w-0 pr-2">
                 <p className="font-black text-white truncate">{customer.name}</p>
                 <p className="text-[10px] text-amber-100 font-medium">
-                  ID: #{customer.displayId || customer.id} {customer.phone ? `• ${customer.phone}` : ''}
+                  ID: #{customer.id} {customer.phone ? `• ${customer.phone}` : ''}
                 </p>
               </div>
               <div className="text-right shrink-0">

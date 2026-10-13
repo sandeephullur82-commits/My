@@ -302,7 +302,7 @@ export async function generateReceiptImage(data: ReceiptData): Promise<Generated
   curY += 16;
 
   ctx.font = '10px monospace, sans-serif';
-  ctx.fillText(`Account ID: #${customer.displayId || customer.id}`, margin, curY);
+  ctx.fillText(`Account ID: #${customer.id}`, margin, curY);
   if (customer.phone) {
     ctx.fillText(`Phone: ${customer.phone}`, logicalWidth / 2, curY);
   }

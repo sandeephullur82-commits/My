@@ -232,7 +232,7 @@ export function generateReceiptPDF(data: ReceiptData): GeneratedReceipt {
   };
 
   renderDataRow('Customer Name', customer.name, true, [15, 23, 42]);
-  renderDataRow('Account Number', `#${customer.displayId || customer.id}`, true, [37, 99, 235]);
+  renderDataRow('Account Number', `#${customer.id}`, true, [37, 99, 235]);
   if (customer.phone) {
     renderDataRow('Contact Phone', customer.phone, false, [51, 65, 85]);
   }

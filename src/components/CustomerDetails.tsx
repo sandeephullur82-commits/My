@@ -71,7 +71,7 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
     .filter(tx => tx.customerId === customer.id)
     .sort((a, b) => b.timestamp - a.timestamp);
 
-  const displayId = customer.displayId || customer.id;
+  const displayId = customer.id;
   const loanAmount = customer.loanAmount || customer.loan || 0;
   const pendingAmount = customer.pending !== undefined ? customer.pending : (loanAmount - (customer.paid || 0));
   const paidAmount = customer.paid || 0;

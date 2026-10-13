@@ -150,8 +150,8 @@ export async function exportMasterToExcel(
   const customerRows = customers
     .filter(c => !c.isDeleted)
     .sort((a, b) => {
-      const idA = a.displayId || a.id;
-      const idB = b.displayId || b.id;
+      const idA = a.id;
+      const idB = b.id;
       return String(idA).localeCompare(String(idB), undefined, { numeric: true });
     })
     .map(c => {
@@ -164,7 +164,6 @@ export async function exportMasterToExcel(
 
       return {
         "Customer ID": c.id,
-        "Display ID": c.displayId || c.id,
         "Customer Name": c.name,
         "Phone Number": c.phone || '—',
         "Loan Amount (₹)": loan,
@@ -197,7 +196,7 @@ export async function exportMasterToExcel(
       "Transaction ID": t.id,
       "Date": dateFormatted,
       "Time": timeFormatted,
-      "Customer Display ID": cust?.displayId || cust?.id || t.customerId,
+      "Customer ID": cust?.id || t.customerId,
       "Customer Name": cust?.name || 'Unknown Borrower',
       "Phone": cust?.phone || '—',
       "Amount (₹)": t.amount,
@@ -381,8 +380,8 @@ export async function generateMasterPDFReport(
   const customerRows = customers
     .filter(c => !c.isDeleted)
     .sort((a, b) => {
-      const idA = a.displayId || a.id;
-      const idB = b.displayId || b.id;
+      const idA = a.id;
+      const idB = b.id;
       return String(idA).localeCompare(String(idB), undefined, { numeric: true });
     })
     .map(c => {
@@ -395,7 +394,7 @@ export async function generateMasterPDFReport(
       const duration = c.durationDays || (c.startDate && c.endDate ? Math.max(1, Math.round((c.endDate - c.startDate) / 86400000)) : '—');
 
       return [
-        c.displayId || c.id.slice(0, 8),
+        c.id.slice(0, 8),
         c.name,
         c.phone || '—',
         `Rs. ${loan.toLocaleString('en-IN')}`,
@@ -485,7 +484,7 @@ export async function generateMasterPDFReport(
       dateFormatted,
       timeFormatted,
       t.id.slice(0, 10),
-      cust?.displayId || cust?.id.slice(0, 6) || '—',
+      cust?.id.slice(0, 8) || '—',
       cust?.name || 'Unknown Borrower',
       mode,
       status,

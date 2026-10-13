@@ -99,7 +99,7 @@ function buildEscPosData(data: ReceiptData): Uint8Array {
   addCmd([0x1b, 0x45, 0x01]); // Bold on
   addText(`Customer   : ${customer.name}\n`);
   addCmd([0x1b, 0x45, 0x00]); // Bold off
-  addText(`Account ID : #${customer.displayId || customer.id}\n`);
+  addText(`Account ID : #${customer.id}\n`);
   if (customer.phone) {
     addText(`Phone      : ${customer.phone}\n`);
   }
@@ -439,7 +439,7 @@ export function printViaSystemThermal(data: ReceiptData): void {
         </div>
         <div class="meta-row">
           <span class="meta-label">Account / ID:</span>
-          <span class="meta-value">#${customer.displayId || customer.id}</span>
+          <span class="meta-value">#${customer.id}</span>
         </div>
         ${customer.phone ? `
           <div class="meta-row">

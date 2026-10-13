@@ -170,11 +170,9 @@ export function QuickPaymentModal({ customer, isOpen, onClose, onSuccess }: Quic
                   <h3 id="quick-payment-title" className="text-base font-black text-text-primary uppercase tracking-tight truncate">
                     {customer.name}
                   </h3>
-                  {customer.displayId && (
-                    <span className="text-[10px] font-mono font-bold bg-muted px-1.5 py-0.5 rounded text-text-secondary">
-                      #{customer.displayId}
-                    </span>
-                  )}
+                  <span className="text-[10px] font-mono font-bold bg-muted px-1.5 py-0.5 rounded text-text-secondary">
+                    #{customer.id}
+                  </span>
                 </div>
                 <p className={`text-[11px] font-bold ${isAdvance ? 'text-sky-600 dark:text-sky-400' : 'text-accent'} uppercase tracking-wider flex items-center gap-1 mt-0.5`}>
                   <Sparkles size={11} aria-hidden="true" />

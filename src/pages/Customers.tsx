@@ -200,7 +200,7 @@ export function Customers({ onNavigate }: CustomersProps) {
       // Smart Search Logic
       if (debouncedQuery) {
         const cleanQuery = debouncedQuery.trim();
-        const idPart = String(c.displayId || c.id).toLowerCase();
+        const idPart = String(c.id).toLowerCase();
         const phone = (c.phone || '').replace(/\D/g, '');
         const queryDigits = cleanQuery.replace(/\D/g, '');
         const nameMatch = c.name.toLowerCase().includes(cleanQuery);
@@ -232,8 +232,8 @@ export function Customers({ onNavigate }: CustomersProps) {
         return lastB - lastA;
       }
 
-      const idA = String(a.displayId || a.id);
-      const idB = String(b.displayId || b.id);
+      const idA = String(a.id);
+      const idB = String(b.id);
       const numA = parseInt(idA.replace(/\D/g, '')) || 0;
       const numB = parseInt(idB.replace(/\D/g, '')) || 0;
       
@@ -316,7 +316,7 @@ export function Customers({ onNavigate }: CustomersProps) {
       if (existingLoan) {
         toastError(
           'Dual Loan Not Allowed', 
-          `An active loan already exists for ${newCustomer.name} (+91 ${cleanPhone}) under ID ${existingLoan.displayId || existingLoan.id}. You cannot create a second loan with the same name and phone, but you can create a Saving account.`
+          `An active loan already exists for ${newCustomer.name} (+91 ${cleanPhone}) under ID ${existingLoan.id}. You cannot create a second loan with the same name and phone, but you can create a Saving account.`
         );
         return;
       }
@@ -763,7 +763,7 @@ export function Customers({ onNavigate }: CustomersProps) {
           isOpen={!!editCustomer}
           onClose={() => setEditCustomer(null)}
           title="Edit Customer"
-          subtitle={`ID: ${editCustomer?.displayId || editCustomer?.id || ''}`}
+          subtitle={`ID: ${editCustomer?.id || ''}`}
           maxWidth="max-w-2xl lg:max-w-3xl"
         >
           {editCustomer && (

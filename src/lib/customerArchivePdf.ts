@@ -185,8 +185,8 @@ export async function generateCustomerArchivePDF(
       customer.id || 'N/A',
     ],
     [
-      { content: 'Display / Serial ID', styles: { fontStyle: 'bold' } },
-      customer.displayId ? `#${customer.displayId}` : 'N/A',
+      { content: 'System ID', styles: { fontStyle: 'bold' } },
+      customer.id || 'N/A',
       { content: 'Primary Phone', styles: { fontStyle: 'bold' } },
       customer.phone || 'N/A',
     ],

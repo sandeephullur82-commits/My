@@ -166,10 +166,10 @@ export function CustomerForm({
 
   const [idSuffix, setIdSuffix] = useState(() => {
     if ((isEdit || isNewLoan) && customer) {
-      if (typeof customer.displayId === 'string' && customer.displayId.includes('-')) {
-        return customer.displayId.split('-')[1];
+      if (typeof customer.id === 'string' && customer.id.includes('-')) {
+        return customer.id.split('-')[1];
       }
-      return String(customer.displayId || customer.id.replace('CUST-', ''));
+      return String(customer.id.replace('CUST-', ''));
     }
     return '001';
   });
@@ -948,6 +948,8 @@ export function CustomerForm({
                 <input
                   id="customer-input-id-suffix"
                   type="number"
+                  min="1"
+                  max="999"
                   required
                   aria-required="true"
                   aria-label="Account ID suffix"

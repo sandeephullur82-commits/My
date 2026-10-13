@@ -229,7 +229,7 @@ export function ExportAuditModal({
               <option value="ALL">All Customers</option>
               {customers.map(c => (
                 <option key={c.id} value={c.id}>
-                  {c.name} ({c.displayId ? `#${c.displayId}` : c.phone || c.id.slice(0, 6)})
+                  {c.name} ({c.phone || c.id})
                 </option>
               ))}
             </select>

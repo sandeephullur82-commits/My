@@ -99,7 +99,7 @@ export const CustomerCard = React.memo(function CustomerCard({
   }, [propLastActivity, transactions, customer.id]);
 
   const isSaving = customer.accountType === 'saving';
-  const displayId = String(customer.displayId || customer.id);
+  const displayId = String(customer.id);
   const loanAmount = isSaving ? (customer.targetDeposit || 0) : (customer.loanAmount || customer.loan || 0);
   const pendingAmount = isSaving ? 0 : (customer.pending !== undefined ? customer.pending : (loanAmount - (customer.paid || 0)));
   const paidAmount = customer.paid || 0;

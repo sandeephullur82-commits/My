@@ -165,7 +165,7 @@ export function DashboardRenewalSection({ customers, onNavigate }: DashboardRene
                           {customer.name}
                         </span>
                         <span className="text-[10px] font-bold text-text-secondary opacity-60 font-mono">
-                          #{customer.displayId || customer.id}
+                          #{customer.id}
                         </span>
                         {currentCycle > 1 && (
                           <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md bg-muted text-text-secondary">

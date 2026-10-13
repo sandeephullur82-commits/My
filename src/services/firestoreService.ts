@@ -58,7 +58,6 @@ export interface MaturedRenewalData {
 export interface Customer {
   id: string;
   docPath?: string;
-  displayId?: string | number;
   name: string;
   phone: string;
   loan: number;
@@ -471,8 +470,8 @@ export const firestoreService = {
         if (existingLoan) {
           return {
             allowed: false,
-            existingLoanId: existingLoan.displayId ? String(existingLoan.displayId) : existingLoan.id,
-            reason: `Dual loan not allowed: An active loan already exists for ${name} (+91 ${cleanPhone}) under ID ${existingLoan.displayId || existingLoan.id}. You cannot create a second loan with the same name and phone, but you can create a Saving account.`
+            existingLoanId: existingLoan.id,
+            reason: `Dual loan not allowed: An active loan already exists for ${name} (+91 ${cleanPhone}) under ID ${existingLoan.id}. You cannot create a second loan with the same name and phone, but you can create a Saving account.`
           };
         }
         return { allowed: true };
