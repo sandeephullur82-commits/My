@@ -55,10 +55,10 @@ export function CustomerForm({
         accountType: (customer.accountType || 'loan') as 'loan' | 'saving',
         loan: defaultLoanAmt,
         notes: isRenewal
-          ? `Cycle #${nextCycle} Renewal`
+          ? `Loan Renewal`
           : (accruedAdvance > 0 
-              ? `Cycle #${nextCycle} New Loan (₹${accruedAdvance.toLocaleString('en-IN')} Advance Applied)` 
-              : `Cycle #${nextCycle} New Loan`),
+              ? `New Loan (₹${accruedAdvance.toLocaleString('en-IN')} Advance Applied)` 
+              : `New Loan`),
         startDate: format(new Date(), 'yyyy-MM-dd'),
         duration: dur,
         frequency: initialFreq,
@@ -441,8 +441,8 @@ export function CustomerForm({
         toast.error('Customer reference missing for loan renewal');
         return;
       }
-      if (totalLoanWithInterest <= 0) {
-        toast.error('Please enter a valid loan amount (> ₹0)');
+      if (totalLoanWithInterest < 0) {
+        toast.error('Please enter a valid loan amount (>= ₹0)');
         return;
       }
       if ((formData.duration || 0) < 1) {
@@ -458,8 +458,8 @@ export function CustomerForm({
         const endMs = isValid(endParsed) ? endParsed.getTime() : addDays(startMs, formData.duration || 100).getTime();
 
         const defaultNotes = isRenewal
-          ? `Cycle #${nextCycle} Renewal (Principal ₹${principalAmountNum.toLocaleString('en-IN')}${hasInterest && interestAmount > 0 ? ` + ₹${interestAmount.toLocaleString('en-IN')} Interest @ ${interestRate}%` : ''})`
-          : (effectiveAdvanceToApply > 0 ? `Cycle #${nextCycle} New Loan (₹${effectiveAdvanceToApply.toLocaleString('en-IN')} Advance Applied)` : `Cycle #${nextCycle} New Loan`);
+          ? `Loan Renewal (Principal ₹${principalAmountNum.toLocaleString('en-IN')}${hasInterest && interestAmount > 0 ? ` + ₹${interestAmount.toLocaleString('en-IN')} Interest @ ${interestRate}%` : ''})`
+          : (effectiveAdvanceToApply > 0 ? `New Loan (₹${effectiveAdvanceToApply.toLocaleString('en-IN')} Advance Applied)` : `New Loan`);
 
         const payload: RenewalData = {
           newLoanAmount: totalLoanWithInterest,
@@ -489,9 +489,9 @@ export function CustomerForm({
         ).catch((err) => console.warn('Could not post renewal notification:', err));
 
         if (effectiveAdvanceToApply > 0) {
-          toast.success(`🎉 ${isRenewal ? 'Loan renewed' : 'New Loan started'} for ${customer.name} (Cycle #${nextCycle})! ₹${effectiveAdvanceToApply.toLocaleString('en-IN')} Advance applied.`);
+          toast.success(`🎉 ${isRenewal ? 'Loan renewed' : 'New Loan started'} for ${customer.name}! ₹${effectiveAdvanceToApply.toLocaleString('en-IN')} Advance applied.`);
         } else {
-          toast.success(`🎉 ${isRenewal ? 'Loan renewed' : 'New Loan started'} for ${customer.name} (Cycle #${nextCycle})!`);
+          toast.success(`🎉 ${isRenewal ? 'Loan renewed' : 'New Loan started'} for ${customer.name}!`);
         }
 
         if (onSuccess) onSuccess(updatedCustomer);
@@ -516,9 +516,9 @@ export function CustomerForm({
     // Validate New Customer or Edit Customer flow
     const cleanPhone = formData.phone.replace(/\D/g, '').slice(-10);
     const isSaving = formData.accountType === 'saving';
-    if (!formData.name || (!isSaving && !formData.loan) || (!isIdUnique && !isEdit) || cleanPhone.length !== 10 || (!isSaving && Number(formData.loan) <= 0)) {
+    if (!formData.name || (!isSaving && (formData.loan === '' || formData.loan === undefined)) || (!isIdUnique && !isEdit) || cleanPhone.length !== 10 || (!isSaving && Number(formData.loan) < 0)) {
       if (cleanPhone.length !== 10) toast.error('Enter valid 10-digit phone number');
-      if (!isSaving && Number(formData.loan) <= 0) toast.error('Enter valid loan amount (> ₹0)');
+      if (!isSaving && Number(formData.loan) < 0) toast.error('Enter valid loan amount (>= ₹0)');
       if (!isIdUnique && !isEdit) toast.error('ID already used');
       return;
     }
@@ -653,7 +653,7 @@ export function CustomerForm({
                     ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25'
                     : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/25'
                 }`}>
-                  {isRenewal ? `Renewal • #${nextCycle}` : `Cycle #${nextCycle}`}
+                  {isRenewal ? 'Loan Renewal' : 'New Loan'}
                 </span>
               )}
             </div>
@@ -674,7 +674,7 @@ export function CustomerForm({
                 <div className="flex items-center gap-2.5">
                   <RotateCcw size={15} className="text-amber-600 dark:text-amber-400" />
                   <span className="text-xs font-bold text-amber-700 dark:text-amber-300">
-                    Cycle #{currentCycle} Unpaid Balance
+                    Previous Unpaid Balance
                   </span>
                 </div>
                 <span className="text-xs font-mono font-black text-amber-600 dark:text-amber-400">
@@ -686,7 +686,7 @@ export function CustomerForm({
                 <div className="flex items-center gap-2.5">
                   <CheckCircle2 size={15} className="text-emerald-600 dark:text-emerald-400" />
                   <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300">
-                    Cycle #{currentCycle} Fully Cleared
+                    Previous Loan Fully Cleared
                   </span>
                 </div>
                 <span className="text-xs font-mono font-black text-emerald-600 dark:text-emerald-400">
@@ -718,7 +718,7 @@ export function CustomerForm({
                       className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500 border-border cursor-pointer"
                     />
                     <span className="text-[11px] font-semibold text-text-primary">
-                      Apply as initial credit on Cycle #{nextCycle}
+                      Apply as initial credit
                     </span>
                   </label>
                   {applyAdvance && (
@@ -1017,8 +1017,8 @@ export function CustomerForm({
               <div>
                 <label htmlFor="customer-input-loan" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] ml-1 mb-1.5 block">
                   {isRenewal 
-                      ? `Renewal Principal (Cycle #${nextCycle})` 
-                      : (isNewLoan ? `New Loan Principal (Cycle #${nextCycle})` : 'Loan Amount')}
+                      ? `Renewal Principal` 
+                      : (isNewLoan ? `New Loan Principal` : 'Loan Amount')}
                 </label>
                 <div className="flex items-start gap-2">
                   <div className="flex-1 min-w-0">
@@ -1043,7 +1043,7 @@ export function CustomerForm({
                         <input
                           id="customer-input-loan"
                           type="number"
-                          min="500"
+                          min="0"
                           step="500"
                           required
                           aria-required="true"
@@ -1730,7 +1730,7 @@ export function CustomerForm({
             value={formData.notes}
             onChange={e => setFormData({ ...formData, notes: e.target.value })}
             className="w-full bg-bg border border-border/60 rounded-2xl p-4 min-h-[90px] focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/5 transition-all text-[13px]"
-            placeholder={isRenewal ? `e.g. Cycle #${nextCycle} Restructured with interest` : (isNewLoan ? `e.g. Cycle #${nextCycle} Disbursed` : "Add any additional details here...")}
+            placeholder={isRenewal ? `e.g. Loan Restructured with interest` : (isNewLoan ? `e.g. Loan Disbursed` : "Add any additional details here...")}
           />
         </div>
 
@@ -1768,8 +1768,8 @@ export function CustomerForm({
             disabled={
               isSubmitting ||
               (isNewLoan 
-                ? (totalLoanWithInterest <= 0 || (formData.duration || 0) < 1)
-                : ((!isIdUnique && !isEdit) || formData.phone.replace(/\D/g, '').slice(-10).length !== 10 || (formData.accountType !== 'saving' && Number(formData.loan) <= 0) || (duplicateLoanError?.exists && formData.accountType === 'loan')))
+                ? (totalLoanWithInterest < 0 || (formData.duration || 0) < 1)
+                : ((!isIdUnique && !isEdit) || formData.phone.replace(/\D/g, '').slice(-10).length !== 10 || (formData.accountType !== 'saving' && Number(formData.loan) < 0) || (duplicateLoanError?.exists && formData.accountType === 'loan')))
             }
             className={`flex-[2] h-14 rounded-2xl font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all shadow-xl disabled:opacity-50 disabled:shadow-none cursor-pointer flex items-center justify-center gap-2 ${
               duplicateLoanError?.exists && formData.accountType === 'loan'
@@ -1787,9 +1787,9 @@ export function CustomerForm({
             ) : duplicateLoanError?.exists && formData.accountType === 'loan' ? (
               <span>Dual Loan Prohibited</span>
             ) : isRenewal ? (
-              `Renew Loan (Cycle #${nextCycle})`
+              `Renew Loan`
             ) : isNewLoan ? (
-              `Issue New Loan (Cycle #${nextCycle})`
+              `Issue New Loan`
             ) : isEdit ? (
               'Save Changes'
             ) : formData.accountType === 'saving' ? (

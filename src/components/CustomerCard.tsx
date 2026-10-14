@@ -201,11 +201,7 @@ export const CustomerCard = React.memo(function CustomerCard({
                   🐷 Saving
                 </span>
               )}
-              {currentCycle > 1 && !isSaving && (
-                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                  C#{currentCycle}
-                </span>
-              )}
+
               {customer.renewalStatus === 'rejected' && isOverdue && (
                 <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-red-500/15 text-red-600 dark:text-red-400">
                   Overdue
@@ -304,7 +300,7 @@ export const CustomerCard = React.memo(function CustomerCard({
                         onClick();
                       }
                     }}
-                    title={`Start Cycle #${currentCycle + 1} New Loan for ${customer.name}`}
+                    title={`Start New Loan for ${customer.name}`}
                     aria-label={`Start New Loan for ${customer.name}`}
                     className={`flex items-center gap-1.5 transition-all z-20 bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-wider shadow-xs active:scale-95 cursor-pointer ${
                       isCompact ? 'px-2 py-1 text-[10px] rounded-lg' : 'px-2.5 py-1.5 text-xs rounded-xl'

@@ -384,7 +384,7 @@ export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: Receip
                   <PiggyBank size={18} className="text-sky-500 shrink-0" />
                   <div>
                     <p className="font-bold text-xs leading-none">Advance Savings Credit Held</p>
-                    <p className="text-[10px] text-text-secondary mt-0.5">₹{currentAdvanceBalance.toLocaleString('en-IN')} ready to offset Cycle #{(customer.currentCycle || 1) + 1} New Loan</p>
+                    <p className="text-[10px] text-text-secondary mt-0.5">₹{currentAdvanceBalance.toLocaleString('en-IN')} ready to offset New Loan</p>
                   </div>
                 </div>
                 <span className="text-[10px] font-mono font-black uppercase px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-600 dark:text-sky-400 shrink-0">
@@ -400,7 +400,7 @@ export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: Receip
                   <Sparkles size={16} className="text-emerald-500 shrink-0" />
                   <div>
                     <p className="font-bold text-xs leading-none">Loan Completed & Settled</p>
-                    <p className="text-[10px] text-text-secondary mt-0.5">Eligible for instant Cycle #{(customer.currentCycle || 1) + 1} repeat credit</p>
+                    <p className="text-[10px] text-text-secondary mt-0.5">Eligible for instant repeat credit</p>
                   </div>
                 </div>
                 <span className="text-[10px] font-mono font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 shrink-0">
@@ -426,7 +426,7 @@ export function ReceiptSuccessModal({ receipt, onClose, onStartNewLoan }: Receip
                 <span>
                   {isAdvance && currentAdvanceBalance > 0 
                     ? `Issue New Loan • Apply ₹${currentAdvanceBalance.toLocaleString('en-IN')} Advance` 
-                    : `Issue New Loan • Cycle #${(customer.currentCycle || 1) + 1}`}
+                    : `Issue New Loan`}
                 </span>
               </button>
             )}

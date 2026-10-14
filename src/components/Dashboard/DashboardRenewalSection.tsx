@@ -167,11 +167,7 @@ export function DashboardRenewalSection({ customers, onNavigate }: DashboardRene
                         <span className="text-[10px] font-bold text-text-secondary opacity-60 font-mono">
                           #{customer.id}
                         </span>
-                        {currentCycle > 1 && (
-                          <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md bg-muted text-text-secondary">
-                            Cycle #{currentCycle}
-                          </span>
-                        )}
+
                       </div>
 
                       <div className="flex items-center gap-2 text-[11px] text-text-secondary mt-1 flex-wrap">

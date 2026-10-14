@@ -729,7 +729,7 @@ class NotificationService {
               const cleanPhone = String(rawPhone).replace(/[^\d]/g, '');
               const phoneWithCode = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
               const textMsg = extra.newTotalDebt
-                ? `Dear ${extra.customerName || 'Customer'}, your loan has been successfully renewed for Cycle #${extra.cycleNumber || 2} with total amount ₹${extra.newTotalDebt?.toLocaleString('en-IN')}. Daily installment: ₹${extra.dailyInstallment?.toLocaleString('en-IN')}. Thank you!`
+                ? `Dear ${extra.customerName || 'Customer'}, your loan has been successfully renewed with total amount ₹${extra.newTotalDebt?.toLocaleString('en-IN')}. Daily installment: ₹${extra.dailyInstallment?.toLocaleString('en-IN')}. Thank you!`
                 : `Hello ${extra.customerName || 'Customer'}, your loan tenure has ended with a remaining balance of ₹${(extra.pending || 0).toLocaleString('en-IN')}. Please contact us to renew or restructure your terms.`;
               if (phoneWithCode) {
                 window.open(`https://wa.me/${phoneWithCode}?text=${encodeURIComponent(textMsg)}`, '_blank');
@@ -1274,7 +1274,7 @@ class NotificationService {
     customerId?: string,
     customerPhone?: string
   ): Promise<boolean> {
-    const title = `🎉 Loan Renewed: ${customerName} (Cycle #${cycleNumber})`;
+    const title = `🎉 Loan Renewed: ${customerName}`;
     const body = `Renewed successfully! New Total: ₹${newTotalDebt.toLocaleString('en-IN')} for ${durationDays} days (₹${dailyInstallment.toLocaleString('en-IN')}/day).`;
 
     return this.dispatchNotification({
@@ -1305,8 +1305,8 @@ class NotificationService {
     customerId?: string,
     customerPhone?: string
   ): Promise<boolean> {
-    const title = `🚀 New Loan Started: ${customerName} (Cycle #${cycleNumber})`;
-    const body = `Cycle #${cycleNumber} active! Loan Amount: ₹${newLoanAmount.toLocaleString('en-IN')} for ${durationDays} days (₹${dailyInstallment.toLocaleString('en-IN')}/day).`;
+    const title = `🚀 New Loan Started: ${customerName}`;
+    const body = `New loan active: ₹${newLoanAmount.toLocaleString('en-IN')} for ${durationDays} days (₹${dailyInstallment.toLocaleString('en-IN')}/day).`;
 
     return this.dispatchNotification({
       title,

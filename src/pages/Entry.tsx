@@ -1622,8 +1622,8 @@ export function Entry() {
       <BottomSheet
         isOpen={!!newLoanCustomer}
         onClose={() => setNewLoanCustomer(null)}
-        title={`New Loan • Cycle #${(newLoanCustomer?.currentCycle || 1) + 1}`}
-        subtitle={`Issue new loan cycle for ${newLoanCustomer?.name || ''}`}
+        title={`New Loan`}
+        subtitle={`Issue new loan for ${newLoanCustomer?.name || ''}`}
         maxWidth="max-w-2xl lg:max-w-3xl"
       >
         {newLoanCustomer && (

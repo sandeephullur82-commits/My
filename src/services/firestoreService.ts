@@ -947,7 +947,7 @@ export const firestoreService = {
       currentCycle: newCycleNum,
       cycles: updatedCycles,
       lastRenewalDate: Date.now(),
-      notes: renewal.notes ? renewal.notes : (advanceToApply > 0 ? `Cycle #${newCycleNum} New Loan (₹${advanceToApply.toLocaleString('en-IN')} Advance Applied)` : `Cycle #${newCycleNum} New Loan`),
+      notes: renewal.notes ? renewal.notes : (advanceToApply > 0 ? `New Loan (₹${advanceToApply.toLocaleString('en-IN')} Advance Applied)` : `New Loan`),
       updatedAt: now,
       ...(customer.renewalStatus ? { renewalStatus: deleteField() as any } : {}),
       ...(customer.renewalRejectedAt ? { renewalRejectedAt: deleteField() as any } : {})
@@ -1014,7 +1014,7 @@ export const firestoreService = {
       renewalStatus: deleteField(),
       renewalRejectedAt: deleteField(),
       lastRenewalDate: Date.now(),
-      notes: renewal.notes ? renewal.notes : `Cycle #${newCycleNum} Renewal (Restructured ₹${oldPending.toLocaleString('en-IN')} + ₹${renewal.interestAmount.toLocaleString('en-IN')} interest)`,
+      notes: renewal.notes ? renewal.notes : `Loan Renewal (Restructured ₹${oldPending.toLocaleString('en-IN')} + ₹${renewal.interestAmount.toLocaleString('en-IN')} interest)`,
       updatedAt: now
     };
 

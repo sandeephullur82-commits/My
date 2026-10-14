@@ -193,8 +193,8 @@ export async function generateCustomerArchivePDF(
     [
       { content: 'Account Type', styles: { fontStyle: 'bold' } },
       isSaving ? 'Pigmy Daily Savings' : 'Microfinance Daily Loan',
-      { content: 'Current Loan Cycle', styles: { fontStyle: 'bold' } },
-      `Cycle ${customer.currentCycle || 1}`,
+      { content: 'Account Status', styles: { fontStyle: 'bold' } },
+      'Active',
     ],
     [
       { content: 'Commencement Date', styles: { fontStyle: 'bold' } },
@@ -257,52 +257,11 @@ export async function generateCustomerArchivePDF(
 
   cursorY = (doc as any).lastAutoTable.finalY + 6;
 
-  // --- SECTION 2: LOAN CYCLES (IF ANY) ---
-  if (Array.isArray(customer.cycles) && customer.cycles.length > 0) {
-    const cycleBody = customer.cycles.map(cycle => [
-      `Cycle ${cycle.cycleNumber || 1}`,
-      cycle.startDate ? safeFormat(cycle.startDate, 'dd/MM/yyyy') : 'N/A',
-      cycle.endDate ? safeFormat(cycle.endDate, 'dd/MM/yyyy') : 'N/A',
-      `INR ${(cycle.loanAmount || 0).toLocaleString('en-IN')}`,
-      `INR ${(cycle.paidAmount ?? (cycle as any).paid ?? 0).toLocaleString('en-IN')}`,
-      String(cycle.status || (cycle.completedAt ? 'COMPLETED' : 'ACTIVE')).toUpperCase(),
-    ]);
-
-    autoTable(doc, {
-      startY: cursorY,
-      head: [
-        [
-          { content: 'HISTORICAL LOAN CYCLES', colSpan: 6, styles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: 'bold' } },
-        ],
-        ['Cycle #', 'Start Date', 'End Date', 'Principal (₹)', 'Total Paid (₹)', 'Status'],
-      ],
-      body: cycleBody,
-      theme: 'grid',
-      styles: {
-        fontSize: 7.5,
-        cellPadding: 1.8,
-        textColor: [15, 23, 42],
-        lineColor: [226, 232, 240],
-        lineWidth: 0.2,
-      },
-      headStyles: {
-        fillColor: [71, 85, 105],
-        textColor: [255, 255, 255],
-        fontStyle: 'bold',
-        fontSize: 7.5,
-      },
-      margin: { left: 14, right: 14 },
-    });
-
-    cursorY = (doc as any).lastAutoTable.finalY + 6;
-  }
-
   // --- SECTION 3: COMPLETE TRANSACTION LEDGER TABLE ---
   const txTableBody = customerTxs.map((tx, idx) => {
     const dateFormatted = tx.date ? safeFormat(tx.timestamp || tx.date, 'dd/MM/yyyy hh:mm a', tx.date) : 'N/A';
     const modeLabel = tx.type === 'phonepe' ? 'PhonePe / UPI' : (tx.type === 'NP' || tx.type === 'unsettled') ? 'NP / Unsettled' : 'Cash';
     const statusLabel = tx.status === 'unsettled' ? 'UNSETTLED' : 'PAID';
-    const cycleNum = (tx as any).loanCycle || customer.currentCycle || 1;
 
     return [
       String(idx + 1),
@@ -311,7 +270,6 @@ export async function generateCustomerArchivePDF(
       modeLabel,
       `INR ${(tx.amount || 0).toLocaleString('en-IN')}`,
       statusLabel,
-      `C-${cycleNum}`,
       tx.notes || '-',
     ];
   });
@@ -324,7 +282,6 @@ export async function generateCustomerArchivePDF(
       '-',
       'INR 0',
       '-',
-      '-',
       'No collection entries were logged for this customer account.',
     ]);
   }
@@ -333,16 +290,16 @@ export async function generateCustomerArchivePDF(
   txTableBody.push([
     { content: 'GRAND TOTAL', colSpan: 4, styles: { fontStyle: 'bold', halign: 'right', fillColor: [241, 245, 249] } } as any,
     { content: `INR ${totalCollected.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold', fillColor: [236, 253, 245], textColor: [6, 95, 70] } } as any,
-    { content: `Unsettled: INR ${totalUnsettled.toLocaleString('en-IN')}`, colSpan: 3, styles: { fontStyle: 'bold', fillColor: [241, 245, 249], textColor: [100, 116, 139] } } as any,
+    { content: `Unsettled: INR ${totalUnsettled.toLocaleString('en-IN')}`, colSpan: 2, styles: { fontStyle: 'bold', fillColor: [241, 245, 249], textColor: [100, 116, 139] } } as any,
   ]);
 
   autoTable(doc, {
     startY: cursorY,
     head: [
       [
-        { content: `COMPLETE TRANSACTION LEDGER AUDIT (${customerTxs.length} TOTAL RECORDS)`, colSpan: 8, styles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold' } },
+        { content: `COMPLETE TRANSACTION LEDGER AUDIT (${customerTxs.length} TOTAL RECORDS)`, colSpan: 7, styles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold' } },
       ],
-      ['#', 'Date & Time', 'Receipt / ID', 'Payment Mode', 'Amount', 'Status', 'Cycle', 'Notes / Narration'],
+      ['#', 'Date & Time', 'Receipt / ID', 'Payment Mode', 'Amount', 'Status', 'Notes / Narration'],
     ],
     body: txTableBody,
     theme: 'striped',
