@@ -90,7 +90,6 @@ export function DeleteCustomerModal({
         { "Section": "CUSTOMER PROFILE", "Field": isSaving ? "Target Deposit (₹)" : "Loan Amount (₹)", "Value": loanAmount },
         { "Section": "CUSTOMER PROFILE", "Field": "Total Paid (₹)", "Value": paidAmount },
         { "Section": "CUSTOMER PROFILE", "Field": isSaving ? "Advance Savings (₹)" : "Pending Balance (₹)", "Value": isSaving ? advanceBalance : pendingAmount },
-        { "Section": "CUSTOMER PROFILE", "Field": "Loan Cycle", "Value": customer.currentCycle || 1 },
         { "Section": "CUSTOMER PROFILE", "Field": "Start Date", "Value": customer.startDate ? safeFormat(customer.startDate, 'dd/MM/yyyy', '') : 'N/A' },
         { "Section": "CUSTOMER PROFILE", "Field": "End Date", "Value": customer.endDate ? safeFormat(customer.endDate, 'dd/MM/yyyy', '') : 'N/A' },
         { "Section": "CUSTOMER PROFILE", "Field": "Address", "Value": (customer as any).address || 'N/A' },
@@ -107,7 +106,6 @@ export function DeleteCustomerModal({
         "Amount (₹)": tx.amount,
         "Status": tx.status === 'unsettled' ? 'Unsettled' : 'Paid',
         "Receipt ID": (tx as any).receiptId || 'N/A',
-        "Cycle": (tx as any).loanCycle || customer.currentCycle || 1,
         "Notes": tx.notes || ''
       }));
 

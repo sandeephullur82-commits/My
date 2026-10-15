@@ -654,7 +654,7 @@ export const CustomerCard = React.memo(function CustomerCard({
                         type="button"
                         onClick={() => onStartNewLoan(customer)}
                         className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-600/30 transition-all active:scale-95 cursor-pointer"
-                        title="Issue New Loan Cycle with Advance Credit"
+                        title="Issue New Loan with Advance Credit"
                       >
                         <Sparkles size={15} />
                         <span className="text-[11px] font-black uppercase tracking-wider">NEW LOAN</span>

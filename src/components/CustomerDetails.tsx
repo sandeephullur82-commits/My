@@ -639,7 +639,7 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
               <div className="flex items-center gap-2">
                 <RotateCcw size={15} className="text-emerald-600 dark:text-emerald-400" />
                 <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">
-                  Loan Cycle History
+                  Past Loan History
                 </h3>
                 <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
                   {completedCycles.length} completed
@@ -661,9 +661,6 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
                   <div key={idx} className="bg-card rounded-2xl border border-border p-4 shadow-sm">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-black text-text-primary px-2.5 py-0.5 rounded-lg bg-muted">
-                          Cycle #{cycle.cycleNumber}
-                        </span>
                         <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
                           cycle.status === 'completed' 
                             ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' 
@@ -895,8 +892,8 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
       <BottomSheet
         isOpen={showNewLoanModal}
         onClose={() => setShowNewLoanModal(false)}
-        title={`New Loan • Cycle #${(customer?.currentCycle || 1) + 1}`}
-        subtitle={`Issue new loan cycle for ${customer?.name || ''}`}
+        title="New Loan"
+        subtitle={`Issue new loan for ${customer?.name || ''}`}
       >
         <CustomerForm
           customer={customer}
@@ -912,7 +909,7 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
       <BottomSheet
         isOpen={showRenewalModal}
         onClose={() => setShowRenewalModal(false)}
-        title={`Loan Renewal • Cycle #${(customer?.currentCycle || 1) + 1}`}
+        title="Loan Renewal"
         subtitle={`Renew and restructure loan for ${customer?.name || ''}`}
       >
         <CustomerForm

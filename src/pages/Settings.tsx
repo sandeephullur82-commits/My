@@ -3,7 +3,7 @@ import {
   User, Palette, LayoutDashboard, ShieldCheck, 
   ToggleLeft, ToggleRight, CheckCircle, Moon, Sun,
   Smartphone, Download, HelpCircle, ChevronDown, ChevronUp,
-  Sparkles, Database, Trash2, Building, Coins, AlertCircle, Receipt, FileText
+  Sparkles, Database, Trash2, Building, Coins, AlertCircle, Receipt, FileText, LogOut
 } from 'lucide-react';
 import { useTheme } from '../components/ThemeProvider';
 import { useUI } from '../context/UIContext';
@@ -16,7 +16,7 @@ import { firestoreService } from '../services/firestoreService';
 export function Settings() {
   const { theme, toggleTheme } = useTheme();
   const { isCompact, toggleCompact } = useUI();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { customers, transactions, refreshData } = useRealtimeData();
   const { isInstallable, isStandalone, promptInstall } = usePWAInstall();
   const platform = getPlatformDetails();
@@ -113,16 +113,26 @@ export function Settings() {
                 {profile.agencyName} • Currency: <span className="text-accent font-black">{profile.currency}</span>
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setTempProfile(profile);
-                setIsEditingProfile(!isEditingProfile);
-              }}
-              className="py-2 px-4 rounded-xl bg-accent/10 hover:bg-accent/20 text-accent font-black text-xs uppercase tracking-wider transition-all cursor-pointer"
-            >
-              {isEditingProfile ? 'Cancel Edit' : 'Edit Profile'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setTempProfile(profile);
+                  setIsEditingProfile(!isEditingProfile);
+                }}
+                className="py-2 px-4 rounded-xl bg-accent/10 hover:bg-accent/20 text-accent font-black text-xs uppercase tracking-wider transition-all cursor-pointer"
+              >
+                {isEditingProfile ? 'Cancel Edit' : 'Edit Profile'}
+              </button>
+              <button
+                type="button"
+                onClick={logout}
+                className="py-2 px-4 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <LogOut size={14} />
+                <span>Sign Out</span>
+              </button>
+            </div>
           </div>
 
           <div className="mt-3 flex items-center justify-center md:justify-start gap-3 flex-wrap">
