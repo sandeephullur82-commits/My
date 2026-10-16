@@ -23,7 +23,7 @@ const navItems = [
 ];
 
 export function Layout({ children, currentTab, setCurrentTab }: { children: React.ReactNode, currentTab: string, setCurrentTab: (t: string) => void }) {
-  const { isCompact, isModalOpen, isCustomerDetailsOpen } = useUI();
+  const { isCompact, isModalOpen, setIsModalOpen, isCustomerDetailsOpen } = useUI();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const { isSyncing } = useSync();
@@ -41,10 +41,17 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
       await firestoreService.saveCustomer(customer);
       toast.success('Customer registered successfully');
       setShowGlobalAddCustomer(false);
+      setIsModalOpen(false);
     } catch (e) {
       toast.error('Failed to register customer');
     }
   };
+
+  useEffect(() => {
+    if (showGlobalAddCustomer) {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
+  }, [showGlobalAddCustomer]);
 
   // Scroll to top implementation for tab clicks
   const handleTabClick = (tabId: string) => {
@@ -159,7 +166,8 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
       </a>
       
       {/* Top Universal App Header across all screens */}
-      <header className="flex-shrink-0 sticky top-0 pt-[env(safe-area-inset-top)] bg-card/95 backdrop-blur-md border-b border-border/80 z-[990] transition-colors" role="banner">
+      {!isModalOpen && !isCustomerDetailsOpen && !showGlobalAddCustomer && (
+        <header className="flex-shrink-0 sticky top-0 pt-[env(safe-area-inset-top)] bg-card/95 backdrop-blur-md border-b border-border/80 z-[990] transition-colors" role="banner">
         <div className="h-14 max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 md:px-8">
           
           {/* Brand & Context */}
@@ -238,6 +246,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
               onClick={() => {
                 if (navigator.vibrate) navigator.vibrate(8);
                 setShowGlobalAddCustomer(true);
+                setIsModalOpen(true);
               }}
               className="hidden sm:flex h-9 px-3 rounded-xl bg-accent hover:brightness-110 text-white font-bold text-xs items-center gap-1.5 shadow-sm shadow-accent/25 transition-all active:scale-95 cursor-pointer"
               title="Register New Customer (Press N)"
@@ -296,6 +305,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
           </div>
         </div>
       </header>
+      )}
 
       {/* Non-intrusive PWA Install Prompt (detects uninstalled state & triggers beforeinstallprompt) */}
       <PWAInstallPrompt />
@@ -330,19 +340,37 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
 
 
 
-        {/* Global New Customer Form BottomSheet Modal */}
-        <BottomSheet
-          isOpen={showGlobalAddCustomer}
-          onClose={() => setShowGlobalAddCustomer(false)}
-          title="Register New Customer"
-          subtitle="Add loan amount, daily installment terms and contact"
-          maxWidth="max-w-2xl lg:max-w-3xl"
-        >
-          <CustomerForm 
-            onSave={handleGlobalAddCustomerSave} 
-            onCancel={() => setShowGlobalAddCustomer(false)} 
-          />
-        </BottomSheet>
+        {/* Global New Customer Form Full-Screen Page */}
+        <AnimatePresence>
+          {showGlobalAddCustomer && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="fixed inset-0 z-50 bg-bg overflow-y-auto flex flex-col min-h-[100dvh]"
+            >
+              {/* Header */}
+              <div className="sticky top-0 z-20 bg-card/90 backdrop-blur-xl border-b border-border/40 px-4 md:px-8 py-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm md:text-base font-black text-text-primary uppercase tracking-wider">REGISTER NEW CUSTOMER</h2>
+                  <p className="text-[10px] font-bold text-text-secondary opacity-60 uppercase tracking-widest mt-0.5">ADD LOAN AMOUNT, DAILY INSTALLMENT TERMS AND CONTACT</p>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 max-w-2xl lg:max-w-3xl w-full mx-auto p-4 md:p-8 pb-32">
+                <CustomerForm 
+                  onSave={handleGlobalAddCustomerSave} 
+                  onCancel={() => {
+                    setShowGlobalAddCustomer(false);
+                    setIsModalOpen(false);
+                  }} 
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Keyboard Shortcuts Help Dialog (Desktop & Tablets) */}
         <AnimatePresence>
@@ -414,7 +442,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
       </main>
 
       {/* Bottom Navigation Bar (Mobile Viewports Only) */}
-      {!isModalOpen && !isCustomerDetailsOpen && (
+      {!isModalOpen && !isCustomerDetailsOpen && !showGlobalAddCustomer && (
         <nav 
           aria-label="Main Navigation"
           className="md:hidden flex-shrink-0 sticky bottom-0 left-0 right-0 z-[980] bg-card/95 backdrop-blur-lg border-t border-border shadow-[0_-4px_24px_rgba(0,0,0,0.06)] pb-[env(safe-area-inset-bottom)]"
@@ -484,6 +512,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
               onClick={() => {
                 if (navigator.vibrate) navigator.vibrate(8);
                 setShowGlobalAddCustomer(true);
+                setIsModalOpen(true);
               }}
               className="relative flex flex-col items-center justify-center flex-1 h-full py-0.5 transition-all outline-none group cursor-pointer min-h-[44px]"
               title="Add New Customer"

@@ -379,7 +379,7 @@ export function Settings() {
                 {showPwaGuide && (
                   <div className="mt-3 p-4 rounded-2xl bg-bg border border-border/70 text-text-secondary text-xs space-y-3 animate-in fade-in">
                     <div>
-                      <strong className="text-text-primary font-bold">🤖 Android (Google Chrome):</strong>
+                      <strong className="text-text-primary font-bold">🤖 Android (Chrome Browser):</strong>
                       <ol className="list-decimal pl-4 space-y-1 text-[11px] mt-1 leading-relaxed">
                         <li>Tap Chrome&apos;s menu (<strong>⋮</strong> three dots in top-right corner).</li>
                         <li>Select <strong>&quot;Install app&quot;</strong> or <strong>&quot;Add to Home screen&quot;</strong>.</li>

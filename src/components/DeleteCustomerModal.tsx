@@ -54,10 +54,9 @@ export function DeleteCustomerModal({
 
   const knownTxIds = customerTransactions.map(t => t.id);
 
-  const isSaving = customer.accountType === 'saving';
-  const loanAmount = isSaving ? (customer.targetDeposit || 0) : (customer.loanAmount || customer.loan || 0);
+  const loanAmount = customer.loanAmount || customer.loan || 0;
   const paidAmount = customer.paid || 0;
-  const pendingAmount = isSaving ? 0 : (customer.pending !== undefined ? customer.pending : Math.max(0, loanAmount - paidAmount));
+  const pendingAmount = customer.pending !== undefined ? customer.pending : Math.max(0, loanAmount - paidAmount);
   const advanceBalance = customer.advanceBalance || 0;
 
   // Handle Download PDF Statement (Comprehensive Archive)
@@ -86,10 +85,10 @@ export function DeleteCustomerModal({
         { "Section": "CUSTOMER PROFILE", "Field": "Customer Name", "Value": customer.name },
         { "Section": "CUSTOMER PROFILE", "Field": "Customer ID", "Value": customer.id },
         { "Section": "CUSTOMER PROFILE", "Field": "Phone Number", "Value": customer.phone || 'N/A' },
-        { "Section": "CUSTOMER PROFILE", "Field": "Account Type", "Value": isSaving ? 'Saving' : 'Loan' },
-        { "Section": "CUSTOMER PROFILE", "Field": isSaving ? "Target Deposit (₹)" : "Loan Amount (₹)", "Value": loanAmount },
+        { "Section": "CUSTOMER PROFILE", "Field": "Account Type", "Value": "Loan" },
+        { "Section": "CUSTOMER PROFILE", "Field": "Loan Amount (₹)", "Value": loanAmount },
         { "Section": "CUSTOMER PROFILE", "Field": "Total Paid (₹)", "Value": paidAmount },
-        { "Section": "CUSTOMER PROFILE", "Field": isSaving ? "Advance Savings (₹)" : "Pending Balance (₹)", "Value": isSaving ? advanceBalance : pendingAmount },
+        { "Section": "CUSTOMER PROFILE", "Field": "Pending Balance (₹)", "Value": pendingAmount },
         { "Section": "CUSTOMER PROFILE", "Field": "Start Date", "Value": customer.startDate ? safeFormat(customer.startDate, 'dd/MM/yyyy', '') : 'N/A' },
         { "Section": "CUSTOMER PROFILE", "Field": "End Date", "Value": customer.endDate ? safeFormat(customer.endDate, 'dd/MM/yyyy', '') : 'N/A' },
         { "Section": "CUSTOMER PROFILE", "Field": "Address", "Value": (customer as any).address || 'N/A' },
@@ -212,12 +211,8 @@ export function DeleteCustomerModal({
                   <span>{customer.phone || 'No phone'}</span>
                 </div>
               </div>
-              <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full ${
-                isSaving 
-                  ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' 
-                  : 'bg-primary/10 text-primary'
-              }`}>
-                {isSaving ? 'Savings Account' : 'Loan Account'}
+              <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-primary/10 text-primary">
+                Loan Account
               </span>
             </div>
 
@@ -225,7 +220,7 @@ export function DeleteCustomerModal({
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-border/40">
               <div className="bg-card/70 p-2.5 rounded-xl border border-border/40">
                 <span className="block text-[10px] font-bold text-text-secondary uppercase tracking-wider">
-                  {isSaving ? 'Target' : 'Loan Amount'}
+                  Loan Amount
                 </span>
                 <span className="text-xs sm:text-sm font-black text-text-primary">
                   ₹{loanAmount.toLocaleString('en-IN')}
@@ -241,7 +236,7 @@ export function DeleteCustomerModal({
               </div>
               <div className="bg-card/70 p-2.5 rounded-xl border border-border/40">
                 <span className="block text-[10px] font-bold text-text-secondary uppercase tracking-wider">
-                  {isSaving ? 'Advance' : 'Pending'}
+                  Pending
                 </span>
                 <span className="text-xs sm:text-sm font-black text-danger">
                   ₹{pendingAmount.toLocaleString('en-IN')}

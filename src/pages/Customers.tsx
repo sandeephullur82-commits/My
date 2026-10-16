@@ -15,7 +15,6 @@ import { useUI } from '../context/UIContext';
 import { WithdrawDepositModal } from '../components/WithdrawDepositModal';
 import { ReceiptSuccessModal, ReceiptData } from '../components/ReceiptSuccessModal';
 import { DeleteCustomerModal } from '../components/DeleteCustomerModal';
-import { BatchContactImportModal } from '../components/BatchContactImportModal';
 import { useFeedback } from '../context/FeedbackContext';
 
 interface CustomersProps {
@@ -45,12 +44,12 @@ export function Customers({ onNavigate }: CustomersProps) {
     }
   }, [loading]);
 
-  const [filter, setFilter] = useState<'all' | 'loans' | 'savings' | 'pending' | 'paid' | 'overdue' | 'high_amount'>(() => {
+  const [filter, setFilter] = useState<'all' | 'loans' | 'pending' | 'paid' | 'overdue' | 'high_amount'>(() => {
     return (location.state?.filter as any) || 'all';
   });
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'pending_desc' | 'last_payment' | 'name_asc' | 'name_desc'>('asc');
   const [showAdd, setShowAdd] = useState(false);
-  const [addCustomerDefaults, setAddCustomerDefaults] = useState<{ accountType?: 'loan' | 'saving'; name?: string; phone?: string } | null>(null);
+  const [addCustomerDefaults, setAddCustomerDefaults] = useState<{ name?: string; phone?: string } | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [newLoanCustomer, setNewLoanCustomer] = useState<Customer | null>(null);
   const [withdrawCustomer, setWithdrawCustomer] = useState<Customer | null>(null);
@@ -69,17 +68,22 @@ export function Customers({ onNavigate }: CustomersProps) {
   
   const [showFilterSheet, setShowFilterSheet] = useState(false);
   const [showSortSheet, setShowSortSheet] = useState(false);
-  const [showBatchImport, setShowBatchImport] = useState(false);
+
+  useEffect(() => {
+    if (showAdd) {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
+  }, [showAdd]);
 
   // Sync modal & customer details state with UI context
   useEffect(() => {
     setIsCustomerDetailsOpen(!!selectedCustomer);
-    setIsModalOpen(!!selectedCustomer || !!editCustomer || showAdd || !!newLoanCustomer || !!withdrawCustomer || !!selectedReceipt || !!customerToDelete || showBatchImport);
+    setIsModalOpen(!!selectedCustomer || !!editCustomer || showAdd || !!newLoanCustomer || !!withdrawCustomer || !!selectedReceipt || !!customerToDelete);
     return () => {
        setIsCustomerDetailsOpen(false);
        setIsModalOpen(false);
     };
-  }, [selectedCustomer, editCustomer, showAdd, newLoanCustomer, withdrawCustomer, selectedReceipt, customerToDelete, showBatchImport, setIsModalOpen, setIsCustomerDetailsOpen]);
+  }, [selectedCustomer, editCustomer, showAdd, newLoanCustomer, withdrawCustomer, selectedReceipt, customerToDelete, setIsModalOpen, setIsCustomerDetailsOpen]);
 
   const filterOptions = [
     { value: 'all', label: 'All Accounts' },
@@ -271,23 +275,19 @@ export function Customers({ onNavigate }: CustomersProps) {
     openingBalanceData?: { amount: number; note?: string; timestamp?: number }
   ) => {
     const isUpdating = customers.some(c => c.id === newCustomer.id);
-    const targetAccountType = newCustomer.accountType || 'loan';
     const cleanName = String(newCustomer.name || '').trim().toLowerCase();
     const cleanPhone = String(newCustomer.phone || '').trim().replace(/\D/g, '').slice(-10);
 
     if (isUpdating) {
-      if (targetAccountType === 'loan') {
-        const hasDualLoan = customers.some(c => 
-          c.id !== newCustomer.id &&
-          !c.isDeleted &&
-          c.name.trim().toLowerCase() === cleanName && 
-          c.phone.trim().replace(/\D/g, '').slice(-10) === cleanPhone &&
-          c.accountType !== 'saving'
-        );
-        if (hasDualLoan) {
-          toastError('Dual Loan Not Allowed', 'Another active loan already exists with this name and phone number. Dual loans are not permitted.');
-          return;
-        }
+      const hasDualLoan = customers.some(c => 
+        c.id !== newCustomer.id &&
+        !c.isDeleted &&
+        c.name.trim().toLowerCase() === cleanName && 
+        c.phone.trim().replace(/\D/g, '').slice(-10) === cleanPhone
+      );
+      if (hasDualLoan) {
+        toastError('Dual Loan Not Allowed', 'Another active loan already exists with this name and phone number. Dual loans are not permitted.');
+        return;
       }
 
       try {
@@ -307,23 +307,19 @@ export function Customers({ onNavigate }: CustomersProps) {
       return;
     }
 
-    // 2. Dual Loan check vs Saving check
-    if (targetAccountType === 'loan') {
-      const existingLoan = customers.find(c => 
-        !c.isDeleted &&
-        c.name.trim().toLowerCase() === cleanName && 
-        c.phone.trim().replace(/\D/g, '').slice(-10) === cleanPhone &&
-        c.accountType !== 'saving'
+    // 2. Dual Loan check
+    const existingLoan = customers.find(c => 
+      !c.isDeleted &&
+      c.name.trim().toLowerCase() === cleanName && 
+      c.phone.trim().replace(/\D/g, '').slice(-10) === cleanPhone
+    );
+    if (existingLoan) {
+      toastError(
+        'Dual Loan Not Allowed', 
+        `An active loan already exists for ${newCustomer.name} (+91 ${cleanPhone}) under ID ${existingLoan.id}. You cannot create a second loan with the same name and phone.`
       );
-      if (existingLoan) {
-        toastError(
-          'Dual Loan Not Allowed', 
-          `An active loan already exists for ${newCustomer.name} (+91 ${cleanPhone}) under ID ${existingLoan.id}. You cannot create a second loan with the same name and phone, but you can create a Saving account.`
-        );
-        return;
-      }
+      return;
     }
-    // If targetAccountType === 'saving': creating saving with the same name and phone number IS ALLOWED!
 
     // 3. Check Phone warning for different name
     const phoneInUse = customers.find(c => 
@@ -346,7 +342,7 @@ export function Customers({ onNavigate }: CustomersProps) {
       } else {
         await firestoreService.saveCustomer(newCustomer);
         toastSuccess(
-          targetAccountType === 'saving' ? 'Saving Account Created' : 'Loan Registered',
+          'Loan Registered',
           `${newCustomer.name} (${newCustomer.id}) is now active.`
         );
       }
@@ -440,20 +436,6 @@ export function Customers({ onNavigate }: CustomersProps) {
               <span className="hidden xs:inline">
                 {sortOptions.find(o => o.value === sortOrder)?.label.replace(' ', ': ')}
               </span>
-            </button>
-
-            {/* Batch Import Contacts Button */}
-            <button
-              type="button"
-              onClick={() => {
-                if (navigator.vibrate) navigator.vibrate(8);
-                setShowBatchImport(true);
-              }}
-              className="h-10 px-3 bg-card border border-border/85 hover:border-accent/40 text-text-primary rounded-xl flex items-center gap-1.5 text-xs font-bold transition-all active:scale-95 shadow-xs shrink-0 cursor-pointer"
-              title="Batch Import Contacts"
-            >
-              <Users size={15} className="text-accent" />
-              <span className="hidden md:inline">Import Contacts</span>
             </button>
 
             {/* Quick Add Customer Button */}
@@ -611,34 +593,38 @@ export function Customers({ onNavigate }: CustomersProps) {
           </div>
         </BottomSheet>
 
-        <BottomSheet
-          isOpen={showAdd}
-          onClose={() => {
-            setShowAdd(false);
-            setAddCustomerDefaults(null);
-          }}
-          title={addCustomerDefaults?.accountType === 'saving' ? "Open Saving Account" : "Register Account"}
-          subtitle={addCustomerDefaults?.accountType === 'saving' ? "Pigmy daily savings deposit" : "Register a loan or saving account"}
-          maxWidth="max-w-2xl lg:max-w-3xl"
-        >
-          <CustomerForm 
-            initialAccountType={addCustomerDefaults?.accountType || 'loan'}
-            initialName={addCustomerDefaults?.name || ''}
-            initialPhone={addCustomerDefaults?.phone || ''}
-            onSave={handleSaveCustomer} 
-            onCancel={() => {
-              setShowAdd(false);
-              setAddCustomerDefaults(null);
-            }} 
-          />
-        </BottomSheet>
+        <AnimatePresence>
+          {showAdd && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="fixed inset-0 z-50 bg-bg overflow-y-auto flex flex-col min-h-[100dvh]"
+            >
+              {/* Header */}
+              <div className="sticky top-0 z-20 bg-card/90 backdrop-blur-xl border-b border-border/40 px-4 md:px-8 py-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm md:text-base font-black text-text-primary uppercase tracking-wider">REGISTER NEW CUSTOMER</h2>
+                  <p className="text-[10px] font-bold text-text-secondary opacity-60 uppercase tracking-widest mt-0.5">ADD LOAN AMOUNT, DAILY INSTALLMENT TERMS AND CONTACT</p>
+                </div>
+              </div>
 
-        <BatchContactImportModal
-          isOpen={showBatchImport}
-          onClose={() => setShowBatchImport(false)}
-          existingCustomers={customers}
-          onSuccess={() => refreshData()}
-        />
+              {/* Body */}
+              <div className="flex-1 max-w-2xl lg:max-w-3xl w-full mx-auto p-4 md:p-8 pb-32">
+                <CustomerForm 
+                  initialName={addCustomerDefaults?.name || ''}
+                  initialPhone={addCustomerDefaults?.phone || ''}
+                  onSave={handleSaveCustomer} 
+                  onCancel={() => {
+                    setShowAdd(false);
+                    setAddCustomerDefaults(null);
+                  }} 
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4 pb-24">
           {error ? (

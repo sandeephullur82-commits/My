@@ -98,23 +98,22 @@ export const CustomerCard = React.memo(function CustomerCard({
     return paid[0];
   }, [propLastActivity, transactions, customer.id]);
 
-  const isSaving = customer.accountType === 'saving';
   const displayId = String(customer.id);
-  const loanAmount = isSaving ? (customer.targetDeposit || 0) : (customer.loanAmount || customer.loan || 0);
-  const pendingAmount = isSaving ? 0 : (customer.pending !== undefined ? customer.pending : (loanAmount - (customer.paid || 0)));
+  const loanAmount = customer.loanAmount || customer.loan || 0;
+  const pendingAmount = customer.pending !== undefined ? customer.pending : (loanAmount - (customer.paid || 0));
   const paidAmount = customer.paid || 0;
   const savedBalance = customer.advanceBalance || customer.paid || 0;
 
-  const isOverdue = !isSaving && customer.endDate < Date.now() && pendingAmount > 0;
-  const isFullyPaid = !isSaving && pendingAmount <= 0;
+  const isOverdue = customer.endDate < Date.now() && pendingAmount > 0;
+  const isFullyPaid = pendingAmount <= 0;
   const currentCycle = customer.currentCycle || 1;
 
-  let statusColor = isSaving ? 'bg-emerald-500' : 'bg-warning';
-  let statusText = isSaving ? 'text-emerald-600 dark:text-emerald-400' : 'text-warning';
-  if (!isSaving && isFullyPaid) {
+  let statusColor = 'bg-warning';
+  let statusText = 'text-warning';
+  if (isFullyPaid) {
     statusColor = 'bg-success';
     statusText = 'text-success';
-  } else if (!isSaving && isOverdue) {
+  } else if (isOverdue) {
     statusColor = 'bg-danger';
     statusText = 'text-danger';
   }
@@ -129,7 +128,7 @@ export const CustomerCard = React.memo(function CustomerCard({
     );
   }, [propIsPaidToday, transactions, customer.id]);
 
-  const isEntryDisabled = isPaidToday || (!isSaving && isFullyPaid);
+  const isEntryDisabled = isPaidToday || isFullyPaid;
   const progress = loanAmount > 0 ? Math.min(100, Math.max(0, (paidAmount / loanAmount) * 100)) : 0;
 
   const tag = useMemo(() => {
@@ -196,11 +195,6 @@ export const CustomerCard = React.memo(function CustomerCard({
             <h3 className={`font-black tracking-tight text-text-primary truncate pr-2 ${isCompact ? 'text-[14px]' : 'text-base'}`}>
               <Highlight text={String(customer.name)} highlight={searchTerm} />
             </h3>
-              {isSaving && (
-                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                  🐷 Saving
-                </span>
-              )}
 
               {customer.renewalStatus === 'rejected' && isOverdue && (
                 <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-red-500/15 text-red-600 dark:text-red-400">
@@ -240,26 +234,18 @@ export const CustomerCard = React.memo(function CustomerCard({
               <div className="text-right">
                 {!isCompact && (
                   <p className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${
-                    isSaving
-                      ? 'text-emerald-600 dark:text-emerald-400 font-black'
-                      : (isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'text-sky-600 dark:text-sky-400' : 'text-text-secondary')
+                    isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'text-sky-600 dark:text-sky-400' : 'text-text-secondary'
                   }`}>
-                    {isSaving
-                      ? 'Total Saved'
-                      : (isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'Advance' : 'Pending')}
+                    {isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'Advance' : 'Pending'}
                   </p>
                 )}
                 <p className={`font-mono tabular-nums font-black tracking-tight leading-none ${
-                  isSaving
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : (isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'text-sky-600 dark:text-sky-400' : statusText)
+                  isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'text-sky-600 dark:text-sky-400' : statusText
                 } ${isCompact ? 'text-base' : 'text-lg'}`}>
                   <span className="text-xs mr-0.5 opacity-60 font-bold font-sans">₹</span>
-                  {isSaving
-                    ? savedBalance.toLocaleString('en-IN')
-                    : (isFullyPaid && (customer.advanceBalance || 0) > 0 
-                      ? (customer.advanceBalance || 0).toLocaleString('en-IN')
-                      : pendingAmount.toLocaleString('en-IN'))}
+                  {isFullyPaid && (customer.advanceBalance || 0) > 0 
+                    ? (customer.advanceBalance || 0).toLocaleString('en-IN')
+                    : pendingAmount.toLocaleString('en-IN')}
                 </p>
               </div>
 
@@ -395,7 +381,7 @@ export const CustomerCard = React.memo(function CustomerCard({
           </div>
 
           {/* Mini Progress Bar */}
-          {!isCompact && !isSaving && (
+          {!isCompact && (
             <div className="w-full h-1.5 bg-muted rounded-full mt-2.5 overflow-hidden">
               <div 
                 className={`h-full rounded-full transition-all duration-300 ${statusColor}`}

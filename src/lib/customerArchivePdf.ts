@@ -32,11 +32,9 @@ export async function generateCustomerArchivePDF(
   const generationTimestamp = format(now, 'dd MMM yyyy, hh:mm:ss a');
   const archiveRefId = `ARCH-${customer.id}-${format(now, 'yyyyMMdd_HHmmss')}`;
 
-  const isSaving = customer.accountType === 'saving';
-  const loanAmount = isSaving ? (customer.targetDeposit || 0) : (customer.loanAmount || customer.loan || 0);
+  const loanAmount = customer.loanAmount || customer.loan || 0;
   const paidAmount = customer.paid || 0;
-  const pendingAmount = isSaving ? 0 : (customer.pending !== undefined ? customer.pending : Math.max(0, loanAmount - paidAmount));
-  const advanceBalance = customer.advanceBalance || 0;
+  const pendingAmount = customer.pending !== undefined ? customer.pending : Math.max(0, loanAmount - paidAmount);
 
   // Filter and sort transactions belonging to this customer
   const customerTxs = (transactions || [])
@@ -128,7 +126,7 @@ export async function generateCustomerArchivePDF(
   doc.setFontSize(6.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(100, 116, 139);
-  doc.text(isSaving ? 'TARGET SAVINGS' : 'LOAN PRINCIPAL', 18, cursorY + 5);
+  doc.text('LOAN PRINCIPAL', 18, cursorY + 5);
   doc.setFontSize(10.5);
   doc.setTextColor(15, 23, 42);
   doc.text(`INR ${loanAmount.toLocaleString('en-IN')}`, 18, cursorY + 11.5);
@@ -145,17 +143,17 @@ export async function generateCustomerArchivePDF(
   doc.setTextColor(6, 95, 70);
   doc.text(`INR ${paidAmount.toLocaleString('en-IN')}`, card2X + 4, cursorY + 11.5);
 
-  // Card 3: Pending Balance / Advance
+  // Card 3: Pending Balance
   const card3X = card2X + cardWidth + 3;
-  doc.setFillColor(isSaving ? 238 : 254, isSaving ? 242 : 242, isSaving ? 255 : 242);
+  doc.setFillColor(254, 242, 242);
   doc.roundedRect(card3X, cursorY, cardWidth, cardHeight, 2, 2, 'F');
   doc.setFontSize(6.5);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(isSaving ? 99 : 239, isSaving ? 102 : 68, isSaving ? 241 : 68);
-  doc.text(isSaving ? 'ADVANCE SAVINGS' : 'PENDING BALANCE', card3X + 4, cursorY + 5);
+  doc.setTextColor(239, 68, 68);
+  doc.text('PENDING BALANCE', card3X + 4, cursorY + 5);
   doc.setFontSize(10.5);
-  doc.setTextColor(isSaving ? 49 : 153, isSaving ? 46 : 27, isSaving ? 129 : 27);
-  doc.text(`INR ${(isSaving ? advanceBalance : pendingAmount).toLocaleString('en-IN')}`, card3X + 4, cursorY + 11.5);
+  doc.setTextColor(153, 27, 27);
+  doc.text(`INR ${pendingAmount.toLocaleString('en-IN')}`, card3X + 4, cursorY + 11.5);
 
   // Card 4: Ledger Entries Count
   const card4X = card3X + cardWidth + 3;
@@ -192,7 +190,7 @@ export async function generateCustomerArchivePDF(
     ],
     [
       { content: 'Account Type', styles: { fontStyle: 'bold' } },
-      isSaving ? 'Pigmy Daily Savings' : 'Microfinance Daily Loan',
+      'Microfinance Daily Loan',
       { content: 'Account Status', styles: { fontStyle: 'bold' } },
       'Active',
     ],

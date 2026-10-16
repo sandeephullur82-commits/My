@@ -83,9 +83,6 @@ export interface Customer {
   lastPayment?: any;
   isDeleted?: boolean;
   isPinned?: boolean;
-  accountType?: 'loan' | 'saving'; // 'loan' (default) or 'saving' (pigmy daily deposit)
-  targetDeposit?: number;          // Target savings goal for savings accounts
-  dailySavings?: number;           // Standard daily deposit target
   currentCycle?: number;
   cycles?: LoanCycle[];
   advanceBalance?: number;      // Accumulated daily savings deposits after loan completion
@@ -417,7 +414,6 @@ export const firestoreService = {
   async checkDuplicateCustomer(
     name: string, 
     phone: string, 
-    accountType: 'loan' | 'saving' = 'loan', 
     excludeCustomerId?: string
   ): Promise<{ allowed: boolean; reason?: string; existingLoanId?: string }> {
     try {
@@ -464,22 +460,13 @@ export const firestoreService = {
 
       if (matchingDocs.length === 0) return { allowed: true };
 
-      // RULE 1: DO NOT CREATE DUAL LOAN USING SAME NAME AND PHONE NO
-      if (accountType === 'loan') {
-        const existingLoan = matchingDocs.find(c => c.accountType !== 'saving');
-        if (existingLoan) {
-          return {
-            allowed: false,
-            existingLoanId: existingLoan.id,
-            reason: `Dual loan not allowed: An active loan already exists for ${name} (+91 ${cleanPhone}) under ID ${existingLoan.id}. You cannot create a second loan with the same name and phone, but you can create a Saving account.`
-          };
-        }
-        return { allowed: true };
-      }
-
-      // RULE 2: USING THE SAME NAME AND PHONE NO TO CREATE SAVING IS ALLOWED
-      if (accountType === 'saving') {
-        return { allowed: true };
+      const existingLoan = matchingDocs.find(c => !c.isDeleted);
+      if (existingLoan) {
+        return {
+          allowed: false,
+          existingLoanId: existingLoan.id,
+          reason: `Dual loan not allowed: An active loan already exists for ${name} (+91 ${cleanPhone}) under ID ${existingLoan.id}. You cannot create a second loan with the same name and phone.`
+        };
       }
 
       return { allowed: true };
@@ -636,27 +623,19 @@ export const firestoreService = {
       throw new Error('Customer phone must be between 10 and 15 digits.');
     }
 
-    const accountType = customer.accountType || 'loan';
-    if (accountType === 'loan') {
-      const dupCheck = await this.checkDuplicateCustomer(
-        customer.name.trim(),
-        cleanPhone,
-        'loan',
-        customer.id
-      );
-      if (!dupCheck.allowed) {
-        throw new Error(dupCheck.reason || 'Dual loan not allowed for same name and phone number.');
-      }
+    const dupCheck = await this.checkDuplicateCustomer(
+      customer.name.trim(),
+      cleanPhone,
+      customer.id
+    );
+    if (!dupCheck.allowed) {
+      throw new Error(dupCheck.reason || 'Dual loan not allowed for same name and phone number.');
     }
-    const isSaving = accountType === 'saving';
-    const targetDeposit = isSaving ? Number(customer.targetDeposit ?? customer.loan ?? customer.loanAmount ?? 0) : undefined;
-    const loanAmount = isSaving ? 0 : Math.max(0, Number(customer.loan ?? customer.loanAmount ?? customer.totalLoan ?? 0));
+    const loanAmount = Math.max(0, Number(customer.loan ?? customer.loanAmount ?? customer.totalLoan ?? 0));
     const paidAmount = customer.paid ?? 0;
-    const pendingAmount = isSaving ? 0 : (customer.pending !== undefined ? customer.pending : Math.max(0, loanAmount - paidAmount));
-    const advanceBalance = customer.advanceBalance !== undefined ? customer.advanceBalance : (isSaving ? paidAmount : 0);
-    const uniqueKey = isSaving
-      ? `${customer.name.trim().toLowerCase()}_${cleanPhone}_saving_${customer.id}`
-      : `${customer.name.trim().toLowerCase()}_${cleanPhone}_loan`;
+    const pendingAmount = customer.pending !== undefined ? customer.pending : Math.max(0, loanAmount - paidAmount);
+    const advanceBalance = customer.advanceBalance !== undefined ? customer.advanceBalance : 0;
+    const uniqueKey = `${customer.name.trim().toLowerCase()}_${cleanPhone}_loan`;
 
     const rootCustomerRef = doc(db, 'customers', customer.id);
     const existingRef = customer.docPath ? doc(db, customer.docPath) : rootCustomerRef;
@@ -664,8 +643,6 @@ export const firestoreService = {
       ...customer,
       name: customer.name.trim(),
       phone: cleanPhone,
-      accountType,
-      targetDeposit,
       loan: loanAmount,
       loanAmount: loanAmount,
       totalLoan: loanAmount,
@@ -749,27 +726,19 @@ export const firestoreService = {
       throw new Error('Customer phone must be between 10 and 15 digits.');
     }
 
-    const accountType = customer.accountType || 'loan';
-    if (accountType === 'loan') {
-      const dupCheck = await this.checkDuplicateCustomer(
-        customer.name.trim(),
-        cleanPhone,
-        'loan',
-        customer.id
-      );
-      if (!dupCheck.allowed) {
-        throw new Error(dupCheck.reason || 'Dual loan not allowed for same name and phone number.');
-      }
+    const dupCheck = await this.checkDuplicateCustomer(
+      customer.name.trim(),
+      cleanPhone,
+      customer.id
+    );
+    if (!dupCheck.allowed) {
+      throw new Error(dupCheck.reason || 'Dual loan not allowed for same name and phone number.');
     }
-    const isSaving = accountType === 'saving';
-    const targetDeposit = isSaving ? Number(customer.targetDeposit ?? customer.loan ?? customer.loanAmount ?? 0) : undefined;
-    const loanAmount = isSaving ? 0 : Math.max(0, Number(customer.loan ?? customer.loanAmount ?? customer.totalLoan ?? 0));
-    const paidAmount = Math.max(0, isSaving ? (Number(openingBalance.amount) || 0) : Math.min(loanAmount, Number(openingBalance.amount) || 0));
-    const pendingAmount = isSaving ? 0 : Math.max(0, loanAmount - paidAmount);
-    const advanceBalance = isSaving ? paidAmount : (customer.advanceBalance || 0);
-    const uniqueKey = isSaving
-      ? `${customer.name.trim().toLowerCase()}_${cleanPhone}_saving_${customer.id}`
-      : `${customer.name.trim().toLowerCase()}_${cleanPhone}_loan`;
+    const loanAmount = Math.max(0, Number(customer.loan ?? customer.loanAmount ?? customer.totalLoan ?? 0));
+    const paidAmount = Math.max(0, Math.min(loanAmount, Number(openingBalance.amount) || 0));
+    const pendingAmount = Math.max(0, loanAmount - paidAmount);
+    const advanceBalance = customer.advanceBalance || 0;
+    const uniqueKey = `${customer.name.trim().toLowerCase()}_${cleanPhone}_loan`;
 
     const rootCustomerRef = doc(db, 'customers', customer.id);
     const existingRef = customer.docPath ? doc(db, customer.docPath) : rootCustomerRef;
@@ -785,8 +754,6 @@ export const firestoreService = {
       ...customer,
       name: customer.name.trim(),
       phone: cleanPhone,
-      accountType,
-      targetDeposit,
       loan: loanAmount,
       loanAmount: loanAmount,
       totalLoan: loanAmount,

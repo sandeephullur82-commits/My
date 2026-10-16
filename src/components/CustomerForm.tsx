@@ -5,12 +5,11 @@ import { notificationService } from '../services/notificationService';
 import { toast } from 'sonner';
 import { format, addDays, differenceInDays, parseISO, isValid } from 'date-fns';
 import { safeFormat, safeDifferenceInDays } from '../lib/utils';
-import { Calendar, Loader2, Trash2, Clock, Check, Lock, Sparkles, IndianRupee, RotateCcw, CheckCircle2, Percent, History, AlertTriangle } from 'lucide-react';
+import { Calendar, Loader2, Trash2, Clock, Check, Lock, Sparkles, IndianRupee, RotateCcw, CheckCircle2, Percent, History, AlertTriangle, X } from 'lucide-react';
 
 interface CustomerFormProps {
   customer?: Customer; // if provided, we are in Edit mode, New Loan mode, or Renewal mode
   mode?: 'create' | 'edit' | 'new_loan' | 'renewal';
-  initialAccountType?: 'loan' | 'saving';
   initialName?: string;
   initialPhone?: string;
   onSave?: (
@@ -25,7 +24,6 @@ interface CustomerFormProps {
 export function CustomerForm({ 
   customer, 
   mode, 
-  initialAccountType = 'loan', 
   initialName = '', 
   initialPhone = '', 
   onSave, 
@@ -52,7 +50,6 @@ export function CustomerForm({
       return {
         name: customer.name || '',
         phone: customer.phone || '',
-        accountType: (customer.accountType || 'loan') as 'loan' | 'saving',
         loan: defaultLoanAmt,
         notes: isRenewal
           ? `Loan Renewal`
@@ -73,8 +70,7 @@ export function CustomerForm({
       return {
         name: customer.name || '',
         phone: customer.phone || '',
-        accountType: (customer.accountType || 'loan') as 'loan' | 'saving',
-        loan: customer.accountType === 'saving' ? (customer.targetDeposit || customer.loan || 0) : (customer.loanAmount || customer.loan || 0),
+        loan: customer.loanAmount || customer.loan || 0,
         notes: customer.notes || '',
         startDate: safeFormat(customer.startDate, 'yyyy-MM-dd', format(new Date(), 'yyyy-MM-dd')),
         duration: dur,
@@ -91,7 +87,6 @@ export function CustomerForm({
           ...parsed,
           name: initialName || parsed.name || '',
           phone: initialPhone || parsed.phone || '',
-          accountType: (initialAccountType || parsed.accountType || 'loan') as 'loan' | 'saving',
           frequency: parsed.frequency || 'daily',
           frequencyDays: parsed.frequencyDays || 1,
         };
@@ -102,7 +97,6 @@ export function CustomerForm({
     return { 
       name: initialName || '', 
       phone: initialPhone || '', 
-      accountType: initialAccountType as 'loan' | 'saving',
       loan: '', 
       notes: '',
       startDate: format(new Date(), 'yyyy-MM-dd'),
@@ -114,6 +108,8 @@ export function CustomerForm({
 
   const principalAmountNum = Number(formData.loan) || 0;
   const paidAmount = customer?.paid || 0;
+  const [formStep, setFormStep] = useState<number>(1);
+  const [showSuccessAnim, setShowSuccessAnim] = useState(false);
 
   // Interest management: default to enabled for Renewal (and optionally in new loans), default 3% rate & calculated amount, both editable
   const [hasInterest, setHasInterest] = useState<boolean>(() => isRenewal);
@@ -129,6 +125,35 @@ export function CustomerForm({
     setFormData(prev => ({ ...prev, loan: newPrincipalStr }));
     if (hasInterest && interestRate >= 0) {
       setInterestAmount(Math.round(newPrincipal * (interestRate / 100)));
+    }
+  };
+
+  const handleNextStep = () => {
+    if (formStep === 1) {
+      const cleanPhone = formData.phone.replace(/\D/g, '').slice(-10);
+      if (!formData.name.trim()) {
+        toast.error('Please enter borrower full name');
+        return;
+      }
+      if (cleanPhone.length !== 10) {
+        toast.error('Please enter a valid 10-digit phone number');
+        return;
+      }
+      if (!isIdUnique && !isEdit && !isNewLoan) {
+        toast.error('Account ID is already taken. Please choose another.');
+        return;
+      }
+      setFormStep(2);
+    } else if (formStep === 2) {
+      if (Number(formData.loan) <= 0) {
+        toast.error('Please enter a valid loan amount (> ₹0)');
+        return;
+      }
+      if ((formData.duration || 0) < 1) {
+        toast.error('Loan tenure must be at least 1 day');
+        return;
+      }
+      setFormStep(3);
     }
   };
 
@@ -258,12 +283,11 @@ export function CustomerForm({
     const cleanPhone = formData.phone.replace(/\D/g, '').slice(-10);
     const cleanName = formData.name.trim();
 
-    if (formData.accountType === 'loan' && cleanName.length >= 2 && cleanPhone.length === 10) {
+    if (cleanName.length >= 2 && cleanPhone.length === 10) {
       setIsCheckingDuplicate(true);
       firestoreService.checkDuplicateCustomer(
         cleanName,
-        cleanPhone,
-        'loan'
+        cleanPhone
       ).then(result => {
         if (!result.allowed) {
           setDuplicateLoanError({
@@ -283,7 +307,7 @@ export function CustomerForm({
       setDuplicateLoanError(null);
       setIsCheckingDuplicate(false);
     }
-  }, [formData.name, formData.phone, formData.accountType, isNewLoan, isEdit]);
+  }, [formData.name, formData.phone, isNewLoan, isEdit]);
 
   const quickAmounts = [10000, 15000, 20000, 25000, 50000];
   const quickInterestRates = [1, 2, 3, 5, 10];
@@ -445,7 +469,7 @@ export function CustomerForm({
         toast.error('Please enter a valid loan amount (>= ₹0)');
         return;
       }
-      if ((formData.duration || 0) < 1) {
+      if (totalLoanWithInterest > 0 && (formData.duration || 0) < 1) {
         toast.error('Loan tenure must be at least 1 day');
         return;
       }
@@ -455,7 +479,7 @@ export function CustomerForm({
         const startParsed = parseISO(formData.startDate);
         const startMs = isValid(startParsed) ? startParsed.getTime() : Date.now();
         const endParsed = parseISO(endDate);
-        const endMs = isValid(endParsed) ? endParsed.getTime() : addDays(startMs, formData.duration || 100).getTime();
+        const endMs = isValid(endParsed) && totalLoanWithInterest > 0 ? endParsed.getTime() : startMs;
 
         const defaultNotes = isRenewal
           ? `Loan Renewal (Principal ₹${principalAmountNum.toLocaleString('en-IN')}${hasInterest && interestAmount > 0 ? ` + ₹${interestAmount.toLocaleString('en-IN')} Interest @ ${interestRate}%` : ''})`
@@ -463,12 +487,12 @@ export function CustomerForm({
 
         const payload: RenewalData = {
           newLoanAmount: totalLoanWithInterest,
-          durationDays: formData.duration || 100,
+          durationDays: totalLoanWithInterest > 0 ? (formData.duration || 100) : 0,
           startDate: startMs,
           endDate: endMs,
           rolloverAction: prevPending > 0 ? 'absorbed' : 'cleared',
-          frequency: formData.frequency as any,
-          frequencyDays: formData.frequencyDays || 1,
+          frequency: totalLoanWithInterest > 0 ? formData.frequency as any : 'daily',
+          frequencyDays: totalLoanWithInterest > 0 ? (formData.frequencyDays || 1) : 1,
           advanceApplied: effectiveAdvanceToApply,
           interestRate: hasInterest ? interestRate : undefined,
           interestAmount: hasInterest ? interestAmount : undefined,
@@ -513,12 +537,10 @@ export function CustomerForm({
       return;
     }
 
-    // Validate New Customer or Edit Customer flow
     const cleanPhone = formData.phone.replace(/\D/g, '').slice(-10);
-    const isSaving = formData.accountType === 'saving';
-    if (!formData.name || (!isSaving && (formData.loan === '' || formData.loan === undefined)) || (!isIdUnique && !isEdit) || cleanPhone.length !== 10 || (!isSaving && Number(formData.loan) < 0)) {
+    if (!formData.name || (formData.loan === '' || formData.loan === undefined) || (!isIdUnique && !isEdit) || cleanPhone.length !== 10 || Number(formData.loan) < 0) {
       if (cleanPhone.length !== 10) toast.error('Enter valid 10-digit phone number');
-      if (!isSaving && Number(formData.loan) < 0) toast.error('Enter valid loan amount (>= ₹0)');
+      if (Number(formData.loan) < 0) toast.error('Enter valid loan amount (>= ₹0)');
       if (!isIdUnique && !isEdit) toast.error('ID already used');
       return;
     }
@@ -526,11 +548,10 @@ export function CustomerForm({
     const normalizedName = formData.name.trim();
     const normalizedPhone = cleanPhone;
     
-    if (!isEdit || normalizedName !== customer?.name || normalizedPhone !== customer?.phone || formData.accountType !== (customer?.accountType || 'loan')) {
+    if (!isEdit || normalizedName !== customer?.name || normalizedPhone !== customer?.phone) {
       const checkResult = await firestoreService.checkDuplicateCustomer(
         normalizedName, 
         normalizedPhone, 
-        formData.accountType,
         customer?.id
       );
       if (!checkResult.allowed) {
@@ -543,13 +564,14 @@ export function CustomerForm({
       }
     }
 
-    const finalLoanAmt = isSaving ? 0 : totalLoanWithInterest;
-    const targetDepositAmt = undefined;
-    const startMs = parseISO(formData.startDate).getTime();
-    const endMs = parseISO(endDate).getTime();
-    const uniqueKey = isSaving
-      ? `${normalizedName.toLowerCase()}_${normalizedPhone}_saving_${isEdit && customer ? customer.id : fullId}`
-      : `${normalizedName.toLowerCase()}_${normalizedPhone}_loan`;
+    const finalLoanAmt = totalLoanWithInterest;
+    const startMs = parseISO(formData.startDate).getTime() || Date.now();
+    const endMs = finalLoanAmt > 0 ? parseISO(endDate).getTime() : startMs;
+    const finalDuration = finalLoanAmt > 0 ? (formData.duration || 100) : 0;
+    const finalFreq = finalLoanAmt > 0 ? formData.frequency : 'daily';
+    const finalFreqDays = finalLoanAmt > 0 ? (formData.frequencyDays || 1) : 1;
+
+    const uniqueKey = `${normalizedName.toLowerCase()}_${normalizedPhone}_loan`;
     
     setIsSubmitting(true);
     try {
@@ -559,31 +581,30 @@ export function CustomerForm({
             id: customer.id,
             name: normalizedName,
             phone: normalizedPhone,
-            accountType: formData.accountType,
-            targetDeposit: targetDepositAmt,
             loanAmount: finalLoanAmt,
             loan: finalLoanAmt,
-            pending: isSaving ? 0 : Math.max(0, finalLoanAmt - (customer.paid || 0)),
-            advanceBalance: isSaving ? (customer.paid || 0) : customer.advanceBalance,
+            pending: Math.max(0, finalLoanAmt - (customer.paid || 0)),
+            advanceBalance: customer.advanceBalance,
             startDate: startMs,
             endDate: endMs,
-            frequency: formData.frequency,
-            frequencyDays: formData.frequencyDays || 1,
-            durationDays: formData.duration || 100,
+            frequency: finalFreq,
+            frequencyDays: finalFreqDays,
+            durationDays: finalDuration,
             notes: formData.notes
           });
         }
         toast.success(`Changes to ${normalizedName} saved`);
-        onCancel();
+        setShowSuccessAnim(true);
+        setTimeout(() => {
+          onCancel();
+        }, 900);
       } else {
         const priorPaidAmount = isExistingLoan ? existingPaidNum : 0;
-        const initialPendingAmt = isSaving ? 0 : (isExistingLoan ? existingPendingNum : finalLoanAmt);
+        const initialPendingAmt = isExistingLoan ? existingPendingNum : finalLoanAmt;
 
         const openingBalanceData = (isExistingLoan && priorPaidAmount > 0) ? {
           amount: priorPaidAmount,
-          note: openingBalanceNote.trim() || (isSaving
-            ? `Opening Savings Deposit: Prior collected savings (${priorInstallmentsPaid} days @ ₹${estimatedInstallment || 1}/day)`
-            : `Opening Balance: Prior loan collections (${priorInstallmentsPaid} days @ ₹${estimatedInstallment || 1}/day)`),
+          note: openingBalanceNote.trim() || `Opening Balance: Prior loan collections (${priorInstallmentsPaid} days @ ₹${estimatedInstallment || 1}/day)`,
           timestamp: startMs
         } : undefined;
 
@@ -592,18 +613,16 @@ export function CustomerForm({
             id: fullId,
             name: normalizedName,
             phone: normalizedPhone,
-            accountType: formData.accountType,
-            targetDeposit: targetDepositAmt,
             loan: finalLoanAmt,
             loanAmount: finalLoanAmt,
             paid: priorPaidAmount,
             pending: initialPendingAmt,
-            advanceBalance: isSaving ? priorPaidAmount : 0,
+            advanceBalance: 0,
             startDate: startMs,
             endDate: endMs,
-            frequency: formData.frequency,
-            frequencyDays: formData.frequencyDays || 1,
-            durationDays: formData.duration || 100,
+            frequency: finalFreq,
+            frequencyDays: finalFreqDays,
+            durationDays: finalDuration,
             notes: formData.notes,
             uniqueKey,
             hasOpeningBalance: isExistingLoan && priorPaidAmount > 0,
@@ -611,14 +630,15 @@ export function CustomerForm({
           }, openingBalanceData);
         }
         toast.success(
-          isSaving
-            ? `🐷 ${normalizedName} (${fullId}) Saving Account created!`
-            : (isExistingLoan && priorPaidAmount > 0
-              ? `${normalizedName} (${fullId}) registered with ₹${priorPaidAmount.toLocaleString('en-IN')} opening collections`
-              : `${normalizedName} (${fullId}) created`)
+          isExistingLoan && priorPaidAmount > 0
+            ? `${normalizedName} (${fullId}) registered with ₹${priorPaidAmount.toLocaleString('en-IN')} opening collections`
+            : `${normalizedName} (${fullId}) created`
         );
         localStorage.removeItem('pigmy_draft_new_customer');
-        onCancel();
+        setShowSuccessAnim(true);
+        setTimeout(() => {
+          onCancel();
+        }, 900);
       }
     } catch (err: any) {
       toast.error(err?.message || `Failed to ${isEdit ? 'update' : 'create'} customer.`);
@@ -762,58 +782,49 @@ export function CustomerForm({
         )}
 
         {/* Financial Highlights */}
-        {formData.accountType !== 'saving' ? (
-          <div className="grid grid-cols-3 gap-2 border-t border-border/40 pt-4 mt-1">
-            <div>
-              <p className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] mb-1">
-                {isExistingLoan && existingPaidNum > 0
-                  ? 'Pending Due'
-                  : (hasInterest && interestAmount > 0 ? 'Total Due' : (isNewLoan && effectiveAdvanceToApply > 0 ? 'Opening Due' : 'Total Loan'))}
+        <div className="grid grid-cols-3 gap-2 border-t border-border/40 pt-4 mt-1">
+          <div>
+            <p className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] mb-1">
+              {isExistingLoan && existingPaidNum > 0
+                ? 'Pending Due'
+                : (hasInterest && interestAmount > 0 ? 'Total Due' : (isNewLoan && effectiveAdvanceToApply > 0 ? 'Opening Due' : 'Total Loan'))}
+            </p>
+            <p className="text-lg font-black text-text-primary tracking-tighter font-mono">
+              ₹{(isExistingLoan && existingPaidNum > 0
+                ? existingPendingNum
+                : (isNewLoan && effectiveAdvanceToApply > 0 ? netOpeningPending : totalLoanWithInterest)
+              ).toLocaleString()}
+            </p>
+            {hasInterest && interestAmount > 0 ? (
+              <p className="text-[10px] font-bold text-accent font-mono">
+                incl. ₹{interestAmount.toLocaleString()} ({interestRate}%)
               </p>
-              <p className="text-lg font-black text-text-primary tracking-tighter font-mono">
-                ₹{(isExistingLoan && existingPaidNum > 0
-                  ? existingPendingNum
-                  : (isNewLoan && effectiveAdvanceToApply > 0 ? netOpeningPending : totalLoanWithInterest)
-                ).toLocaleString()}
+            ) : isExistingLoan && existingPaidNum > 0 ? (
+              <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                ₹{existingPaidNum.toLocaleString()} already paid
               </p>
-              {hasInterest && interestAmount > 0 ? (
-                <p className="text-[10px] font-bold text-accent font-mono">
-                  incl. ₹{interestAmount.toLocaleString()} ({interestRate}%)
-                </p>
-              ) : isExistingLoan && existingPaidNum > 0 ? (
-                <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 font-mono">
-                  ₹{existingPaidNum.toLocaleString()} already paid
-                </p>
-              ) : null}
-            </div>
-            <div className="text-center">
-              <p className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] mb-1">Tenure</p>
-              <p className="text-lg font-black text-text-primary tracking-tighter font-mono">
-                {formData.duration} Days
-              </p>
-              {isExistingLoan && remainingInstallmentsCount > 0 && (
-                <p className="text-[10px] font-bold text-text-secondary font-mono">
-                  {remainingInstallmentsCount} days left
-                </p>
-              )}
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] mb-1">
-                Est. Installment
-              </p>
-              <p className="text-lg font-black text-accent tracking-tighter font-mono">
-                ₹{estimatedInstallment.toLocaleString()}
-              </p>
-            </div>
+            ) : null}
           </div>
-        ) : (
-          <div className="border-t border-border/40 pt-4 mt-1 flex items-center justify-between text-xs">
-            <span className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-              <span>🐷 Pigmy Savings Account</span>
-              <span className="text-[10px] opacity-70">(Flexible / No Target Goal)</span>
-            </span>
+          <div className="text-center">
+            <p className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] mb-1">Tenure</p>
+            <p className="text-lg font-black text-text-primary tracking-tighter font-mono">
+              {formData.duration} Days
+            </p>
+            {isExistingLoan && remainingInstallmentsCount > 0 && (
+              <p className="text-[10px] font-bold text-text-secondary font-mono">
+                {remainingInstallmentsCount} days left
+              </p>
+            )}
           </div>
-        )}
+          <div className="text-right">
+            <p className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] mb-1">
+              Est. Installment
+            </p>
+            <p className="text-lg font-black text-accent tracking-tighter font-mono">
+              ₹{estimatedInstallment.toLocaleString()}
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Real-time Dual Loan Warning Banner */}
@@ -835,8 +846,36 @@ export function CustomerForm({
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto space-y-8 px-1">
-        {/* Section 1: Core Identity (Disabled & Uneditable for New Loan & Renewal) */}
+      <form onSubmit={handleSubmit} className="flex-1 space-y-4 px-1">
+        {/* Step Indicator Header */}
+        <div className="flex items-center justify-between bg-card/60 border border-border/60 rounded-2xl p-4 mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-accent text-white flex items-center justify-center font-black text-xs shadow-md shadow-accent/25">
+              {formStep}/3
+            </div>
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-text-primary">
+                {formStep === 1 ? 'Step 1: Core Identity' : formStep === 2 ? 'Step 2: Financials & Schedule' : 'Step 3: Review & Submit'}
+              </h3>
+              <p className="text-[10px] text-text-secondary font-medium">
+                {formStep === 1 ? 'Enter borrower name, phone & account ID' : formStep === 2 ? 'Configure loan amount, interest & frequency' : 'Review details and complete registration'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            {[1, 2, 3].map(s => (
+              <div
+                key={s}
+                className={`w-2 h-2 rounded-full transition-all ${
+                  formStep === s ? 'w-6 bg-accent' : formStep > s ? 'bg-accent/50' : 'bg-muted border border-border'
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Section 1: Core Identity */}
+        {formStep === 1 && (
         <div>
           <div className="flex items-center justify-between mb-4">
             <h4 className="text-[11px] font-black text-accent uppercase tracking-[0.2em] flex items-center gap-2">
@@ -1005,20 +1044,28 @@ export function CustomerForm({
 
           </div>
         </div>
+        )}
 
         {/* Section 2: Financials & Collection Schedule */}
+        {formStep === 2 && (
         <div>
           <h4 className="text-[11px] font-black text-accent uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-accent" /> Financials & Schedule
           </h4>
           <div className="space-y-5">
             {/* Principal / Loan Amount with Quick Amounts inside and Interest Button beside */}
-            {formData.accountType !== 'saving' && (
               <div>
-                <label htmlFor="customer-input-loan" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] ml-1 mb-1.5 block">
-                  {isRenewal 
-                      ? `Renewal Principal` 
-                      : (isNewLoan ? `New Loan Principal` : 'Loan Amount')}
+                <label htmlFor="customer-input-loan" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] ml-1 mb-1.5 flex items-center justify-between">
+                  <span>
+                    {isRenewal 
+                        ? `Renewal Principal` 
+                        : (isNewLoan ? `New Loan Principal` : 'Loan Amount')}
+                  </span>
+                  {principalAmountNum > 0 && (
+                    <span className="text-xs font-mono font-black text-accent tracking-tight">
+                      ₹{principalAmountNum.toLocaleString('en-IN')}
+                    </span>
+                  )}
                 </label>
                 <div className="flex items-start gap-2">
                   <div className="flex-1 min-w-0">
@@ -1026,7 +1073,7 @@ export function CustomerForm({
                       ref={loanBoxRef}
                       className={`relative bg-bg border rounded-2xl transition-all duration-200 cursor-text ${
                         isLoanFocused 
-                          ? 'border-accent ring-4 ring-accent/5 p-3' 
+                          ? 'border-accent ring-4 ring-accent/5 p-3.5' 
                           : 'border-border/60 hover:border-border/90 px-3.5 h-14 flex flex-col justify-center'
                       }`}
                       onClick={() => {
@@ -1037,26 +1084,42 @@ export function CustomerForm({
                     >
                       {/* Amount input row */}
                       <div className="flex items-center w-full">
-                        <span className="text-[15px] font-bold text-text-secondary opacity-40 shrink-0 mr-1.5 select-none" aria-hidden="true">
+                        <span className="text-[18px] font-black text-accent shrink-0 mr-2 select-none" aria-hidden="true">
                           ₹
                         </span>
                         <input
                           id="customer-input-loan"
-                          type="number"
-                          min="0"
-                          step="500"
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
                           required
                           aria-required="true"
                           aria-label="Loan principal amount in Rupees"
                           value={formData.loan}
                           onFocus={() => setIsLoanFocused(true)}
-                          onChange={e => handlePrincipalChange(e.target.value)}
-                          className="flex-1 min-w-0 bg-transparent focus:outline-none text-[15px] font-bold font-mono text-text-primary placeholder:text-text-secondary/40"
-                          placeholder="0.00"
+                          onChange={e => {
+                            const val = e.target.value.replace(/[^0-9]/g, '');
+                            handlePrincipalChange(val);
+                          }}
+                          className="flex-1 min-w-0 bg-transparent focus:outline-none text-[20px] font-black font-mono text-text-primary placeholder:text-text-secondary/30 tracking-tight"
+                          placeholder="Enter amount e.g. 25000"
                         />
+                        {formData.loan !== '' && Number(formData.loan) > 0 && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePrincipalChange('');
+                            }}
+                            aria-label="Clear loan amount"
+                            className="p-1.5 ml-2 rounded-xl text-text-secondary hover:text-text-primary hover:bg-muted transition-colors"
+                          >
+                            <X size={16} strokeWidth={2.5} />
+                          </button>
+                        )}
                       </div>
 
-                      {/* Quick amounts visible at bottom inside the field on tap/focus */}
+                      {/* Quick amounts preset pills */}
                       <AnimatePresence>
                         {isLoanFocused && (
                           <motion.div
@@ -1064,15 +1127,15 @@ export function CustomerForm({
                             animate={{ opacity: 1, height: 'auto' }}
                             exit={{ opacity: 0, height: 0 }}
                             transition={{ duration: 0.18 }}
-                            className="pt-2 mt-2 border-t border-border/40 overflow-hidden"
+                            className="pt-2.5 mt-2.5 border-t border-border/40 overflow-hidden"
                           >
                             <div className="flex items-center justify-between mb-1.5">
                               <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary opacity-60">
-                                Quick Amounts
+                                Preset Amounts
                               </span>
                               {principalAmountNum > 0 && (
                                 <span className="text-[10px] font-mono font-bold text-accent">
-                                  Selected: ₹{principalAmountNum.toLocaleString('en-IN')}
+                                  ₹{principalAmountNum.toLocaleString('en-IN')}
                                 </span>
                               )}
                             </div>
@@ -1093,13 +1156,13 @@ export function CustomerForm({
                                       e.preventDefault();
                                       handlePrincipalChange(amount.toString());
                                     }}
-                                    className={`px-2.5 py-1 rounded-xl text-xs font-bold font-mono shrink-0 transition-all cursor-pointer ${
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold font-mono shrink-0 transition-all cursor-pointer ${
                                       isSelected
                                         ? 'bg-accent text-white shadow-xs font-black scale-102'
                                         : 'bg-muted/80 hover:bg-muted text-text-secondary hover:text-text-primary border border-border/60'
                                     }`}
                                   >
-                                    ₹{amount >= 1000 ? `${amount / 1000}k` : amount}
+                                    ₹{amount >= 100000 ? `${amount / 100000}L` : amount >= 1000 ? `${amount / 1000}k` : amount}
                                   </button>
                                 );
                               })}
@@ -1131,10 +1194,9 @@ export function CustomerForm({
                   </button>
                 </div>
               </div>
-            )}
 
             {/* Interest Section: Only applicable when Interest is enabled */}
-            {formData.accountType !== 'saving' && hasInterest && (
+            {hasInterest && (
             <motion.div 
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1258,7 +1320,7 @@ export function CustomerForm({
             </motion.div>
             )}
 
-            {formData.accountType !== 'saving' && (
+            {principalAmountNum > 0 && (
               <>
                 {/* Collection Frequency (Daily 1d, Weekly 7d, Monthly 30d, or Custom Days) */}
                 <div className="p-4 rounded-2xl bg-card border border-border/50 space-y-3">
@@ -1718,21 +1780,49 @@ export function CustomerForm({
             )}
           </div>
         </div>
+        )}
 
-        {/* Section 3: Notes / Remarks */}
-        <div>
-          <label htmlFor="customer-input-notes" className="text-[11px] font-black text-accent uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent" aria-hidden="true" /> Notes / Remarks
-          </label>
-          <textarea
-            id="customer-input-notes"
-            aria-label="Additional notes or remarks"
-            value={formData.notes}
-            onChange={e => setFormData({ ...formData, notes: e.target.value })}
-            className="w-full bg-bg border border-border/60 rounded-2xl p-4 min-h-[90px] focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/5 transition-all text-[13px]"
-            placeholder={isRenewal ? `e.g. Loan Restructured with interest` : (isNewLoan ? `e.g. Loan Disbursed` : "Add any additional details here...")}
-          />
+        {/* Section 3: Notes / Remarks & Review */}
+        {formStep === 3 && (
+        <div className="space-y-4">
+          <div>
+            <label htmlFor="customer-input-notes" className="text-[11px] font-black text-accent uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent" aria-hidden="true" /> Notes / Remarks
+            </label>
+            <textarea
+              id="customer-input-notes"
+              aria-label="Additional notes or remarks"
+              value={formData.notes}
+              onChange={e => setFormData({ ...formData, notes: e.target.value })}
+              className="w-full bg-bg border border-border/60 rounded-2xl p-4 min-h-[90px] focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/5 transition-all text-[13px]"
+              placeholder={isRenewal ? `e.g. Loan Restructured with interest` : (isNewLoan ? `e.g. Loan Disbursed` : "Add any additional details here...")}
+            />
+          </div>
+
+          {/* Registration Summary Card */}
+          <div className="p-4 rounded-2xl bg-card border border-border/60 space-y-3">
+            <h5 className="text-xs font-black uppercase tracking-wider text-accent">Registration Summary</h5>
+            <div className="grid grid-cols-2 gap-3 text-xs font-medium">
+              <div className="p-3 rounded-xl bg-bg border border-border/40">
+                <span className="text-[10px] text-text-secondary uppercase tracking-wider block">Borrower Name</span>
+                <span className="font-black text-text-primary text-sm">{formData.name || 'N/A'}</span>
+              </div>
+              <div className="p-3 rounded-xl bg-bg border border-border/40">
+                <span className="text-[10px] text-text-secondary uppercase tracking-wider block">Phone Number</span>
+                <span className="font-black text-text-primary text-sm">+91 {formData.phone || 'N/A'}</span>
+              </div>
+              <div className="p-3 rounded-xl bg-bg border border-border/40">
+                <span className="text-[10px] text-text-secondary uppercase tracking-wider block">Total Loan Amount</span>
+                <span className="font-black text-accent text-sm font-mono">₹{totalLoanWithInterest.toLocaleString()}</span>
+              </div>
+              <div className="p-3 rounded-xl bg-bg border border-border/40">
+                <span className="text-[10px] text-text-secondary uppercase tracking-wider block">Loan Tenure</span>
+                <span className="font-black text-text-primary text-sm font-mono">{formData.duration} Days</span>
+              </div>
+            </div>
+          </div>
         </div>
+        )}
 
         {isEdit && onDelete && !isNewLoan && (
           <div className="pt-4 border-t border-border">
@@ -1751,55 +1841,112 @@ export function CustomerForm({
       </form>
       
       {/* Footer Action Buttons */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-card/80 backdrop-blur-xl border-t border-border/40 pb-[env(safe-area-inset-bottom)] z-50">
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-card/90 backdrop-blur-xl border-t border-border/40 pb-[env(safe-area-inset-bottom)] z-50">
         <div className="flex gap-3 max-w-2xl mx-auto">
-          <button
-            id="customer-btn-cancel"
-            type="button"
-            onClick={onCancel}
-            disabled={isSubmitting}
-            className="flex-1 h-14 rounded-2xl bg-bg border border-border font-black text-[11px] uppercase tracking-widest text-text-secondary active:scale-95 transition-all cursor-pointer disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            id="customer-btn-save"
-            onClick={() => handleSubmit()}
-            disabled={
-              isSubmitting ||
-              (isNewLoan 
-                ? (totalLoanWithInterest < 0 || (formData.duration || 0) < 1)
-                : ((!isIdUnique && !isEdit) || formData.phone.replace(/\D/g, '').slice(-10).length !== 10 || (formData.accountType !== 'saving' && Number(formData.loan) < 0) || (duplicateLoanError?.exists && formData.accountType === 'loan')))
-            }
-            className={`flex-[2] h-14 rounded-2xl font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all shadow-xl disabled:opacity-50 disabled:shadow-none cursor-pointer flex items-center justify-center gap-2 ${
-              duplicateLoanError?.exists && formData.accountType === 'loan'
-                ? 'bg-rose-600 text-white shadow-rose-600/20'
-                : formData.accountType === 'saving'
-                  ? 'bg-emerald-600 text-white shadow-emerald-600/25'
+          {formStep > 1 ? (
+            <button
+              type="button"
+              onClick={() => setFormStep(formStep - 1)}
+              disabled={isSubmitting}
+              className="flex-1 h-14 rounded-2xl bg-bg border border-border font-black text-[11px] uppercase tracking-widest text-text-secondary active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+            >
+              ← Back
+            </button>
+          ) : (
+            <button
+              id="customer-btn-cancel"
+              type="button"
+              onClick={onCancel}
+              disabled={isSubmitting}
+              className="flex-1 h-14 rounded-2xl bg-bg border border-border font-black text-[11px] uppercase tracking-widest text-text-secondary active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          )}
+
+          {formStep < 3 ? (
+            <button
+              type="button"
+              onClick={handleNextStep}
+              className="flex-[2] h-14 rounded-2xl font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all shadow-xl shadow-accent/25 bg-accent text-white cursor-pointer flex items-center justify-center gap-2"
+            >
+              <span>Next Step</span>
+              <span>→</span>
+            </button>
+          ) : (
+            <button
+              id="customer-btn-save"
+              type="button"
+              onClick={() => handleSubmit()}
+              disabled={
+                isSubmitting ||
+                (isNewLoan 
+                  ? (totalLoanWithInterest < 0 || (formData.duration || 0) < 1)
+                  : ((!isIdUnique && !isEdit) || formData.phone.replace(/\D/g, '').slice(-10).length !== 10 || Number(formData.loan) < 0 || duplicateLoanError?.exists))
+              }
+              className={`flex-[2] h-14 rounded-2xl font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all shadow-xl disabled:opacity-50 disabled:shadow-none cursor-pointer flex items-center justify-center gap-2 ${
+                duplicateLoanError?.exists
+                  ? 'bg-rose-600 text-white shadow-rose-600/20'
                   : 'bg-accent text-white shadow-accent/20'
-            }`}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                <span>Processing...</span>
-              </>
-            ) : duplicateLoanError?.exists && formData.accountType === 'loan' ? (
-              <span>Dual Loan Prohibited</span>
-            ) : isRenewal ? (
-              `Renew Loan`
-            ) : isNewLoan ? (
-              `Issue New Loan`
-            ) : isEdit ? (
-              'Save Changes'
-            ) : formData.accountType === 'saving' ? (
-              'Create Saving Account'
-            ) : (
-              'Create Loan Account'
-            )}
-          </button>
+              }`}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>Processing...</span>
+                </>
+              ) : duplicateLoanError?.exists ? (
+                <span>Dual Loan Prohibited</span>
+              ) : isRenewal ? (
+                `Renew Loan`
+              ) : isNewLoan ? (
+                `Issue New Loan`
+              ) : isEdit ? (
+                'Save Changes'
+              ) : (
+                'Create Account'
+              )}
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Success Animation Overlay */}
+      <AnimatePresence>
+        {showSuccessAnim && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9999] bg-bg/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center"
+          >
+            <motion.div
+              initial={{ scale: 0.5, rotate: -10 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 20 }}
+              className="w-24 h-24 rounded-3xl bg-emerald-500 text-white flex items-center justify-center shadow-2xl shadow-emerald-500/40 mb-6"
+            >
+              <CheckCircle2 size={56} className="stroke-[2.5]" />
+            </motion.div>
+            <motion.h3 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="text-xl font-black text-text-primary uppercase tracking-tight"
+            >
+              Registration Successful!
+            </motion.h3>
+            <motion.p
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="text-xs text-text-secondary mt-1 font-medium max-w-xs"
+            >
+              Account has been created and registered successfully in the ledger.
+            </motion.p>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -53,58 +53,68 @@ function AppContent() {
     }
   }, [location.pathname, navigate]);
 
-  // Handle Capacitor Android hardware back button and deep link URLs
+  // Handle Android back button & browser back navigation for all modals, customer details, registration, and pages
   React.useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
-
-    const backListenerPromise = CapApp.addListener('backButton', ({ canGoBack }) => {
-      // First dispatch a cancelable custom event so open overlays/modals in Layout can close
+    const handleBackAction = (e?: Event) => {
       const overlayEvent = new CustomEvent('pigmy-android-back', { cancelable: true });
       const notHandledByOverlay = window.dispatchEvent(overlayEvent);
       if (!notHandledByOverlay) {
-        return;
+        if (e) e.preventDefault();
+        return false;
+      }
+
+      if (isCustomerDetailsOpen) {
+        if (e) e.preventDefault();
+        setIsCustomerDetailsOpen(false);
+        return false;
       }
 
       if (isModalOpen) {
+        if (e) e.preventDefault();
         setIsModalOpen(false);
-        return;
-      }
-      if (isCustomerDetailsOpen) {
-        setIsCustomerDetailsOpen(false);
-        return;
+        return false;
       }
 
-      if (location.pathname !== '/') {
-        if (canGoBack) {
-          navigate(-1);
+      return true;
+    };
+
+    let backListener: any = null;
+    if (Capacitor.isNativePlatform()) {
+      CapApp.addListener('backButton', ({ canGoBack }) => {
+        const canProceed = handleBackAction();
+        if (!canProceed) return;
+
+        if (location.pathname !== '/') {
+          if (canGoBack) {
+            navigate(-1);
+          } else {
+            navigate('/', { replace: true });
+          }
         } else {
-          navigate('/', { replace: true });
+          CapApp.exitApp();
         }
-      } else {
-        CapApp.exitApp();
-      }
-    });
+      }).then(listener => {
+        backListener = listener;
+      });
+    }
 
-    const urlListenerPromise = CapApp.addListener('appUrlOpen', (event) => {
-      try {
-        const url = new URL(event.url);
-        // Handle custom schemes (pigmy://path or com.pigmypro.smartcollection://path) and https URLs
-        let targetPath = url.pathname || '/';
-        if ((url.protocol === 'pigmy:' || url.protocol === 'com.pigmypro.smartcollection:') && url.host) {
-          targetPath = `/${url.host}${url.pathname && url.pathname !== '/' ? url.pathname : ''}`;
-        }
-        const fullRoute = `${targetPath}${url.search || ''}`;
-        navigate(fullRoute);
-      } catch (err) {
-        console.warn('[Capacitor DeepLink] Failed to parse URL:', event.url, err);
+    const handlePopState = (event: PopStateEvent) => {
+      const canProceed = handleBackAction(event);
+      if (!canProceed) {
+        window.history.pushState(null, '', window.location.href);
       }
-    });
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    window.history.pushState(null, '', window.location.href);
 
     return () => {
-      backListenerPromise.then((h) => h.remove()).catch(() => {});
-      urlListenerPromise.then((h) => h.remove()).catch(() => {});
+      if (backListener) {
+        backListener.remove();
+      }
+      window.removeEventListener('popstate', handlePopState);
     };
-  }, [location.pathname, navigate, isModalOpen, setIsModalOpen, isCustomerDetailsOpen, setIsCustomerDetailsOpen]);
+  }, [isModalOpen, isCustomerDetailsOpen, location.pathname, navigate]);
 
   // Derive currentTab from location (mapping callback paths gracefully to entry)
   const rawTab = location.pathname.split('/')[1] || 'dashboard';
