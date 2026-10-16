@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, User, ArrowDownAZ, ArrowUpZA, Edit2, Trash2, IndianRupee, Search, Pin, PinOff, Filter, ArrowUp, ArrowDown, History, X, ChevronDown, SlidersHorizontal, ArrowUpDown, Check } from 'lucide-react';
+import { Plus, User, ArrowDownAZ, ArrowUpZA, Edit2, Trash2, IndianRupee, Search, Pin, PinOff, Filter, ArrowUp, ArrowDown, History, X, ChevronDown, SlidersHorizontal, ArrowUpDown, Check, Users } from 'lucide-react';
 import { firestoreService, Customer, Transaction } from '../services/firestoreService';
 import { useRealtimeData } from '../hooks/useRealtimeData';
 import { toast } from 'sonner';
@@ -15,6 +15,7 @@ import { useUI } from '../context/UIContext';
 import { WithdrawDepositModal } from '../components/WithdrawDepositModal';
 import { ReceiptSuccessModal, ReceiptData } from '../components/ReceiptSuccessModal';
 import { DeleteCustomerModal } from '../components/DeleteCustomerModal';
+import { BatchContactImportModal } from '../components/BatchContactImportModal';
 import { useFeedback } from '../context/FeedbackContext';
 
 interface CustomersProps {
@@ -68,16 +69,17 @@ export function Customers({ onNavigate }: CustomersProps) {
   
   const [showFilterSheet, setShowFilterSheet] = useState(false);
   const [showSortSheet, setShowSortSheet] = useState(false);
+  const [showBatchImport, setShowBatchImport] = useState(false);
 
   // Sync modal & customer details state with UI context
   useEffect(() => {
     setIsCustomerDetailsOpen(!!selectedCustomer);
-    setIsModalOpen(!!selectedCustomer || !!editCustomer || showAdd || !!newLoanCustomer || !!withdrawCustomer || !!selectedReceipt || !!customerToDelete);
+    setIsModalOpen(!!selectedCustomer || !!editCustomer || showAdd || !!newLoanCustomer || !!withdrawCustomer || !!selectedReceipt || !!customerToDelete || showBatchImport);
     return () => {
        setIsCustomerDetailsOpen(false);
        setIsModalOpen(false);
     };
-  }, [selectedCustomer, editCustomer, showAdd, newLoanCustomer, withdrawCustomer, selectedReceipt, customerToDelete, setIsModalOpen, setIsCustomerDetailsOpen]);
+  }, [selectedCustomer, editCustomer, showAdd, newLoanCustomer, withdrawCustomer, selectedReceipt, customerToDelete, showBatchImport, setIsModalOpen, setIsCustomerDetailsOpen]);
 
   const filterOptions = [
     { value: 'all', label: 'All Accounts' },
@@ -440,6 +442,20 @@ export function Customers({ onNavigate }: CustomersProps) {
               </span>
             </button>
 
+            {/* Batch Import Contacts Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (navigator.vibrate) navigator.vibrate(8);
+                setShowBatchImport(true);
+              }}
+              className="h-10 px-3 bg-card border border-border/85 hover:border-accent/40 text-text-primary rounded-xl flex items-center gap-1.5 text-xs font-bold transition-all active:scale-95 shadow-xs shrink-0 cursor-pointer"
+              title="Batch Import Contacts"
+            >
+              <Users size={15} className="text-accent" />
+              <span className="hidden md:inline">Import Contacts</span>
+            </button>
+
             {/* Quick Add Customer Button */}
             <button
               type="button"
@@ -616,6 +632,13 @@ export function Customers({ onNavigate }: CustomersProps) {
             }} 
           />
         </BottomSheet>
+
+        <BatchContactImportModal
+          isOpen={showBatchImport}
+          onClose={() => setShowBatchImport(false)}
+          existingCustomers={customers}
+          onSuccess={() => refreshData()}
+        />
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4 pb-24">
           {error ? (

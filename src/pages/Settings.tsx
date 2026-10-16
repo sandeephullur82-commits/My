@@ -3,7 +3,8 @@ import {
   User, Palette, LayoutDashboard, ShieldCheck, 
   ToggleLeft, ToggleRight, CheckCircle, Moon, Sun,
   Smartphone, Download, HelpCircle, ChevronDown, ChevronUp,
-  Sparkles, Database, Trash2, Building, Coins, AlertCircle, Receipt, FileText, LogOut
+  Sparkles, Database, Trash2, Building, Coins, AlertCircle, Receipt, FileText, LogOut,
+  Bell, Camera, MapPin, Users, Printer, Volume2, HardDrive
 } from 'lucide-react';
 import { useTheme } from '../components/ThemeProvider';
 import { useUI } from '../context/UIContext';
@@ -305,6 +306,8 @@ export function Settings() {
           </div>
         </div>
       </div>
+
+
 
       {/* App Installation & PWA Section */}
       <div className="space-y-3">
