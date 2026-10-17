@@ -48,8 +48,6 @@ export function Customers({ onNavigate }: CustomersProps) {
     return (location.state?.filter as any) || 'all';
   });
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'pending_desc' | 'last_payment' | 'name_asc' | 'name_desc'>('asc');
-  const [showAdd, setShowAdd] = useState(false);
-  const [addCustomerDefaults, setAddCustomerDefaults] = useState<{ name?: string; phone?: string } | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [newLoanCustomer, setNewLoanCustomer] = useState<Customer | null>(null);
   const [withdrawCustomer, setWithdrawCustomer] = useState<Customer | null>(null);
@@ -69,21 +67,15 @@ export function Customers({ onNavigate }: CustomersProps) {
   const [showFilterSheet, setShowFilterSheet] = useState(false);
   const [showSortSheet, setShowSortSheet] = useState(false);
 
-  useEffect(() => {
-    if (showAdd) {
-      window.scrollTo({ top: 0, behavior: 'instant' });
-    }
-  }, [showAdd]);
-
   // Sync modal & customer details state with UI context
   useEffect(() => {
     setIsCustomerDetailsOpen(!!selectedCustomer);
-    setIsModalOpen(!!selectedCustomer || !!editCustomer || showAdd || !!newLoanCustomer || !!withdrawCustomer || !!selectedReceipt || !!customerToDelete);
+    setIsModalOpen(!!selectedCustomer || !!editCustomer || !!newLoanCustomer || !!withdrawCustomer || !!selectedReceipt || !!customerToDelete);
     return () => {
        setIsCustomerDetailsOpen(false);
        setIsModalOpen(false);
     };
-  }, [selectedCustomer, editCustomer, showAdd, newLoanCustomer, withdrawCustomer, selectedReceipt, customerToDelete, setIsModalOpen, setIsCustomerDetailsOpen]);
+  }, [selectedCustomer, editCustomer, newLoanCustomer, withdrawCustomer, selectedReceipt, customerToDelete, setIsModalOpen, setIsCustomerDetailsOpen]);
 
   const filterOptions = [
     { value: 'all', label: 'All Accounts' },
@@ -347,8 +339,6 @@ export function Customers({ onNavigate }: CustomersProps) {
         );
       }
       setLocalDeletedIds(prev => prev.filter(x => x !== newCustomer.id));
-      setShowAdd(false);
-      setAddCustomerDefaults(null);
     } catch (error: any) {
       toastError('Registration Failed', error?.message || 'Failed to create customer record');
     }
@@ -438,19 +428,6 @@ export function Customers({ onNavigate }: CustomersProps) {
               </span>
             </button>
 
-            {/* Quick Add Customer Button */}
-            <button
-              type="button"
-              onClick={() => {
-                if (navigator.vibrate) navigator.vibrate(8);
-                setShowAdd(true);
-              }}
-              className="h-10 px-3 bg-accent hover:brightness-110 text-white rounded-xl flex items-center gap-1.5 text-xs font-bold transition-all active:scale-95 shadow-sm shadow-accent/25 shrink-0 cursor-pointer"
-              title="Add New Customer"
-            >
-              <Plus size={15} strokeWidth={2.5} />
-              <span className="hidden sm:inline">Add Customer</span>
-            </button>
           </div>
 
           {/* Segmented Filter Control with Active Badges */}
@@ -593,38 +570,7 @@ export function Customers({ onNavigate }: CustomersProps) {
           </div>
         </BottomSheet>
 
-        <AnimatePresence>
-          {showAdd && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="fixed inset-0 z-50 bg-bg overflow-y-auto flex flex-col min-h-[100dvh]"
-            >
-              {/* Header */}
-              <div className="sticky top-0 z-20 bg-card/90 backdrop-blur-xl border-b border-border/40 px-4 md:px-8 py-4 flex items-center justify-between">
-                <div>
-                  <h2 className="text-sm md:text-base font-black text-text-primary uppercase tracking-wider">REGISTER NEW CUSTOMER</h2>
-                  <p className="text-[10px] font-bold text-text-secondary opacity-60 uppercase tracking-widest mt-0.5">ADD LOAN AMOUNT, DAILY INSTALLMENT TERMS AND CONTACT</p>
-                </div>
-              </div>
 
-              {/* Body */}
-              <div className="flex-1 max-w-2xl lg:max-w-3xl w-full mx-auto p-4 md:p-8 pb-32">
-                <CustomerForm 
-                  initialName={addCustomerDefaults?.name || ''}
-                  initialPhone={addCustomerDefaults?.phone || ''}
-                  onSave={handleSaveCustomer} 
-                  onCancel={() => {
-                    setShowAdd(false);
-                    setAddCustomerDefaults(null);
-                  }} 
-                />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4 pb-24">
           {error ? (
@@ -663,15 +609,8 @@ export function Customers({ onNavigate }: CustomersProps) {
               </div>
               <p className="text-[15px] font-black text-text-primary uppercase tracking-[0.15em]">No Borrowers Registered</p>
               <p className="text-xs font-semibold text-text-secondary opacity-50 mt-2 max-w-sm mx-auto leading-relaxed">
-                Get started by registering your very first client. Click the button below to open the registration form.
+                No borrowers found in the collection ledger.
               </p>
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setShowAdd(true)}
-                className="mt-8 px-8 py-4 rounded-2xl bg-accent text-white text-[11px] font-black uppercase tracking-widest shadow-lg shadow-accent/25 flex items-center gap-2 cursor-pointer"
-              >
-                <Plus size={16} strokeWidth={3} /> Register First Customer
-              </motion.button>
             </div>
           ) : filteredAndSorted.length === 0 ? (
             <div className="col-span-full flex flex-col items-center justify-center py-20 px-6 bg-card/40 rounded-[32px] border border-dashed border-border/10 text-center animate-in zoom-in-95 duration-500">

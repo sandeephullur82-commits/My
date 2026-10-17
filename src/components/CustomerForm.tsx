@@ -224,7 +224,7 @@ export function CustomerForm({
   }, [formData.startDate, formData.duration]);
 
   useEffect(() => {
-    if (isEdit || isNewLoan) return;
+    if (isEdit || (isNewLoan && !!customer)) return;
     const fetchId = async () => {
       setIsSyncingId(true);
       const nextIdFull = await firestoreService.getNextCustomerId();
@@ -233,10 +233,10 @@ export function CustomerForm({
       setIsSyncingId(false);
     };
     fetchId();
-  }, [isEdit, isNewLoan]);
+  }, [isEdit, isNewLoan, customer]);
 
   useEffect(() => {
-    if (isEdit || isNewLoan) return;
+    if (isEdit || (isNewLoan && !!customer)) return;
     if (idSuffix.length >= 1) {
       const check = async () => {
         setIsCheckingId(true);
@@ -247,13 +247,13 @@ export function CustomerForm({
       };
       check();
     }
-  }, [fullId, isEdit, isNewLoan, idSuffix]);
+  }, [fullId, isEdit, isNewLoan, customer, idSuffix]);
 
   useEffect(() => {
-    if (!isEdit && !isNewLoan) {
+    if (!isEdit && (!isNewLoan || !customer)) {
       localStorage.setItem('pigmy_draft_new_customer', JSON.stringify(formData));
     }
-  }, [formData, isEdit, isNewLoan]);
+  }, [formData, isEdit, isNewLoan, customer]);
 
   const [duplicateLoanError, setDuplicateLoanError] = useState<{ exists: boolean; existingLoanId?: string; reason?: string } | null>(null);
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
@@ -520,9 +520,9 @@ export function CustomerForm({
     const primaryPhone = phoneNumbers[0] ? phoneNumbers[0].replace(/\D/g, '').slice(-10) : '';
     const cleanedPhoneNumbers = phoneNumbers.map(p => p.replace(/\D/g, '').slice(-10)).filter(p => p.length > 0);
 
-    if (!formData.name || (!isIdUnique && !isEdit) || Number(formData.loan) < 0) {
+    if (!formData.name || (!isIdUnique && !isEdit && (!isNewLoan || !customer)) || Number(formData.loan) < 0) {
       if (Number(formData.loan) < 0) toast.error('Enter valid loan amount (>= ₹0)');
-      if (!isIdUnique && !isEdit) toast.error('ID already used');
+      if (!isIdUnique && !isEdit && (!isNewLoan || !customer)) toast.error('ID already used');
       return;
     }
 
@@ -829,7 +829,7 @@ export function CustomerForm({
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="flex-1 space-y-6 px-1">
+      <div className="flex-1 space-y-6 px-1">
         {/* Section 1: Core Identity */}
         <div>
           <div className="flex items-center justify-between mb-4">
@@ -847,8 +847,8 @@ export function CustomerForm({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-1">
               <label htmlFor="customer-input-name" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] ml-1 mb-1.5 flex items-center justify-between">
-                <span>Full Name</span>
-                {isNewLoan && <span className="text-[9px] font-bold lowercase opacity-70">(uneditable for {isRenewal ? 'renewal' : 'new loan'})</span>}
+                 <span>Full Name</span>
+                {isNewLoan && !!customer && <span className="text-[9px] font-bold lowercase opacity-70">(uneditable for {isRenewal ? 'renewal' : 'new loan'})</span>}
               </label>
               <div className="relative">
                 <input
@@ -857,15 +857,15 @@ export function CustomerForm({
                   required
                   aria-required="true"
                   aria-label="Borrower full name"
-                  disabled={isNewLoan}
+                  disabled={isNewLoan && !!customer}
                   value={formData.name}
                   onChange={e => setFormData({ ...formData, name: e.target.value })}
                   className={`w-full bg-bg border border-border/60 rounded-2xl h-14 px-4 focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/5 transition-all text-[15px] font-bold ${
-                    isNewLoan ? 'opacity-70 cursor-not-allowed bg-muted/40 text-text-secondary select-none' : ''
+                    isNewLoan && !!customer ? 'opacity-70 cursor-not-allowed bg-muted/40 text-text-secondary select-none' : ''
                   }`}
                   placeholder="Borrower's Name"
                 />
-                {isNewLoan && (
+                {isNewLoan && !!customer && (
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary opacity-40 pointer-events-none" aria-hidden="true">
                     <Lock size={16} />
                   </div>
@@ -885,7 +885,7 @@ export function CustomerForm({
                     + Add Phone
                   </button>
                 )}
-                {isNewLoan && <span className="text-[9px] font-bold lowercase opacity-70">(uneditable for {isRenewal ? 'renewal' : 'new loan'})</span>}
+                {isNewLoan && !!customer && <span className="text-[9px] font-bold lowercase opacity-70">(uneditable for {isRenewal ? 'renewal' : 'new loan'})</span>}
               </div>
               <div className="space-y-2.5">
                 {phoneNumbers.map((num, idx) => (
@@ -895,7 +895,7 @@ export function CustomerForm({
                       <input
                         type="tel"
                         aria-label={`Phone number ${idx + 1}`}
-                        disabled={isNewLoan}
+                        disabled={isNewLoan && !!customer}
                         value={num}
                         onChange={e => {
                           const numeric = e.target.value.replace(/\D/g, '').slice(0, 10);
@@ -907,7 +907,7 @@ export function CustomerForm({
                           setFormData(f => ({ ...f, phone: numeric }));
                         }}
                         className={`w-full bg-bg border border-border/60 rounded-2xl h-14 pl-14 pr-4 focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/5 transition-all text-[15px] font-bold ${
-                          isNewLoan ? 'opacity-70 cursor-not-allowed bg-muted/40 text-text-secondary select-none' : ''
+                          isNewLoan && !!customer ? 'opacity-70 cursor-not-allowed bg-muted/40 text-text-secondary select-none' : ''
                         }`}
                         placeholder="10-digit number (optional)"
                       />
@@ -935,7 +935,7 @@ export function CustomerForm({
                 <label htmlFor="customer-input-id-suffix" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em]">
                   Account ID
                 </label>
-                {!isEdit && !isNewLoan && (
+                {!isEdit && (!isNewLoan || !customer) && (
                   <div className="flex items-center gap-1.5">
                     {isCheckingId ? (
                       <span className="text-[9px] font-black uppercase tracking-widest text-text-secondary opacity-60">Checking...</span>
@@ -957,7 +957,7 @@ export function CustomerForm({
                     )}
                   </div>
                 )}
-                {isNewLoan && (
+                {isNewLoan && !!customer && (
                   <span className="text-[9px] font-bold text-text-secondary opacity-70">
                     Existing Account
                   </span>
@@ -975,27 +975,27 @@ export function CustomerForm({
                   required
                   aria-required="true"
                   aria-label="Account ID suffix"
-                  readOnly={isEdit || isNewLoan}
-                  disabled={isNewLoan}
+                  readOnly={isEdit || (isNewLoan && !!customer)}
+                  disabled={isNewLoan && !!customer}
                   value={idSuffix}
                   onChange={e => handleIdChange(e.target.value)}
                   className={`w-full bg-bg border ${
-                    !isIdUnique && !isEdit && !isNewLoan 
+                    !isIdUnique && !isEdit && (!isNewLoan || !customer)
                       ? 'border-danger/50 focus:border-danger' 
-                      : (isIdRecycled && isIdUnique && !isEdit && !isNewLoan 
+                      : (isIdRecycled && isIdUnique && !isEdit && (!isNewLoan || !customer)
                           ? 'border-emerald-500/60 focus:border-emerald-500 bg-emerald-500/[0.03]' 
                           : 'border-border/60 focus:border-accent')
                   } rounded-2xl h-14 pl-[5.5rem] pr-10 focus:outline-none focus:ring-4 transition-all text-[15px] font-black tracking-widest ${
-                    isEdit || isNewLoan ? 'opacity-70 cursor-not-allowed bg-muted/40' : ''
+                    isEdit || (isNewLoan && !!customer) ? 'opacity-70 cursor-not-allowed bg-muted/40' : ''
                   }`}
                   placeholder="001"
                 />
-                {!isEdit && !isNewLoan && isSyncingId && (
+                {!isEdit && (!isNewLoan || !customer) && isSyncingId && (
                   <div className="absolute right-4" aria-hidden="true">
                     <Loader2 size={16} className="text-text-secondary opacity-50 animate-spin" />
                   </div>
                 )}
-                {isNewLoan && (
+                {isNewLoan && !!customer && (
                   <div className="absolute right-4 text-text-secondary opacity-40 pointer-events-none" aria-hidden="true">
                     <Lock size={16} />
                   </div>
@@ -1758,7 +1758,8 @@ export function CustomerForm({
                   </motion.div>
                 )}
               </div>
-            </div>
+            )}
+          </div>
 
         {/* Section 3: Notes / Remarks & Review */}
         <div className="space-y-4">
@@ -1799,7 +1800,6 @@ export function CustomerForm({
             </div>
           </div>
         </div>
-        )}
 
         {isEdit && onDelete && !isNewLoan && (
           <div className="pt-4 border-t border-border">
@@ -1815,8 +1815,9 @@ export function CustomerForm({
               </button>
           </div>
         )}
-      </form>
-      
+
+      </div>
+
       {/* Footer Action Buttons */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-card/90 backdrop-blur-xl border-t border-border/40 pb-[env(safe-area-inset-bottom)] z-50">
         <div className="flex gap-3 max-w-2xl mx-auto">
@@ -1903,6 +1904,7 @@ export function CustomerForm({
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
     </div>
   );
 }
