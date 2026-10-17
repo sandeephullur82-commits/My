@@ -234,101 +234,61 @@ export const CustomerCard = React.memo(function CustomerCard({
               <div className="text-right">
                 {!isCompact && (
                   <p className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${
-                    isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'text-sky-600 dark:text-sky-400' : 'text-text-secondary'
+                    isFullyPaid 
+                      ? ((customer.advanceBalance || 0) > 0 ? 'text-sky-600 dark:text-sky-400' : 'text-success')
+                      : 'text-text-secondary'
                   }`}>
-                    {isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'Advance' : 'Pending'}
+                    {isFullyPaid 
+                      ? ((customer.advanceBalance || 0) > 0 ? 'Advance' : 'Paid')
+                      : 'Pending'}
                   </p>
                 )}
                 <p className={`font-mono tabular-nums font-black tracking-tight leading-none ${
-                  isFullyPaid && (customer.advanceBalance || 0) > 0 ? 'text-sky-600 dark:text-sky-400' : statusText
+                  isFullyPaid 
+                    ? ((customer.advanceBalance || 0) > 0 ? 'text-sky-600 dark:text-sky-400' : 'text-success')
+                    : statusText
                 } ${isCompact ? 'text-base' : 'text-lg'}`}>
                   <span className="text-xs mr-0.5 opacity-60 font-bold font-sans">₹</span>
-                  {isFullyPaid && (customer.advanceBalance || 0) > 0 
-                    ? (customer.advanceBalance || 0).toLocaleString('en-IN')
+                  {isFullyPaid 
+                    ? ((customer.advanceBalance || 0) > 0 
+                        ? (customer.advanceBalance || 0).toLocaleString('en-IN')
+                        : '0')
                     : pendingAmount.toLocaleString('en-IN')}
                 </p>
               </div>
 
-              {/* Action Button: "New Loan" / "Withdraw" if fully paid, or (+) Entry Button if active */}
-              {isFullyPaid ? (
-                <div className="flex items-center gap-1.5">
-                  {(customer.advanceBalance || 0) > 0 && onWithdraw && (
-                    <button
-                      id={`customer-withdraw-btn-${customer.id}`}
-                      type="button"
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (navigator.vibrate) navigator.vibrate(15);
-                        onWithdraw(customer);
-                      }}
-                      title={`Withdraw advance deposit of ₹${(customer.advanceBalance || 0).toLocaleString('en-IN')} for ${customer.name}`}
-                      aria-label={`Withdraw advance deposit for ${customer.name}`}
-                      className={`flex items-center gap-1 transition-all z-20 bg-amber-600 hover:bg-amber-700 text-white font-black uppercase tracking-wider shadow-xs active:scale-95 cursor-pointer ${
-                        isCompact ? 'px-2 py-1 text-[10px] rounded-lg' : 'px-2.5 py-1.5 text-xs rounded-xl'
-                      }`}
-                    >
-                      <ArrowUpRight size={isCompact ? 11 : 13} strokeWidth={2.5} />
-                      <span>Withdraw</span>
-                    </button>
-                  )}
-
-                  <button
-                    id={`customer-new-loan-btn-${customer.id}`}
-                    type="button"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (navigator.vibrate) navigator.vibrate(15);
-                      if (onStartNewLoan) {
-                        onStartNewLoan();
-                      } else {
-                        onClick();
-                      }
-                    }}
-                    title={`Start New Loan for ${customer.name}`}
-                    aria-label={`Start New Loan for ${customer.name}`}
-                    className={`flex items-center gap-1.5 transition-all z-20 bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-wider shadow-xs active:scale-95 cursor-pointer ${
-                      isCompact ? 'px-2 py-1 text-[10px] rounded-lg' : 'px-2.5 py-1.5 text-xs rounded-xl'
-                    }`}
-                  >
-                    <RotateCcw size={isCompact ? 11 : 13} strokeWidth={2.5} />
-                    <span>New Loan</span>
-                  </button>
-                </div>
-              ) : (
-                <button
-                  id={`customer-add-entry-btn-${customer.id}`}
-                  type="button"
-                  disabled={isEntryDisabled}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (isEntryDisabled) return;
-                    if (navigator.vibrate) navigator.vibrate(12);
-                    onAddEntry();
-                  }}
-                  title={
-                    isPaidToday
-                      ? `Already collected today in Paid section`
-                      : `Add collection entry for ${customer.name}`
-                  }
-                  aria-label={`Add entry for ${customer.name}`}
-                  className={`flex items-center justify-center transition-all z-20 ${
-                    isEntryDisabled
-                      ? 'bg-muted/70 text-text-secondary/40 border border-border/40 cursor-not-allowed shadow-none'
-                      : 'bg-accent text-white shadow-xs hover:bg-accent/90 active:scale-95 cursor-pointer'
-                  } ${
-                    isCompact ? 'w-7 h-7 rounded-lg' : 'w-8 h-8 rounded-xl shadow-accent/20'
-                  }`}
-                >
-                  {isPaidToday ? (
-                    <CheckCircle2 size={isCompact ? 13 : 15} className="text-emerald-500" strokeWidth={2.5} />
-                  ) : (
-                    <Plus size={isCompact ? 15 : 18} strokeWidth={2.5} />
-                  )}
-                </button>
-              )}
+              {/* Action Button: (+) Entry Button for active, paid, and advance cards */}
+              <button
+                id={`customer-add-entry-btn-${customer.id}`}
+                type="button"
+                disabled={isEntryDisabled && !isFullyPaid}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isEntryDisabled && !isFullyPaid) return;
+                  if (navigator.vibrate) navigator.vibrate(12);
+                  onAddEntry();
+                }}
+                title={
+                  isPaidToday && !isFullyPaid
+                    ? `Already collected today in Paid section`
+                    : `Add collection/advance entry for ${customer.name}`
+                }
+                aria-label={`Add entry for ${customer.name}`}
+                className={`flex items-center justify-center transition-all z-20 ${
+                  isPaidToday && !isFullyPaid
+                    ? 'bg-muted/70 text-text-secondary/40 border border-border/40 cursor-not-allowed shadow-none'
+                    : 'bg-accent text-white shadow-xs hover:bg-accent/90 active:scale-95 cursor-pointer'
+                } ${
+                  isCompact ? 'w-7 h-7 rounded-lg' : 'w-8 h-8 rounded-xl shadow-accent/20'
+                }`}
+              >
+                {isPaidToday && !isFullyPaid ? (
+                  <CheckCircle2 size={isCompact ? 13 : 15} className="text-emerald-500" strokeWidth={2.5} />
+                ) : (
+                  <Plus size={isCompact ? 15 : 18} strokeWidth={2.5} />
+                )}
+              </button>
 
               {/* Desktop / Tablet Quick Actions (Direct Click without swipe) */}
               <div className="hidden md:flex items-center gap-1 shrink-0 ml-1">
@@ -387,6 +347,57 @@ export const CustomerCard = React.memo(function CustomerCard({
                 className={`h-full rounded-full transition-all duration-300 ${statusColor}`}
                 style={{ width: `${progress}%` }}
               />
+            </div>
+          )}
+
+          {/* Bottom Action Bar for Fully Paid Loans */}
+          {isFullyPaid && (
+            <div className="mt-3 pt-2.5 border-t border-border/60 flex items-center justify-end gap-2">
+              <div className="flex items-center gap-2">
+                {(customer.advanceBalance || 0) > 0 && onWithdraw && (
+                  <button
+                    id={`customer-withdraw-btn-${customer.id}`}
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (navigator.vibrate) navigator.vibrate(15);
+                      onWithdraw(customer);
+                    }}
+                    title={`Withdraw advance deposit of ₹${(customer.advanceBalance || 0).toLocaleString('en-IN')} for ${customer.name}`}
+                    aria-label={`Withdraw advance deposit for ${customer.name}`}
+                    className={`flex items-center gap-1 transition-all z-20 bg-amber-600 hover:bg-amber-700 text-white font-black uppercase tracking-wider shadow-xs active:scale-95 cursor-pointer ${
+                      isCompact ? 'px-2.5 py-1.5 text-[10px] rounded-lg' : 'px-3 py-2 text-xs rounded-xl'
+                    }`}
+                  >
+                    <ArrowUpRight size={isCompact ? 12 : 14} strokeWidth={2.5} />
+                    <span>Withdraw</span>
+                  </button>
+                )}
+
+                <button
+                  id={`customer-new-loan-btn-${customer.id}`}
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (navigator.vibrate) navigator.vibrate(15);
+                    if (onStartNewLoan) {
+                      onStartNewLoan();
+                    } else {
+                      onClick();
+                    }
+                  }}
+                  title={`Start New Loan for ${customer.name}`}
+                  aria-label={`Start New Loan for ${customer.name}`}
+                  className={`flex items-center gap-1.5 transition-all z-20 bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-wider shadow-xs active:scale-95 cursor-pointer ${
+                    isCompact ? 'px-2.5 py-1.5 text-[10px] rounded-lg' : 'px-3 py-2 text-xs rounded-xl'
+                  }`}
+                >
+                  <RotateCcw size={isCompact ? 12 : 14} strokeWidth={2.5} />
+                  <span>New Loan</span>
+                </button>
+              </div>
             </div>
           )}
         </div>

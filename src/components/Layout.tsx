@@ -10,7 +10,6 @@ import { cn } from '../lib/utils';
 
 import { useRealtimeData } from '../hooks/useRealtimeData';
 import { CustomerForm } from './CustomerForm';
-import { BottomSheet } from './BottomSheet';
 import { firestoreService } from '../services/firestoreService';
 import { PWAInstallPrompt } from './PWAInstallPrompt';
 import { usePWAInstall } from '../hooks/usePWAInstall';
@@ -47,12 +46,6 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
     }
   };
 
-  useEffect(() => {
-    if (showGlobalAddCustomer) {
-      window.scrollTo({ top: 0, behavior: 'instant' });
-    }
-  }, [showGlobalAddCustomer]);
-
   // Scroll to top implementation for tab clicks
   const handleTabClick = (tabId: string) => {
     if (tabId === currentTab) {
@@ -79,16 +72,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
     };
   }, []);
 
-  useEffect(() => {
-    const handleAndroidBack = (e: Event) => {
-      if (showGlobalAddCustomer) {
-        e.preventDefault();
-        setShowGlobalAddCustomer(false);
-      }
-    };
-    window.addEventListener('pigmy-android-back', handleAndroidBack);
-    return () => window.removeEventListener('pigmy-android-back', handleAndroidBack);
-  }, [showGlobalAddCustomer]);
+  // removed add customer android back listener
 
   // Desktop Keyboard Shortcuts
   useEffect(() => {
@@ -126,11 +110,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
         case 'L':
           handleTabClick('transactions');
           break;
-        case 'n':
-        case 'N':
-          e.preventDefault();
-          setShowGlobalAddCustomer(true);
-          break;
+        // 'n' shortcut removed
         case '?':
           e.preventDefault();
           setShowShortcutsHelp(prev => !prev);
@@ -166,7 +146,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
       </a>
       
       {/* Top Universal App Header across all screens */}
-      {!isModalOpen && !isCustomerDetailsOpen && !showGlobalAddCustomer && (
+      {!isModalOpen && !isCustomerDetailsOpen && (
         <header className="flex-shrink-0 sticky top-0 pt-[env(safe-area-inset-top)] bg-card/95 backdrop-blur-md border-b border-border/80 z-[990] transition-colors" role="banner">
         <div className="h-14 max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 md:px-8">
           
@@ -240,21 +220,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
           {/* Top Quick Actions */}
           <div className="flex items-center gap-1.5 sm:gap-2">
             
-            {/* Quick Add Customer Trigger on Tablet/Desktop */}
-            <button
-              type="button"
-              onClick={() => {
-                if (navigator.vibrate) navigator.vibrate(8);
-                setShowGlobalAddCustomer(true);
-                setIsModalOpen(true);
-              }}
-              className="hidden sm:flex h-9 px-3 rounded-xl bg-accent hover:brightness-110 text-white font-bold text-xs items-center gap-1.5 shadow-sm shadow-accent/25 transition-all active:scale-95 cursor-pointer"
-              title="Register New Customer (Press N)"
-            >
-              <UserPlus size={14} strokeWidth={2.5} />
-              <span>Add Customer</span>
-              <span className="hidden lg:inline text-[9px] font-mono px-1 py-0.2 rounded bg-white/20 text-white font-bold">N</span>
-            </button>
+            {/* Quick Add Customer Trigger removed */}
 
             {/* Keyboard Shortcuts Trigger on Desktop */}
             <button
@@ -280,6 +246,21 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
                 <span className="hidden md:inline">Install</span>
               </button>
             )}
+
+            {/* Quick Add Customer Trigger using New Loan Form */}
+            <button
+              type="button"
+              onClick={() => {
+                if (navigator.vibrate) navigator.vibrate(8);
+                setShowGlobalAddCustomer(true);
+                setIsModalOpen(true);
+              }}
+              className="hidden sm:flex h-9 px-3 rounded-xl bg-accent hover:brightness-110 text-white font-bold text-xs items-center gap-1.5 shadow-sm shadow-accent/25 transition-all active:scale-95 cursor-pointer"
+              title="Register New Customer with Loan Form"
+            >
+              <UserPlus size={14} strokeWidth={2.5} />
+              <span>Add Customer</span>
+            </button>
 
             {/* Theme Toggle Button */}
             <button
@@ -340,7 +321,9 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
 
 
 
-        {/* Global New Customer Form Full-Screen Page */}
+        {/* Global New Customer Form removed */}
+
+        {/* Global New Customer Registration via New Loan Form */}
         <AnimatePresence>
           {showGlobalAddCustomer && (
             <motion.div
@@ -350,17 +333,25 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
               transition={{ duration: 0.15 }}
               className="fixed inset-0 z-50 bg-bg overflow-y-auto flex flex-col min-h-[100dvh]"
             >
-              {/* Header */}
               <div className="sticky top-0 z-20 bg-card/90 backdrop-blur-xl border-b border-border/40 px-4 md:px-8 py-4 flex items-center justify-between">
                 <div>
-                  <h2 className="text-sm md:text-base font-black text-text-primary uppercase tracking-wider">REGISTER NEW CUSTOMER</h2>
-                  <p className="text-[10px] font-bold text-text-secondary opacity-60 uppercase tracking-widest mt-0.5">ADD LOAN AMOUNT, DAILY INSTALLMENT TERMS AND CONTACT</p>
+                  <h2 className="text-sm md:text-base font-black text-text-primary uppercase tracking-wider">NEW LOAN CUSTOMER REGISTRATION</h2>
+                  <p className="text-[10px] font-bold text-text-secondary opacity-60 uppercase tracking-widest mt-0.5">REGISTER BORROWER WITH LOAN, INTEREST, AND INSTALLMENT TERMS</p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowGlobalAddCustomer(false);
+                    setIsModalOpen(false);
+                  }}
+                  className="w-8 h-8 rounded-full bg-muted hover:bg-muted/80 flex items-center justify-center text-text-secondary cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
               </div>
-
-              {/* Body */}
               <div className="flex-1 max-w-2xl lg:max-w-3xl w-full mx-auto p-4 md:p-8 pb-32">
                 <CustomerForm 
+                  mode="new_loan"
                   onSave={handleGlobalAddCustomerSave} 
                   onCancel={() => {
                     setShowGlobalAddCustomer(false);
@@ -426,10 +417,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
                     <span className="text-text-secondary">Audit Ledger</span>
                     <kbd className="px-2 py-0.5 rounded bg-muted font-mono font-bold text-text-primary text-[11px] border border-border/60">4 or L</kbd>
                   </div>
-                  <div className="flex items-center justify-between py-1.5 border-b border-border/30">
-                    <span className="text-text-secondary">Add New Borrower</span>
-                    <kbd className="px-2 py-0.5 rounded bg-muted font-mono font-bold text-text-primary text-[11px] border border-border/60">N</kbd>
-                  </div>
+
                   <div className="flex items-center justify-between py-1.5">
                     <span className="text-text-secondary">Toggle Shortcuts Help</span>
                     <kbd className="px-2 py-0.5 rounded bg-muted font-mono font-bold text-text-primary text-[11px] border border-border/60">?</kbd>
@@ -442,7 +430,7 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
       </main>
 
       {/* Bottom Navigation Bar (Mobile Viewports Only) */}
-      {!isModalOpen && !isCustomerDetailsOpen && !showGlobalAddCustomer && (
+      {!isModalOpen && !isCustomerDetailsOpen && (
         <nav 
           aria-label="Main Navigation"
           className="md:hidden flex-shrink-0 sticky bottom-0 left-0 right-0 z-[980] bg-card/95 backdrop-blur-lg border-t border-border shadow-[0_-4px_24px_rgba(0,0,0,0.06)] pb-[env(safe-area-inset-bottom)]"
@@ -515,8 +503,8 @@ export function Layout({ children, currentTab, setCurrentTab }: { children: Reac
                 setIsModalOpen(true);
               }}
               className="relative flex flex-col items-center justify-center flex-1 h-full py-0.5 transition-all outline-none group cursor-pointer min-h-[44px]"
-              title="Add New Customer"
-              aria-label="Add New Customer"
+              title="Add Customer"
+              aria-label="Add Customer"
             >
               <div 
                 className="w-10 h-10 -mt-2 rounded-2xl bg-accent hover:brightness-110 text-white shadow-md shadow-accent/35 flex items-center justify-center active:scale-90 transition-transform cursor-pointer"
