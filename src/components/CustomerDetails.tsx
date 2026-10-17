@@ -500,9 +500,13 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div className="bg-card p-3 rounded-xl border border-border">
               <div className="flex items-center gap-2 text-text-secondary mb-1">
-                <Phone size={14} /> <span className="text-xs">Phone</span>
+                <Phone size={14} /> <span className="text-xs">Phone Numbers</span>
               </div>
-              <p className="font-medium text-sm">{customer.phone || 'N/A'}</p>
+              <p className="font-medium text-sm">
+                {customer.phoneNumbers && customer.phoneNumbers.length > 0
+                  ? customer.phoneNumbers.map(p => `+91 ${p}`).join(', ')
+                  : customer.phone ? `+91 ${customer.phone}` : 'Not provided'}
+              </p>
             </div>
             <div className="bg-card p-3 rounded-xl border border-border">
               <div className="flex items-center gap-2 text-text-secondary mb-1">
@@ -515,35 +519,41 @@ export function CustomerDetails({ customer: propCustomer, transactions, onClose,
                 <Clock size={14} /> <span className="text-xs">Schedule</span>
               </div>
               <p className="font-medium text-sm">
-                {customer.frequency === 'daily' || customer.frequencyDays === 1 
-                  ? 'Daily (1 Day)' 
-                  : customer.frequency === 'weekly' || customer.frequencyDays === 7 
-                  ? 'Weekly (7 Days)' 
-                  : customer.frequency === 'monthly' || customer.frequencyDays === 30 
-                  ? 'Monthly (30 Days)' 
-                  : customer.frequencyDays 
-                  ? `Every ${customer.frequencyDays} Days`
-                  : 'Daily'}
+                {loanAmount <= 0 || !customer.frequency ? 'Not mentioned' : (
+                  customer.frequency === 'daily' || customer.frequencyDays === 1 
+                    ? 'Daily (1 Day)' 
+                    : customer.frequency === 'weekly' || customer.frequencyDays === 7 
+                    ? 'Weekly (7 Days)' 
+                    : customer.frequency === 'monthly' || customer.frequencyDays === 30 
+                    ? 'Monthly (30 Days)' 
+                    : customer.frequencyDays 
+                    ? `Every ${customer.frequencyDays} Days`
+                    : 'Daily'
+                )}
               </p>
             </div>
             <div className="bg-card p-3 rounded-xl border border-border">
               <div className="flex items-center gap-2 text-text-secondary mb-1">
                 <Calendar size={14} /> <span className="text-xs">Start Date</span>
               </div>
-              <p className="font-medium text-sm">{safeFormat(customer.startDate, 'dd MMM yyyy')}</p>
+              <p className="font-medium text-sm">
+                {loanAmount > 0 && customer.startDate ? safeFormat(customer.startDate, 'dd MMM yyyy') : 'Not mentioned'}
+              </p>
             </div>
             <div className="bg-card p-3 rounded-xl border border-border">
               <div className="flex items-center gap-2 text-text-secondary mb-1">
                 <Calendar size={14} /> <span className="text-xs">End Date</span>
               </div>
-              <p className="font-medium text-sm">{safeFormat(customer.endDate, 'dd MMM yyyy')}</p>
+              <p className="font-medium text-sm">
+                {loanAmount > 0 && customer.endDate ? safeFormat(customer.endDate, 'dd MMM yyyy') : 'Not mentioned'}
+              </p>
             </div>
             <div className="bg-card p-3 rounded-xl border border-border">
               <div className="flex items-center gap-2 text-text-secondary mb-1">
                 <Calendar size={14} /> <span className="text-xs">Tenure</span>
               </div>
               <p className="font-medium text-sm">
-                {customer.durationDays || Math.max(1, safeDifferenceInDays(customer.endDate, customer.startDate) + 1)} Days
+                {loanAmount > 0 && customer.durationDays ? `${customer.durationDays} Days` : 'Not mentioned'}
               </p>
             </div>
           </div>

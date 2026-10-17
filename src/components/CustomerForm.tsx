@@ -106,9 +106,18 @@ export function CustomerForm({
     };
   });
 
+  const [phoneNumbers, setPhoneNumbers] = useState<string[]>(() => {
+    if (customer?.phoneNumbers && Array.isArray(customer.phoneNumbers) && customer.phoneNumbers.length > 0) {
+      return customer.phoneNumbers;
+    }
+    if (customer?.phone) {
+      return [customer.phone];
+    }
+    return initialPhone ? [initialPhone] : [''];
+  });
+
   const principalAmountNum = Number(formData.loan) || 0;
   const paidAmount = customer?.paid || 0;
-  const [formStep, setFormStep] = useState<number>(1);
   const [showSuccessAnim, setShowSuccessAnim] = useState(false);
 
   // Interest management: default to enabled for Renewal (and optionally in new loans), default 3% rate & calculated amount, both editable
@@ -125,35 +134,6 @@ export function CustomerForm({
     setFormData(prev => ({ ...prev, loan: newPrincipalStr }));
     if (hasInterest && interestRate >= 0) {
       setInterestAmount(Math.round(newPrincipal * (interestRate / 100)));
-    }
-  };
-
-  const handleNextStep = () => {
-    if (formStep === 1) {
-      const cleanPhone = formData.phone.replace(/\D/g, '').slice(-10);
-      if (!formData.name.trim()) {
-        toast.error('Please enter borrower full name');
-        return;
-      }
-      if (cleanPhone.length !== 10) {
-        toast.error('Please enter a valid 10-digit phone number');
-        return;
-      }
-      if (!isIdUnique && !isEdit && !isNewLoan) {
-        toast.error('Account ID is already taken. Please choose another.');
-        return;
-      }
-      setFormStep(2);
-    } else if (formStep === 2) {
-      if (Number(formData.loan) <= 0) {
-        toast.error('Please enter a valid loan amount (> ₹0)');
-        return;
-      }
-      if ((formData.duration || 0) < 1) {
-        toast.error('Loan tenure must be at least 1 day');
-        return;
-      }
-      setFormStep(3);
     }
   };
 
@@ -537,18 +517,19 @@ export function CustomerForm({
       return;
     }
 
-    const cleanPhone = formData.phone.replace(/\D/g, '').slice(-10);
-    if (!formData.name || (formData.loan === '' || formData.loan === undefined) || (!isIdUnique && !isEdit) || cleanPhone.length !== 10 || Number(formData.loan) < 0) {
-      if (cleanPhone.length !== 10) toast.error('Enter valid 10-digit phone number');
+    const primaryPhone = phoneNumbers[0] ? phoneNumbers[0].replace(/\D/g, '').slice(-10) : '';
+    const cleanedPhoneNumbers = phoneNumbers.map(p => p.replace(/\D/g, '').slice(-10)).filter(p => p.length > 0);
+
+    if (!formData.name || (!isIdUnique && !isEdit) || Number(formData.loan) < 0) {
       if (Number(formData.loan) < 0) toast.error('Enter valid loan amount (>= ₹0)');
       if (!isIdUnique && !isEdit) toast.error('ID already used');
       return;
     }
 
     const normalizedName = formData.name.trim();
-    const normalizedPhone = cleanPhone;
+    const normalizedPhone = primaryPhone;
     
-    if (!isEdit || normalizedName !== customer?.name || normalizedPhone !== customer?.phone) {
+    if (normalizedPhone.length === 10 && (!isEdit || normalizedName !== customer?.name || normalizedPhone !== customer?.phone)) {
       const checkResult = await firestoreService.checkDuplicateCustomer(
         normalizedName, 
         normalizedPhone, 
@@ -565,11 +546,11 @@ export function CustomerForm({
     }
 
     const finalLoanAmt = totalLoanWithInterest;
-    const startMs = parseISO(formData.startDate).getTime() || Date.now();
-    const endMs = finalLoanAmt > 0 ? parseISO(endDate).getTime() : startMs;
+    const startMs = finalLoanAmt > 0 ? (parseISO(formData.startDate).getTime() || Date.now()) : 0;
+    const endMs = finalLoanAmt > 0 ? parseISO(endDate).getTime() : 0;
     const finalDuration = finalLoanAmt > 0 ? (formData.duration || 100) : 0;
-    const finalFreq = finalLoanAmt > 0 ? formData.frequency : 'daily';
-    const finalFreqDays = finalLoanAmt > 0 ? (formData.frequencyDays || 1) : 1;
+    const finalFreq = finalLoanAmt > 0 ? formData.frequency : '';
+    const finalFreqDays = finalLoanAmt > 0 ? (formData.frequencyDays || 1) : 0;
 
     const uniqueKey = `${normalizedName.toLowerCase()}_${normalizedPhone}_loan`;
     
@@ -581,6 +562,7 @@ export function CustomerForm({
             id: customer.id,
             name: normalizedName,
             phone: normalizedPhone,
+            phoneNumbers: cleanedPhoneNumbers,
             loanAmount: finalLoanAmt,
             loan: finalLoanAmt,
             pending: Math.max(0, finalLoanAmt - (customer.paid || 0)),
@@ -613,6 +595,7 @@ export function CustomerForm({
             id: fullId,
             name: normalizedName,
             phone: normalizedPhone,
+            phoneNumbers: cleanedPhoneNumbers,
             loan: finalLoanAmt,
             loanAmount: finalLoanAmt,
             paid: priorPaidAmount,
@@ -846,36 +829,8 @@ export function CustomerForm({
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="flex-1 space-y-4 px-1">
-        {/* Step Indicator Header */}
-        <div className="flex items-center justify-between bg-card/60 border border-border/60 rounded-2xl p-4 mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-accent text-white flex items-center justify-center font-black text-xs shadow-md shadow-accent/25">
-              {formStep}/3
-            </div>
-            <div>
-              <h3 className="text-xs font-black uppercase tracking-wider text-text-primary">
-                {formStep === 1 ? 'Step 1: Core Identity' : formStep === 2 ? 'Step 2: Financials & Schedule' : 'Step 3: Review & Submit'}
-              </h3>
-              <p className="text-[10px] text-text-secondary font-medium">
-                {formStep === 1 ? 'Enter borrower name, phone & account ID' : formStep === 2 ? 'Configure loan amount, interest & frequency' : 'Review details and complete registration'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            {[1, 2, 3].map(s => (
-              <div
-                key={s}
-                className={`w-2 h-2 rounded-full transition-all ${
-                  formStep === s ? 'w-6 bg-accent' : formStep > s ? 'bg-accent/50' : 'bg-muted border border-border'
-                }`}
-              />
-            ))}
-          </div>
-        </div>
-
+      <form onSubmit={handleSubmit} className="flex-1 space-y-6 px-1">
         {/* Section 1: Core Identity */}
-        {formStep === 1 && (
         <div>
           <div className="flex items-center justify-between mb-4">
             <h4 className="text-[11px] font-black text-accent uppercase tracking-[0.2em] flex items-center gap-2">
@@ -919,31 +874,59 @@ export function CustomerForm({
             </div>
 
             <div className="md:col-span-1">
-              <label htmlFor="customer-input-phone" className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] ml-1 mb-1.5 flex items-center justify-between">
-                <span>Phone Number</span>
-                {isNewLoan && <span className="text-[9px] font-bold lowercase opacity-70">(uneditable for {isRenewal ? 'renewal' : 'new loan'})</span>}
-              </label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-bold text-text-secondary opacity-40" aria-hidden="true">+91</span>
-                <input
-                  id="customer-input-phone"
-                  type="tel"
-                  required
-                  aria-required="true"
-                  aria-label="10-digit phone number"
-                  disabled={isNewLoan}
-                  value={formData.phone}
-                  onChange={e => handlePhoneChange(e.target.value)}
-                  className={`w-full bg-bg border border-border/60 rounded-2xl h-14 pl-14 pr-12 focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/5 transition-all text-[15px] font-bold ${
-                    isNewLoan ? 'opacity-70 cursor-not-allowed bg-muted/40 text-text-secondary select-none' : ''
-                  }`}
-                  placeholder="10-digit number"
-                />
-                {isNewLoan && (
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary opacity-40 pointer-events-none" aria-hidden="true">
-                    <Lock size={16} />
-                  </div>
+              <div className="text-[10px] font-black text-text-secondary opacity-40 uppercase tracking-[0.2em] ml-1 mb-1.5 flex items-center justify-between">
+                <span>Phone Numbers (Optional)</span>
+                {!isNewLoan && phoneNumbers[0] && phoneNumbers[0].trim().length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPhoneNumbers(prev => [...prev, ''])}
+                    className="text-[10px] font-bold text-accent hover:underline lowercase cursor-pointer"
+                  >
+                    + Add Phone
+                  </button>
                 )}
+                {isNewLoan && <span className="text-[9px] font-bold lowercase opacity-70">(uneditable for {isRenewal ? 'renewal' : 'new loan'})</span>}
+              </div>
+              <div className="space-y-2.5">
+                {phoneNumbers.map((num, idx) => (
+                  <div key={idx} className="relative flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-bold text-text-secondary opacity-40" aria-hidden="true">+91</span>
+                      <input
+                        type="tel"
+                        aria-label={`Phone number ${idx + 1}`}
+                        disabled={isNewLoan}
+                        value={num}
+                        onChange={e => {
+                          const numeric = e.target.value.replace(/\D/g, '').slice(0, 10);
+                          setPhoneNumbers(prev => {
+                            const updated = [...prev];
+                            updated[idx] = numeric;
+                            return updated;
+                          });
+                          setFormData(f => ({ ...f, phone: numeric }));
+                        }}
+                        className={`w-full bg-bg border border-border/60 rounded-2xl h-14 pl-14 pr-4 focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/5 transition-all text-[15px] font-bold ${
+                          isNewLoan ? 'opacity-70 cursor-not-allowed bg-muted/40 text-text-secondary select-none' : ''
+                        }`}
+                        placeholder="10-digit number (optional)"
+                      />
+                    </div>
+                    {!isNewLoan && phoneNumbers.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPhoneNumbers(prev => prev.filter((_, i) => i !== idx));
+                        }}
+                        className="p-3.5 rounded-2xl bg-danger/10 text-danger hover:bg-danger/20 transition-colors cursor-pointer shrink-0"
+                        title="Remove phone"
+                        aria-label="Remove phone number"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -1044,10 +1027,8 @@ export function CustomerForm({
 
           </div>
         </div>
-        )}
 
         {/* Section 2: Financials & Collection Schedule */}
-        {formStep === 2 && (
         <div>
           <h4 className="text-[11px] font-black text-accent uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-accent" /> Financials & Schedule
@@ -1777,13 +1758,9 @@ export function CustomerForm({
                   </motion.div>
                 )}
               </div>
-            )}
-          </div>
-        </div>
-        )}
+            </div>
 
         {/* Section 3: Notes / Remarks & Review */}
-        {formStep === 3 && (
         <div className="space-y-4">
           <div>
             <label htmlFor="customer-input-notes" className="text-[11px] font-black text-accent uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
@@ -1843,71 +1820,50 @@ export function CustomerForm({
       {/* Footer Action Buttons */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-card/90 backdrop-blur-xl border-t border-border/40 pb-[env(safe-area-inset-bottom)] z-50">
         <div className="flex gap-3 max-w-2xl mx-auto">
-          {formStep > 1 ? (
-            <button
-              type="button"
-              onClick={() => setFormStep(formStep - 1)}
-              disabled={isSubmitting}
-              className="flex-1 h-14 rounded-2xl bg-bg border border-border font-black text-[11px] uppercase tracking-widest text-text-secondary active:scale-95 transition-all cursor-pointer disabled:opacity-50"
-            >
-              ← Back
-            </button>
-          ) : (
-            <button
-              id="customer-btn-cancel"
-              type="button"
-              onClick={onCancel}
-              disabled={isSubmitting}
-              className="flex-1 h-14 rounded-2xl bg-bg border border-border font-black text-[11px] uppercase tracking-widest text-text-secondary active:scale-95 transition-all cursor-pointer disabled:opacity-50"
-            >
-              Cancel
-            </button>
-          )}
+          <button
+            id="customer-btn-cancel"
+            type="button"
+            onClick={onCancel}
+            disabled={isSubmitting}
+            className="flex-1 h-14 rounded-2xl bg-bg border border-border font-black text-[11px] uppercase tracking-widest text-text-secondary active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+          >
+            Cancel
+          </button>
 
-          {formStep < 3 ? (
-            <button
-              type="button"
-              onClick={handleNextStep}
-              className="flex-[2] h-14 rounded-2xl font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all shadow-xl shadow-accent/25 bg-accent text-white cursor-pointer flex items-center justify-center gap-2"
-            >
-              <span>Next Step</span>
-              <span>→</span>
-            </button>
-          ) : (
-            <button
-              id="customer-btn-save"
-              type="button"
-              onClick={() => handleSubmit()}
-              disabled={
-                isSubmitting ||
-                (isNewLoan 
-                  ? (totalLoanWithInterest < 0 || (formData.duration || 0) < 1)
-                  : ((!isIdUnique && !isEdit) || formData.phone.replace(/\D/g, '').slice(-10).length !== 10 || Number(formData.loan) < 0 || duplicateLoanError?.exists))
-              }
-              className={`flex-[2] h-14 rounded-2xl font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all shadow-xl disabled:opacity-50 disabled:shadow-none cursor-pointer flex items-center justify-center gap-2 ${
-                duplicateLoanError?.exists
-                  ? 'bg-rose-600 text-white shadow-rose-600/20'
-                  : 'bg-accent text-white shadow-accent/20'
-              }`}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" />
-                  <span>Processing...</span>
-                </>
-              ) : duplicateLoanError?.exists ? (
-                <span>Dual Loan Prohibited</span>
-              ) : isRenewal ? (
-                `Renew Loan`
-              ) : isNewLoan ? (
-                `Issue New Loan`
-              ) : isEdit ? (
-                'Save Changes'
-              ) : (
-                'Create Account'
-              )}
-            </button>
-          )}
+          <button
+            id="customer-btn-save"
+            type="button"
+            onClick={() => handleSubmit()}
+            disabled={
+              isSubmitting ||
+              !formData.name.trim() ||
+              (isNewLoan 
+                ? (totalLoanWithInterest < 0 || (Number(formData.loan) > 0 && (formData.duration || 0) < 1))
+                : ((!isIdUnique && !isEdit) || Number(formData.loan) < 0 || duplicateLoanError?.exists))
+            }
+            className={`flex-[2] h-14 rounded-2xl font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all shadow-xl disabled:opacity-50 disabled:shadow-none cursor-pointer flex items-center justify-center gap-2 ${
+              duplicateLoanError?.exists
+                ? 'bg-rose-600 text-white shadow-rose-600/20'
+                : 'bg-accent text-white shadow-accent/20'
+            }`}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                <span>Processing...</span>
+              </>
+            ) : duplicateLoanError?.exists ? (
+              <span>Dual Loan Prohibited</span>
+            ) : isRenewal ? (
+              `Renew Loan`
+            ) : isNewLoan ? (
+              `Issue New Loan`
+            ) : isEdit ? (
+              'Save Changes'
+            ) : (
+              'Create Account'
+            )}
+          </button>
         </div>
       </div>
 

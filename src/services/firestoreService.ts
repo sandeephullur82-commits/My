@@ -59,7 +59,8 @@ export interface Customer {
   id: string;
   docPath?: string;
   name: string;
-  phone: string;
+  phone?: string;
+  phoneNumbers?: string[];
   loan: number;
   loanAmount?: number;
   totalLoan?: number;

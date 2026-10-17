@@ -198,6 +198,17 @@ export function Entry() {
     return set;
   }, [transactions, todayStr, customerMap]);
 
+  const getCustomerLast3TransactionsTime = (customerId: string) => {
+    const custTxs = transactions
+      .filter(tx => tx.customerId === customerId && !tx.isDeleted)
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+      .slice(0, 3);
+    
+    if (custTxs.length === 0) return 0;
+    const sum = custTxs.reduce((acc, tx) => acc + (toSafeMillis(tx.paidAt) || toSafeMillis(tx.timestamp) || 0), 0);
+    return sum / custTxs.length;
+  };
+
   // PENDING SECTION: All customers (both active loans & advance savings) needing entry today
   const pendingCustomers = useMemo(() => {
     let list = customers.filter(c => {
@@ -227,9 +238,20 @@ export function Entry() {
       const bSkipped = skippedIds.includes(b.id);
       if (aSkipped && !bSkipped) return 1;
       if (!aSkipped && bSkipped) return -1;
+
+      const timeA = getCustomerLast3TransactionsTime(a.id);
+      const timeB = getCustomerLast3TransactionsTime(b.id);
+
+      if (timeA <= 0 && timeB > 0) return 1;
+      if (timeB <= 0 && timeA > 0) return -1;
+      if (timeA <= 0 && timeB <= 0) return a.name.localeCompare(b.name);
+
+      if (timeA !== timeB) {
+        return timeB - timeA;
+      }
       return a.name.localeCompare(b.name);
     });
-  }, [customers, todayLoggedCustomerIds, debouncedQuery, skippedIds]);
+  }, [customers, todayLoggedCustomerIds, debouncedQuery, skippedIds, transactions]);
 
   // Helper set for O(1) instant search matching
   const matchingCustomerIds = useMemo(() => {
